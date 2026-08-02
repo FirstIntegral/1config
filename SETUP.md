@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 0.2.118 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.220 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.11 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-02 23:42 by update-apps -->
+<!-- last refreshed: 2026-08-02 23:50 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -283,11 +283,13 @@ Public site repos: gitignore `AGENTS.md` (+ `CLAUDE.md`). Commit `docs/DECISIONS
 | symlink points elsewhere | re-point to canonical | `REPOINT` |
 | path missing | create symlink | `CREATE` |
 | regular file, identical to canonical | re-link, no content change | `FIXED` |
-| regular file = canonical + appended bytes | append extra to canonical, re-link | `MERGED` |
-| regular file, diverged | quarantine to `~/.agents/backups/strays/`, re-link, append to **`NEEDS-SYMLINK-MERGE`** | `CONFLICT` |
+| regular file, diverged (any difference) | quarantine to `~/.agents/backups/strays/`, re-link, append to **`NEEDS-SYMLINK-MERGE`** | `CONFLICT` |
+
+(No auto-append of stray bytes — see suggestion 2026-08; quarantined strays are AI-merged.)
 
 - Log: `~/cron-jobs/agents-symlink-guard/check-links.log`.
-- Flag: **`NEEDS-SYMLINK-MERGE`** in same folder (exists only after a CONFLICT). AI/human merges unique content into canonical `AGENTS.md`, then clears the flag (procedure in canonical `AGENTS.md`).
+- Flag: **`NEEDS-SYMLINK-MERGE`** in same folder (exists only after a CONFLICT).
+- **AI merge is automated:** `hooks/merge-strays.sh` (installed to the guard dir, byte-verified; cron `@daily`) feeds each stray to a headless LLM (`claude -p` default, `grok -p` / `opencode run` fallback — `MERGE_LLM_BACKEND` selects), sanitizes the markdown output, appends to canonical with a provenance comment, deletes the stray, clears the flag. If the LLM fails, the flag survives for the next run; manual fallback procedure lives in canonical `AGENTS.md`. Sandbox knobs: `CANON`, `GUARD_DIR`, `STRAYS_DIR`, `MERGE_LLM_MODEL`, `MERGE_MAX_BYTES` (4000), `MERGE_TIMEOUT` (120), `MERGE_SKIP_LLM=1` (report only).
 
 ### 7b. Tool-memory residue guard
 
@@ -308,7 +310,7 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 3. Grok config keys (§4) + delete `~/.grok/memory/` if present (after archive).
 4. Claude memory wipe-to-stub for every `~/.claude/projects/*/memory/` (§4).
 5. Claude AGENTS.md SessionStart hook (§4) — merged into `~/.claude/settings.json`, preserving existing hooks.
-6. Install/refresh symlink guard (§7a) — copied from `hooks/check-links.sh`.
+6. Install/refresh symlink guard + stray-merge hook (§7a) — copied from `hooks/check-links.sh` + `hooks/merge-strays.sh`.
 7. Install/refresh claude-memory-guard (§6b/§7b) — copied from `hooks/check-claude-memory.sh`.
 8. Install/refresh tool updater (§7c) — copied from `updater/` (systemd resume shim needs root once).
 9. Crontab entries for guards + updater (§7) — preserves other crontab lines.
@@ -349,6 +351,7 @@ done
 python3 -c "import tomllib,os; tomllib.load(open(os.path.expanduser('~/.grok/config.toml'),'rb'))" && echo TOML-OK
 crontab -l | grep -E 'agents-symlink-guard|claude-memory-guard|ai-terminal-tools-update'
 cmp -s ~/.agents/hooks/check-links.sh ~/cron-jobs/agents-symlink-guard/check-links.sh && echo LINKS-SYNC-OK
+cmp -s ~/.agents/hooks/merge-strays.sh ~/cron-jobs/agents-symlink-guard/merge-strays.sh && echo MERGE-SYNC-OK
 cmp -s ~/.agents/hooks/check-claude-memory.sh ~/cron-jobs/claude-memory-guard/check-memory.sh && echo MEM-SYNC-OK
 cmp -s ~/.agents/updater/update-apps.sh ~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh && echo UPD-SYNC-OK
 bash ~/.agents/hooks/gpg-agent-unlock.sh && echo GPG-CACHED-OK || echo GPG-UNLOCK-NEEDED

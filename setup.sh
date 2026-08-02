@@ -228,6 +228,20 @@ else
   log "WARNING: updater/ missing — copy ~/.agents fully; skipping updater install"
 fi
 
+# --- 7c stray-merge (AI) hook: source hooks/merge-strays.sh ------------------
+echo "[7c/9] stray-merge hook (AI merge of quarantined strays)"
+MERGE_SRC="$AGENTS_HOME/hooks/merge-strays.sh"
+if [ -f "$MERGE_SRC" ]; then
+  if [ -f "$GUARD_DIR/merge-strays.sh" ] && ! cmp -s "$MERGE_SRC" "$GUARD_DIR/merge-strays.sh"; then
+    cp -p "$GUARD_DIR/merge-strays.sh" "$BACKUP_DIR/merge-strays.sh" 2>/dev/null || true
+  fi
+  cp -p "$MERGE_SRC" "$GUARD_DIR/merge-strays.sh"
+  chmod +x "$GUARD_DIR/merge-strays.sh" "$MERGE_SRC"
+  log "refreshed $GUARD_DIR/merge-strays.sh (from hooks/)"
+else
+  log "WARNING: hooks/merge-strays.sh missing — skip"
+fi
+
 # --- 8 crontab ---------------------------------------------------------------
 echo "[8/9] crontab entries"
 if [ "$SKIP_CRON" = 1 ]; then
@@ -245,12 +259,13 @@ else
   CT_OLD="$(crontab -l 2>/dev/null || true)"
   CT_OLD="$(printf '%s\n' "$CT_OLD" | grep -v -E 'agents-symlink-guard|claude-memory-guard|ai-terminal-tools-update-on-boot' || true)"
   { printf '%s\n' "$CT_OLD"
-    printf '@daily %s\n@reboot %s\n@daily %s\n@reboot %s\n@reboot %s\n' \
+    printf '@daily %s\n@reboot %s\n@daily %s\n@daily %s\n@reboot %s\n@reboot %s\n' \
       "$GUARD_DIR/check-links.sh" "$GUARD_DIR/check-links.sh" \
+      "$GUARD_DIR/merge-strays.sh" \
       "$MEM_GUARD_DIR/check-memory.sh" "$MEM_GUARD_DIR/check-memory.sh" \
       "$UPD_DIR/boot-check.sh"
   } | grep -v '^$' | crontab -
-  log "installed symlink-guard + claude-memory-guard (@daily + @reboot) + tool updater (@reboot)"
+  log "installed symlink-guard (@daily + @reboot) + stray-merge (@daily) + memory-guard (@daily + @reboot) + tool updater (@reboot)"
 fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------

@@ -197,7 +197,7 @@ When `create_project` lands under `~/projects/sites/`, merge the usual session i
 | Symlink | `~/.agents/hooks/check-links.sh` | `~/cron-jobs/agents-symlink-guard/check-links.sh` | `NEEDS-SYMLINK-MERGE` | Keep the 3 AGENTS symlinks healthy |
 | Tool memory | `~/.agents/hooks/check-claude-memory.sh` | `~/cron-jobs/claude-memory-guard/check-memory.sh` | `NEEDS-MEMORY-MERGE` | Detect Claude/Grok memory residue → archive → stage → wipe to stub |
 
-Both installed by `setup.sh` (copy from `hooks/`). Schedule: `@daily` + `@reboot` each.
+Both installed by `setup.sh` (copy from `hooks/`). Schedule: `@daily` + `@reboot` each. Stray merging is automated by `~/.agents/hooks/merge-strays.sh` (cron `@daily`, see Symlink conflict section below).
 
 **Two different flags — do not mix them up:**
 
@@ -229,12 +229,13 @@ Cron **cannot** judge “important facts” (no LLM). It only stages. **You (the
 4. Delete processed `claude_memory_import.md`. Remove processed packet lines from `PENDING.md`; if empty, delete `PENDING.md` and the `NEEDS-MEMORY-MERGE` flag.
 5. Never re-create tool memory stores. Never leave durable facts only in the archive.
 
-### Symlink conflict → merge into canonical (AI/human duty)
+### Symlink conflict → merge into canonical (AUTOMATED)
 
-**When:** `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` exists (paths of quarantined files listed inside).
+**`~/.agents/hooks/merge-strays.sh` does this automatically** (cron @daily, after the guard): each quarantined stray is fed to a headless LLM ("extract unique durable rules not already in canonical → one markdown section or SKIP"), output is sanitized and appended to canonical, the stray is deleted, the flag cleared. Nothing to type.
 
-**Do:**
+**You (AI/human) intervene only when:** the flag survives two merge runs (LLM failing), or you want to relocate merged content from the file tail into its proper section.
 
+Manual procedure (fallback only):
 1. Read each listed file under `~/.agents/backups/strays/`.
 2. If it has unique durable rules not already in `~/.agents/AGENTS.md`, merge those into the canonical file (this file).
 3. Delete the processed stray file path lines from `NEEDS-SYMLINK-MERGE`; if empty, delete the flag.
