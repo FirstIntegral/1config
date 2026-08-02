@@ -1,0 +1,13 @@
+# Local AI session files — never commit unless the user says otherwise
+session_compact.md
+session_transcript.md
+claude_memory_import.md
+
+# Legacy session paths (retired 2026-07; keep ignored if present)
+docs/SESSION.md
+docs/session-archive/
+docs/session-flushes/
+
+# Sites repos only (~/projects/sites/*): also ignore agent rules — uncomment or add when creating a site:
+# AGENTS.md
+# CLAUDE.md

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Agents Boot Status
+Comment=Show ~/.agents boot checks and tool-update status
+Exec=/home/brwsk/.agents/boot-dashboard/launch.sh
+Icon=utilities-terminal
+Terminal=false
+Categories=System;Monitor;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+OnlyShowIn=GNOME;Unity;X-Cinnamon;
