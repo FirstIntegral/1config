@@ -1,0 +1,197 @@
+% Research paper scaffold — source: ~/.agents/paper-template/ (writepaper_project trigger).
+% Build: bash build.sh   (latexmk -> main.pdf; texlive-full is installed, no package is missing)
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{microtype}
+
+% --- math ---------------------------------------------------------------
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage{siunitx}
+
+% --- floats, tables, figures --------------------------------------------
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{subcaption}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% --- algorithms ---------------------------------------------------------
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+
+% --- bibliography -------------------------------------------------------
+\usepackage[backend=biber,style=numeric-comp,sorting=none,maxbibnames=99]{biblatex}
+\addbibresource{refs.bib}
+
+% --- links (load late) --------------------------------------------------
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+\usepackage[nameinlink,capitalise]{cleveref}
+
+% --- theorem environments ----------------------------------------------
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Every gap is marked, never guessed. Grep \TODO before submitting.
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+\title{\TODO{title}}
+\author{Brusk Kawa Abdalla\thanks{\href{mailto:math@brwsk.xyz}{math@brwsk.xyz}}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\TODO{abstract: problem, method, main formal result, main empirical result, significance}
+\end{abstract}
+
+\noindent\textbf{Keywords:} \TODO{keywords}
+
+\section{Introduction}
+\label{sec:intro}
+\TODO{motivation, the gap in existing work, and what this paper does}
+
+\paragraph{Contributions.}
+\begin{itemize}
+  \item \TODO{contribution 1 — formal}
+  \item \TODO{contribution 2 — algorithmic}
+  \item \TODO{contribution 3 — empirical}
+\end{itemize}
+
+\section{Related work}
+\label{sec:related}
+\TODO{real, checkable references only — no invented citations}
+
+\section{Preliminaries and notation}
+\label{sec:prelim}
+\TODO{define every symbol before use; keep a notation table}
+
+\begin{table}[t]
+  \centering
+  \caption{Notation.}
+  \label{tab:notation}
+  \begin{tabular}{ll}
+    \toprule
+    Symbol & Meaning \\
+    \midrule
+    \TODO{sym} & \TODO{meaning} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Problem statement}
+\label{sec:problem}
+\begin{assumption}\label{as:main}
+\TODO{state assumptions explicitly}
+\end{assumption}
+
+\section{Method}
+\label{sec:method}
+\TODO{the construction, derived rather than asserted}
+
+\section{Theoretical results}
+\label{sec:theory}
+
+\begin{definition}\label{def:main}
+\TODO{definition}
+\end{definition}
+
+\begin{lemma}\label{lem:main}
+\TODO{statement}
+\end{lemma}
+\begin{proof}
+\TODO{proof, or a sketch with the full argument in \Cref{app:proofs}}
+\end{proof}
+
+\begin{theorem}\label{thm:main}
+\TODO{statement}
+\end{theorem}
+\begin{proof}
+\TODO{proof}
+\end{proof}
+
+\subsection{Complexity}
+\label{sec:complexity}
+\TODO{time / space / sample complexity or numerical error bounds}
+
+\section{Algorithm}
+\label{sec:algorithm}
+\begin{algorithm}[t]
+  \caption{\TODO{name}}
+  \label{alg:main}
+  \KwIn{\TODO{input}}
+  \KwOut{\TODO{output}}
+  \TODO{steps}
+\end{algorithm}
+
+\section{Implementation}
+\label{sec:implementation}
+\TODO{architecture and the design decisions from docs/DECISIONS.md}
+
+\section{Experimental setup}
+\label{sec:setup}
+\TODO{hardware, software versions, seeds, datasets, hyperparameters — enough to rerun}
+
+\section{Results}
+\label{sec:results}
+\TODO{every number here comes from a real run; report n, mean $\pm$ CI, test statistic, p-value, effect size}
+
+\begin{table}[t]
+  \centering
+  \caption{\TODO{caption}}
+  \label{tab:results}
+  \begin{tabular}{lccc}
+    \toprule
+    Method & $n$ & Mean $\pm$ 95\% CI & Effect size \\
+    \midrule
+    \TODO{row} & & & \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Ablations}
+\label{sec:ablations}
+\TODO{what each component contributes}
+
+\section{Discussion}
+\label{sec:discussion}
+\TODO{what the results mean, and what they do not show}
+
+\section{Limitations and threats to validity}
+\label{sec:limitations}
+\TODO{scope conditions, failure cases, confounds}
+
+\section{Conclusion and future work}
+\label{sec:conclusion}
+\TODO{conclusion}
+
+\printbibliography
+
+\appendix
+
+\section{Full proofs}
+\label{app:proofs}
+\TODO{complete arguments deferred from \Cref{sec:theory}}
+
+\section{Reproducibility}
+\label{app:repro}
+\TODO{exact commands, commit hash, environment}
+
+\end{document}

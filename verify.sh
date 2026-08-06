@@ -36,6 +36,16 @@ echo "[core]"
 for f in AGENTS.md session_compact.md session_transcript.md docs/DECISIONS.md .gitignore; do
   [ -e "$TEMPLATE/$f" ] && ok "template $f" || bad "template missing $f"
 done
+[ -f "$AGENTS_HOME/permissions.json" ] && ok "permissions.json (canonical, all 3 tools)" || bad "permissions.json missing"
+PAPER_TPL="$AGENTS_HOME/paper-template"
+if [ -d "$PAPER_TPL" ]; then
+  for f in main.tex refs.bib build.sh; do
+    [ -e "$PAPER_TPL/$f" ] && ok "paper-template $f" || bad "paper-template missing $f"
+  done
+  [ -x "$PAPER_TPL/build.sh" ] || note "paper-template/build.sh not executable"
+else
+  bad "paper-template/ missing (writepaper_project has no scaffold)"
+fi
 for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
@@ -182,12 +192,15 @@ else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
 for f in "$CANON" "$SETUP"; do
-  if grep -qF 'checkpoint_project' "$f"; then
-    ok "checkpoint_project present in $(basename "$f")"
-  else
-    bad "checkpoint_project missing from $f"
-  fi
+  for needle in checkpoint_project writepaper_project 'Tri-tool parity'; do
+    if grep -qF "$needle" "$f"; then
+      ok "$needle present in $(basename "$f")"
+    else
+      bad "$needle missing from $f"
+    fi
+  done
 done
+grep -qF 'math@brwsk.xyz' "$CANON" && ok "paper author contact pinned in AGENTS.md" || bad "paper author contact missing from AGENTS.md"
 if grep -q 'Residue / conflict check' "$SETUP" || grep -q 'Residue / conflict check' "$CANON"; then
   ok "residue/conflict check wording present"
 else
@@ -216,6 +229,75 @@ PY
   [ ! -e "$HOME/.grok/memory" ] && ok "no ~/.grok/memory dir" || bad "~/.grok/memory still exists"
 else
   note "python3 missing — skip TOML checks"
+fi
+
+# --- permission parity across all three tools -------------------------------
+echo "[permission parity]"
+PERMS_SRC="$AGENTS_HOME/permissions.json"
+if ! command -v python3 >/dev/null; then
+  note "python3 missing — skip permission parity check"
+elif [ ! -f "$PERMS_SRC" ]; then
+  bad "canonical $PERMS_SRC missing"
+else
+  parity_out="$(PERMS_SRC="$PERMS_SRC" python3 - <<'PY'
+import json, os, pathlib, re, tomllib
+
+src = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text()).get("permissions", {})
+home = pathlib.Path.home()
+want = {b: src.get(b, []) for b in ("allow", "deny")}
+
+def report(tool, missing, total):
+    print(f"{'OK' if not missing else 'MISS'}\t{tool}\t{total - len(missing)}/{total}\t{missing[0] if missing else ''}")
+
+# Claude — verbatim rules in permissions.allow / permissions.deny
+p = home / ".claude/settings.json"
+if p.is_file():
+    got = json.loads(p.read_text()).get("permissions", {})
+    miss = [r for b in want for r in want[b] if r not in got.get(b, [])]
+    report("claude", miss, sum(len(v) for v in want.values()))
+else:
+    print("SKIP\tclaude\t-\tno settings.json")
+
+# Grok — verbatim rules in [permission] allow / deny
+p = home / ".grok/config.toml"
+if p.is_file():
+    got = tomllib.loads(p.read_text()).get("permission", {})
+    miss = [r for b in want for r in want[b] if r not in got.get(b, [])]
+    report("grok", miss, sum(len(v) for v in want.values()))
+else:
+    print("SKIP\tgrok\t-\tno config.toml")
+
+# OpenCode — Bash(X) rules translated into the permission.bash map
+p = home / ".config/opencode/opencode.jsonc"
+def pats(bucket):
+    out = []
+    for r in want[bucket]:
+        m = re.fullmatch(r"Bash\((.*)\)", r)
+        if m and m.group(1) not in ("", "*"):
+            out.append(m.group(1))
+    return out
+if p.is_file():
+    text = re.sub(r"^\s*//.*$", "", p.read_text(), flags=re.M)
+    got = json.loads(text).get("permission", {}).get("bash", {})
+    got = got if isinstance(got, dict) else {}
+    miss = [x for x in pats("allow") if got.get(x) != "allow"] + \
+           [x for x in pats("deny") if got.get(x) != "deny"]
+    report("opencode", miss, len(pats("allow")) + len(pats("deny")))
+else:
+    print("SKIP\topencode\t-\tno opencode.jsonc")
+PY
+)" || parity_out=""
+  if [ -z "$parity_out" ]; then
+    bad "permission parity check failed to run"
+  else
+    while IFS=$'\t' read -r status tool count detail; do
+      case "$status" in
+        OK)   ok   "$tool carries all canonical rules ($count)" ;;
+        MISS) bad  "$tool missing canonical rules ($count) e.g. $detail — run setup.sh" ;;
+        SKIP) note "$tool: $detail" ;;
+      esac
+    done <<< "$parity_out"
+  fi
 fi
 
 # --- claude SessionStart hook ----------------------------------------------

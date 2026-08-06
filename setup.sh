@@ -177,9 +177,9 @@ PYEOF
   fi
 fi
 
-# --- 5b claude global permission allowlist (source: claude-permissions.json) --
-echo "[5b/9] claude global permission allowlist"
-PERMS_SRC="$AGENTS_HOME/claude-permissions.json"
+# --- 5b claude global permission allowlist (source: permissions.json) --------
+echo "[5b/9] permission rules → claude"
+PERMS_SRC="$AGENTS_HOME/permissions.json"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 if [ ! -f "$PERMS_SRC" ]; then
   log "WARNING: $PERMS_SRC missing — copy ~/.agents fully; skipping permission merge"
@@ -215,6 +215,139 @@ PYEOF
   # Backup dedupe: drop the pre-copy if nothing changed
   if [ -f "$BACKUP_DIR/claude-settings-perms.json" ] && cmp -s "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-perms.json"; then
     rm -f "$BACKUP_DIR/claude-settings-perms.json"
+  fi
+fi
+
+# --- 5c grok permission rules (same canonical source, native rule syntax) ----
+echo "[5c/9] permission rules → grok"
+GROK_CFG="$HOME/.grok/config.toml"
+if [ ! -f "$PERMS_SRC" ]; then
+  log "WARNING: $PERMS_SRC missing — skipping grok permission merge"
+else
+  [ -f "$GROK_CFG" ] && cp -p "$GROK_CFG" "$BACKUP_DIR/grok-config-perms.toml"
+  PERMS_SRC="$PERMS_SRC" GROK_CFG="$GROK_CFG" python3 - <<'PYEOF'
+import json, os, pathlib, re, tomllib
+
+src = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
+p = pathlib.Path(os.environ["GROK_CFG"])
+text = p.read_text() if p.exists() else "# grok config — created by ~/.agents/setup.sh\n"
+
+# Grok speaks the same Bash(...) rule syntax as Claude, so rules go in verbatim.
+cur = tomllib.loads(text).get("permission", {})
+merged, added = {}, {}
+for bucket in ("allow", "deny"):
+    existing = [r for r in cur.get(bucket, []) if isinstance(r, str)]
+    seen = set(existing)
+    new = [r for r in src.get("permissions", {}).get(bucket, []) if r not in seen]
+    merged[bucket] = existing + new          # union: hand-added grok rules survive
+    if new:
+        added[bucket] = len(new)
+
+def render(bucket):
+    if not merged[bucket]:
+        return ""
+    body = "".join(f'  {json.dumps(r)},\n' for r in merged[bucket])
+    return f"{bucket} = [\n{body}]\n"
+
+section = "[permission]\n" + render("allow") + render("deny")
+
+lines = text.splitlines()
+start = next((i for i, l in enumerate(lines) if l.strip() == "[permission]"), None)
+if start is None:
+    text = text.rstrip() + "\n\n" + section
+else:
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].lstrip().startswith("[")), len(lines))
+    text = "\n".join(lines[:start] + section.rstrip("\n").splitlines() + lines[end:]) + "\n"
+
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(text)
+tomllib.loads(text)                          # fail loudly rather than ship a broken config
+if added:
+    print("  merged   " + ", ".join(f"{n} {b}" for b, n in added.items()) + " rule(s) → [permission]")
+else:
+    print("  ok       grok [permission] already in sync")
+PYEOF
+  if [ -f "$BACKUP_DIR/grok-config-perms.toml" ] && cmp -s "$GROK_CFG" "$BACKUP_DIR/grok-config-perms.toml"; then
+    rm -f "$BACKUP_DIR/grok-config-perms.toml"
+  fi
+fi
+
+# --- 5d opencode permission rules (Bash(X) → permission.bash "X") ------------
+echo "[5d/9] permission rules → opencode"
+OC_CFG="$HOME/.config/opencode/opencode.jsonc"
+if [ ! -f "$PERMS_SRC" ]; then
+  log "WARNING: $PERMS_SRC missing — skipping opencode permission merge"
+else
+  [ -f "$OC_CFG" ] && cp -p "$OC_CFG" "$BACKUP_DIR/opencode-perms.jsonc"
+  PERMS_SRC="$PERMS_SRC" OC_CFG="$OC_CFG" python3 - <<'PYEOF'
+import json, os, pathlib, re
+
+src = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
+p = pathlib.Path(os.environ["OC_CFG"])
+
+def strip_jsonc(s):
+    out, i, n = [], 0, len(s)
+    while i < n:
+        c = s[i]
+        if c == '"':                                   # copy string literals verbatim
+            j = i + 1
+            while j < n and (s[j] != '"' or s[j - 1] == "\\"):
+                j += 1
+            out.append(s[i:j + 1]); i = j + 1
+        elif s.startswith("//", i):
+            i = s.find("\n", i)
+            if i == -1:
+                break
+        elif s.startswith("/*", i):
+            i = s.find("*/", i)
+            i = n if i == -1 else i + 2
+        else:
+            out.append(c); i += 1
+    return "".join(out)
+
+raw = p.read_text() if p.exists() else '{\n  "$schema": "https://opencode.ai/config.json"\n}\n'
+stripped = strip_jsonc(raw)
+had_comments = stripped != raw        # "//" inside the $schema URL is not a comment
+cfg = json.loads(stripped)
+
+# Only Bash(...) rules translate; OpenCode's bash map keys are the command patterns themselves.
+def bash_patterns(bucket):
+    pats = []
+    for rule in src.get("permissions", {}).get(bucket, []):
+        m = re.fullmatch(r"Bash\((.*)\)", rule)
+        if m and m.group(1) not in ("", "*"):
+            pats.append(m.group(1))
+    return pats
+
+perm = cfg.setdefault("permission", {})
+bash = perm.get("bash")
+if isinstance(bash, str):
+    bash = {"*": bash}                                  # a bare "allow"/"ask" becomes the catch-all
+elif not isinstance(bash, dict):
+    bash = {}
+before = json.dumps(bash)
+
+# Order matters: OpenCode takes the LAST matching rule, so deny is written after allow.
+for pat in bash_patterns("allow"):
+    bash.setdefault(pat, "allow")
+for pat in bash_patterns("deny"):
+    bash.pop(pat, None)
+    bash[pat] = "deny"
+perm["bash"] = bash
+# No catch-all is invented: OpenCode's permissive defaults stay as they are, only these rules are pinned.
+
+if json.dumps(bash) != before:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if had_comments:
+        print("  note     comments in opencode.jsonc dropped by rewrite (pre-copy is in the backup dir)")
+    p.write_text(json.dumps(cfg, indent=2) + "\n")
+    print(f"  merged   permission.bash now pins {len(bash)} rule(s)")
+else:
+    print("  ok       opencode permission.bash already in sync")
+PYEOF
+  if [ -f "$BACKUP_DIR/opencode-perms.jsonc" ] && cmp -s "$OC_CFG" "$BACKUP_DIR/opencode-perms.jsonc"; then
+    rm -f "$BACKUP_DIR/opencode-perms.jsonc"
   fi
 fi
 

@@ -53,12 +53,20 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 
 ---
 
-## Permission allowlist (Claude Code) — canonical file
+## Permission allowlist (all three tools) — canonical file
 
-Global no-prompt allowlist lives in **`~/.agents/claude-permissions.json`**. `setup.sh` step `5b` merges it into `~/.claude/settings.json` (union, deduped, idempotent — existing rules are never dropped).
+Global no-prompt allowlist lives in **`~/.agents/permissions.json`**. `setup.sh` fans it out to every tool, union-style, deduped, idempotent — existing rules are never dropped:
 
-- Add or remove a rule → edit `~/.agents/claude-permissions.json`, then `bash ~/.agents/setup.sh`.
-- **Never hand-edit `permissions` in `~/.claude/settings.json`** — it would drift from canonical and survive only until someone re-reads the source.
+| Step | Tool | Lands in | Form |
+|------|------|----------|------|
+| `5b` | Claude Code | `~/.claude/settings.json` → `permissions.allow` / `.deny` | rules verbatim |
+| `5c` | Grok | `~/.grok/config.toml` → `[permission] allow` / `deny` | rules verbatim (Grok speaks the same `Bash(...)` syntax) |
+| `5d` | OpenCode | `~/.config/opencode/opencode.jsonc` → `permission.bash` | `Bash(X)` → `"X": "allow"` / `"deny"` |
+
+- Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
+- **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
+- OpenCode gets only the `Bash(...)` rules; `Skill(...)` and other tool rules are Claude/Grok-only. No catch-all is written for OpenCode, so its permissive defaults are never tightened by this file — the deny list still lands.
+- Grok runs `[ui] permission_mode = "always-approve"`, so allow rules are moot there today; **deny rules still apply** in that mode, which is why they are fanned out too.
 - Allowed = runs with no prompt in **every** project. Unmatched calls still prompt. `deny` entries are hard-blocked, not prompted.
 - Deliberately NOT allowlisted (still prompt): `rm`, `sudo`, `curl`/`wget`, `git push`, package installs, `chmod`/`chown`, `mv`, `dd`.
 - Per-project `.claude/settings.local.json` files accumulate one-off absolute-path rules from clicking Approve. That is disposable noise — do not promote it wholesale; lift only the generic patterns.
@@ -74,6 +82,22 @@ Some Bash calls prompt **regardless** of any allow rule, because Claude Code dec
 **So: never pipe multi-line Python (or any brace-heavy script) through a heredoc.** Write it to a file under the session scratchpad, then run the file — `python3 /tmp/.../probe.py`, `.venv/bin/python /tmp/.../probe.py`. That form matches the normal allowlist and never prompts. Keep it as a file for reruns instead of re-pasting a heredoc.
 
 Wrappers that ARE stripped before matching (safe to prefix a rule's command with): `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, bare `xargs` (no flags). `Bash(pytest *)` therefore covers `timeout 900 pytest -q`. Interpreter **paths** are not normalized: `Bash(python *)` does not cover `.venv/bin/python` — venv paths need their own rules (they are in the canonical file).
+
+---
+
+## Tri-tool parity — HARD RULE
+
+**Claude Code, Grok, and OpenCode must behave the same.** Same rules, same memory, same triggers, same allowlist. A feature that works in one tool and not the others is a bug, not a milestone.
+
+Whenever anything is added to or changed in this setup:
+
+1. **Land it in all three, in the same turn.** Canonical source stays single (`~/.agents/…`); `setup.sh` fans it out per tool. Never write a per-tool copy by hand.
+2. **If a tool has no native mechanism**, implement the closest equivalent (hook, config key, translated rule syntax) and record what differs — SETUP.md §4, one line. "Claude-only" is acceptable ONLY when the other two physically cannot do it, and only when written down.
+3. **`setup.sh` installs it for all three; `verify.sh` checks all three.** A feature with no verify check does not count as installed.
+4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy) fires identically everywhere.
+5. Same for memory: shared markdown only, identical for all three (see Memory policy). Tool-internal stores stay disabled everywhere.
+
+Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok/OpenCode, SessionStart hook in Claude; permissions → `permissions.json` fan-out (above).
 
 ---
 
@@ -155,6 +179,41 @@ When the user says **`checkpoint_project`** (done for the day — leave and resu
 6. Finish with: "Checkpoint saved — next step: <X>".
 
 Same for all three tools. Formalizes the existing "End of session / milestone" rule as an explicit trigger.
+
+---
+
+## `writepaper_project` trigger
+
+When the user says **`writepaper_project`** (optionally `writepaper_project <path>` or with a topic/venue hint), write a **complete, full-length research paper about that project** — LaTeX, publication-grade, not a summary and not a README in disguise.
+
+**Author block is fixed** (every paper, unless the user names co-authors):
+
+```latex
+\author{Brusk Kawa Abdalla\thanks{\href{mailto:math@brwsk.xyz}{math@brwsk.xyz}}}
+```
+
+### Procedure
+
+1. Resolve the project root (given path, else cwd walk-up stopping before `$HOME`). Read `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`, then the actual **code, tests, benchmarks, logs, and result files**. Never read `session_transcript.md` (Transcript privacy).
+2. Scaffold `docs/paper/` from `~/.agents/paper-template/` (`main.tex`, `refs.bib`, `build.sh`, `figures/`) if not already there; otherwise extend what exists — never silently overwrite a paper in progress.
+3. Write the paper. Then **build it**: `bash docs/paper/build.sh` (latexmk → `main.pdf`). Fix every LaTeX error and every undefined reference/citation; a paper that does not compile is not delivered. `texlive-full` is installed — no package is missing, never stub one out.
+4. Report: page count, section list, and an explicit **Gaps** list (what is `\TODO` and why).
+5. Same turn: append the milestone to `session_transcript.md`, log paper-level choices (scope, claims, framing) in `docs/DECISIONS.md`, rewrite `session_compact.md`.
+
+### Required structure (drop a section only if it truly does not apply, and say so)
+
+Abstract · keywords · **Introduction** (motivation, gap, explicit contribution list) · **Related work** · **Preliminaries & notation** (symbol table; every symbol defined before use) · **Problem statement** (formal, with assumptions stated as such) · **Method / construction** · **Theory**: definitions, lemmas, theorems, propositions, corollaries — numbered `amsthm` environments, each with a proof (full proofs may move to an appendix, sketch in-line) · **Complexity / cost analysis** (time, space, sample, or numerical-error bounds as fitting) · **Algorithms** in pseudocode · **Implementation** (architecture, key design decisions from `DECISIONS.md`) · **Experimental setup** (hardware, software versions, seeds, datasets, hyperparameters) · **Results**: tables + figures with real numbers, `n`, mean ± CI or std, appropriate hypothesis test with its statistic, p-value and **effect size**, ablations · **Discussion** · **Limitations & threats to validity** · **Conclusion & future work** · **References** (biblatex/biber) · **Appendices**: full proofs, extra derivations, and a **reproducibility appendix** (exact commands, commit hash, environment).
+
+Use the science the project actually needs and do not water it down: formal statements over prose claims, derivations shown, units and error bars everywhere, `booktabs` tables, `pgfplots`/TikZ figures (generate data files from real runs), `algorithm2e` pseudocode, `siunitx` for quantities.
+
+### HARD RULES for the content
+
+- **No invented numbers.** Every reported measurement traces to something in the repo — a run you executed, a logged metric, a test output. If a number is needed and does not exist, either produce it by running the code, or write `\TODO{measure: …}` and list it under Gaps. Never fill a results table with plausible-looking values.
+- **No invented citations.** Only real, checkable works; verify the identifier when unsure. No fabricated DOIs, arXiv IDs, or page numbers. Uncertain reference → `\TODO{cite: …}`.
+- **No overclaiming.** Theorems get proofs or they become conjectures. Empirical claims get the statistic that supports them. Scope conditions and failure cases go in Limitations, not omitted.
+- Keep the paper a **living artifact**: re-running `writepaper_project` updates and extends it (new results, new sections), it does not restart from scratch.
+
+`docs/paper/` **is committed** (it is product, not session state) — for `~/projects/sites/*` the Sites rule still applies to `AGENTS.md` only.
 
 ---
 

@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 0.2.118 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.223 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.14 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-06 23:32 by update-apps -->
+<!-- last refreshed: 2026-08-06 23:50 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -31,14 +31,16 @@ Sections, in order:
 1. Header — wiring map + migration one-liner
 2. Git/GitHub attribution — HARD RULE (no AI attribution in commits/PRs)
 3. Git commit signing — HARD RULE (never bypass signing; keyring auto-unlock; manual fallback)
-4. Permission allowlist — canonical `~/.agents/claude-permissions.json`, merged by `setup.sh` step 5b (§4 Claude Code); includes the "prompts an allowlist cannot remove" subsection
-5. Machine toolchains — `texlive-full` + `tectonic` installed; write LaTeX directly, never ask for installs
-6. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
-7. `create_project` trigger (§5)
-8. `continue_project <path>` trigger (§5b)
-9. `checkpoint_project` trigger (§5c)
-10. Global workflow (session start / during / end)
-11. Memory policy (§6)
+4. Permission allowlist — canonical `~/.agents/permissions.json`, fanned out to all three tools by `setup.sh` steps 5b/5c/5d (§4); includes the "prompts an allowlist cannot remove" subsection
+5. Tri-tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode, installed by `setup.sh`, checked by `verify.sh`
+6. Machine toolchains — `texlive-full` + `tectonic` installed; write LaTeX directly, never ask for installs
+7. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
+8. `create_project` trigger (§5)
+9. `continue_project <path>` trigger (§5b)
+10. `checkpoint_project` trigger (§5c)
+11. `writepaper_project` trigger (§5d)
+12. Global workflow (session start / during / end)
+13. Memory policy (§6)
 
 ## 3. Symlinks
 
@@ -70,6 +72,7 @@ enabled = false  # memory lives in shared markdown, not grok's store
 (`skills`/`mcps`/`hooks` compat intentionally left enabled.)
 
 - **Grok memory dir removed.** If `~/.grok/memory/` exists, `setup.sh` archives it under `~/.agents/backups/setup-<ts>/grok-memory/` then deletes it. Do not recreate.
+- **Permission rules** — `setup.sh` step `5c` writes `[permission] allow = [...] / deny = [...]` from `~/.agents/permissions.json`, union-merged with whatever is already there, and re-parses the TOML afterwards so a broken config can never ship. Grok uses the **same `Bash(...)` rule syntax as Claude**, so rules go in verbatim. `[ui] permission_mode = "always-approve"` is on, which auto-approves allow-side prompts anyway — **deny rules still apply in that mode**, which is why they are written too.
 
 ### Claude Code
 
@@ -86,13 +89,15 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 ```
 
 - Claude `#` memory shortcut is NOT used (creates project CLAUDE.md / feeds auto-memory — both forbidden).
-- **Global permission allowlist** — canonical source `~/.agents/claude-permissions.json`. `setup.sh` step `5b` merges its `permissions.allow` / `permissions.deny` into `~/.claude/settings.json` as a **union** (never drops rules added by hand or by clicking Approve), deduped and idempotent. Matched tool calls run without a prompt in every project; anything unmatched still prompts. Edit the canonical file, then re-run `setup.sh` — never hand-edit `permissions` in `~/.claude/settings.json`, the next merge would leave it orphaned from source. Adopted 2026-08-06 by promoting the per-project allowlist from `philosophy_human_communication_framework_vs_llm/.claude/settings.json`.
+- **Global permission allowlist** — canonical source `~/.agents/permissions.json` (renamed from `claude-permissions.json` on 2026-08-06 when it stopped being Claude-only). `setup.sh` step `5b` merges its `permissions.allow` / `permissions.deny` into `~/.claude/settings.json` as a **union** (never drops rules added by hand or by clicking Approve), deduped and idempotent. Matched tool calls run without a prompt in every project; anything unmatched still prompts. Edit the canonical file, then re-run `setup.sh` — never hand-edit `permissions` in `~/.claude/settings.json`, the next merge would leave it orphaned from source. Adopted 2026-08-06 by promoting the per-project allowlist from `philosophy_human_communication_framework_vs_llm/.claude/settings.json`. The same file also drives Grok (§Grok) and OpenCode (§OpenCode); `verify.sh` section `[permission parity]` fails if any of the three drifts.
 - **Prompts the allowlist can't remove** — obfuscation/parse verdicts (e.g. `Contains brace with quote character (expansion obfuscation)`, thrown by heredocs whose body mixes braces with quotes, i.e. Python f-strings), exec wrappers (`watch`, `setsid`, `flock`, `find -exec`), and env runners (`npx`, `docker exec`). Decided before rule matching. Workaround is behavioural, not config: write the script to a scratchpad file and run the file. Documented in `AGENTS.md` §Permission allowlist.
 - **TeX** — `texlive-full` (TeX Live 2025) is installed machine-wide, plus `tectonic` in `~/.local/bin`. All engines/build tools are allowlisted; `tlmgr install` is not, and is unnecessary under the full scheme.
 
 ### OpenCode
 
-Nothing. Reads `AGENTS.md` natively at global and project level. `opencode.jsonc` untouched.
+Reads `AGENTS.md` natively at global and project level — no rules wiring needed.
+
+- **Permission rules** — `setup.sh` step `5d` translates the `Bash(X)` rules from `~/.agents/permissions.json` into the `permission.bash` map in `~/.config/opencode/opencode.jsonc`: `Bash(python3 *)` → `"python3 *": "allow"`, deny rules → `"deny"`. Deny entries are written **last** because OpenCode takes the last matching rule. Non-`Bash` rules (`Skill(...)`) have no OpenCode equivalent and are skipped. **No catch-all `"*"` is invented** — OpenCode's defaults are permissive (`bash`/`edit` default to `allow`), and this merge only pins the canonical rules rather than tightening everything else. The file is rewritten as plain JSON; if it ever gains `//` comments they are dropped on merge and the pre-copy lands in the setup backup dir.
 
 ### GPG signing unlock (GNOME keyring)
 
@@ -242,6 +247,17 @@ Trigger: user says **`checkpoint_project`** (done for the day — leave and resu
 6. Finish with: "Checkpoint saved — next step: <X>".
 
 Same for all three tools. Formalizes the "End of session / milestone" rule as an explicit trigger.
+
+## 5d. `writepaper_project`
+
+Trigger: user says **`writepaper_project`** (optionally with a path or topic/venue hint). Writes a complete, publication-grade LaTeX research paper about the project. Full spec lives in canonical `AGENTS.md` — that file wins if they ever diverge.
+
+- **Scaffold source:** `~/.agents/paper-template/` → copied to `<project>/docs/paper/` on first run (`main.tex`, `refs.bib`, `build.sh`, `figures/`). Later runs extend the existing paper; they never restart it.
+- **Author block is fixed:** `Brusk Kawa Abdalla`, contact `math@brwsk.xyz`.
+- **Template contents:** `article` + `amsthm` theorem environments (theorem/lemma/proposition/corollary/conjecture/definition/assumption/example/remark), `mathtools`, `siunitx`, `booktabs`, `pgfplots`/TikZ, `algorithm2e`, `biblatex`+`biber`, `cleveref`, and a red `\TODO{}` macro so every gap is visible instead of guessed.
+- **Build:** `bash docs/paper/build.sh` → `latexmk -pdf -bibtex` → `main.pdf`, prints the page count and every open `\TODO`. `clean` argument runs `latexmk -C`. Verified to compile against the installed `texlive-full`.
+- **Content hard rules** (in `AGENTS.md`): no invented numbers, no invented citations, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps.
+- `docs/paper/` is **committed** (product, not session state).
 
 ## 6. Memory policy
 

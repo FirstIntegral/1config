@@ -1,8 +1,14 @@
 {
   "_comment": [
-    "CANONICAL global Claude Code permission allowlist. Edit here, never in ~/.claude/settings.json.",
-    "setup.sh step [5b] merges permissions.allow / permissions.deny into ~/.claude/settings.json,",
-    "union-style and deduped, preserving anything already there. Run `bash ~/.agents/setup.sh` after editing.",
+    "CANONICAL permission allowlist for ALL THREE tools (Claude Code, Grok, OpenCode).",
+    "Edit ONLY here, then run `bash ~/.agents/setup.sh`. Never hand-edit the per-tool copies.",
+    "setup.sh fans this file out, union-style and deduped, preserving anything already there:",
+    "  [5b] Claude   -> ~/.claude/settings.json            permissions.allow / permissions.deny  (verbatim rules)",
+    "  [5c] Grok     -> ~/.grok/config.toml [permission]   allow / deny                          (verbatim rules)",
+    "  [5d] OpenCode -> ~/.config/opencode/opencode.jsonc  permission.bash map                   (Bash(X) -> \"X\": allow|deny)",
+    "Rule syntax below is Claude/Grok native. OpenCode entries are derived: only Bash(...) rules translate;",
+    "non-Bash rules (Skill(...) etc.) are Claude/Grok-only. No catch-all is written for OpenCode, so its",
+    "permissive defaults are never tightened by this file — the deny list still lands.",
     "Scope: matched calls run WITHOUT a prompt in every project. Anything unmatched still prompts.",
     "Deliberately absent: rm, sudo, curl/wget, git push, package installs, chmod/chown, dd, mv.",
     "Matching notes: wrappers timeout/time/nice/nohup/stdbuf/command/builtin/bare-xargs are stripped before",
