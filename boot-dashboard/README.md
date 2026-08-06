@@ -20,10 +20,10 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **symlinks** | 3 AGENTS paths → `~/.agents/AGENTS.md` |
 | **link guard** | `agents-symlink-guard` healthy |
 | **memory guard** | Claude/Grok residue clean |
-| **ecosystem** | `verify.sh` PASS |
+| **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. Runs **before** ecosystem so inventory refresh finishes first. |
+| **ecosystem** | `verify.sh` PASS (after tool updates — avoids false inventory mismatch at boot) |
 | **tool versions** | grok / claude / opencode on PATH |
 | **signing** | GPG signing key unlocked from GNOME keyring (no prompts); warn → run `gpg-store-passphrase.sh` once |
-| **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. |
 
 ## Window size
 

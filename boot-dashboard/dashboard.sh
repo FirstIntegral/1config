@@ -183,8 +183,9 @@ check_verify() {
     row ok "ecosystem" "verify PASS"
     return 0
   fi
+  # Count real check failures only ("  FAIL  ..."), not the "== FAIL ==" summary line.
   local nfail
-  nfail="$(echo "$out" | grep -c 'FAIL' || true)"
+  nfail="$(echo "$out" | grep -cE '^  FAIL  ' || true)"
   row fail "ecosystem" "verify FAIL ($nfail) — bash ~/.agents/verify.sh"
   return 1
 }
@@ -301,10 +302,12 @@ main() {
   check_symlinks
   check_link_guard
   check_mem_guard
+  # Tool updater rewrites SETUP.md inventory — wait for it BEFORE verify so
+  # boot never false-fails on "inventory ≠ installed" while update-apps runs.
+  check_tool_updates
   check_verify
   check_versions
   check_gpg_sign
-  check_tool_updates
 
   line
   printf "\n"
