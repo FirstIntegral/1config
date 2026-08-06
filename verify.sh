@@ -39,10 +39,16 @@ done
 [ -f "$AGENTS_HOME/permissions.json" ] && ok "permissions.json (canonical, all 3 tools)" || bad "permissions.json missing"
 PAPER_TPL="$AGENTS_HOME/paper-template"
 if [ -d "$PAPER_TPL" ]; then
-  for f in main.tex refs.bib build.sh; do
+  for f in main.tex build.sh; do
     [ -e "$PAPER_TPL/$f" ] && ok "paper-template $f" || bad "paper-template missing $f"
   done
   [ -x "$PAPER_TPL/build.sh" ] || note "paper-template/build.sh not executable"
+  # No-references rule: the template must never grow a bibliography again.
+  if grep -qE '\\(printbibliography|addbibresource|cite\{)|biblatex' "$PAPER_TPL/main.tex" || [ -e "$PAPER_TPL/refs.bib" ]; then
+    bad "paper-template has bibliography machinery (papers must be reference-free)"
+  else
+    ok "paper-template reference-free"
+  fi
 else
   bad "paper-template/ missing (writepaper_project has no scaffold)"
 fi

@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 0.2.118 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.223 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.14 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-06 23:50 by update-apps -->
+<!-- last refreshed: 2026-08-06 23:55 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -252,11 +252,13 @@ Same for all three tools. Formalizes the "End of session / milestone" rule as an
 
 Trigger: user says **`writepaper_project`** (optionally with a path or topic/venue hint). Writes a complete, publication-grade LaTeX research paper about the project. Full spec lives in canonical `AGENTS.md` — that file wins if they ever diverge.
 
-- **Scaffold source:** `~/.agents/paper-template/` → copied to `<project>/docs/paper/` on first run (`main.tex`, `refs.bib`, `build.sh`, `figures/`). Later runs extend the existing paper; they never restart it.
+- **Scaffold source:** `~/.agents/paper-template/` → copied to `<project>/docs/paper/` on first run (`main.tex`, `build.sh`, `figures/`). Later runs extend the existing paper; they never restart it.
 - **Author block is fixed:** `Brusk Kawa Abdalla`, contact `math@brwsk.xyz`.
-- **Template contents:** `article` + `amsthm` theorem environments (theorem/lemma/proposition/corollary/conjecture/definition/assumption/example/remark), `mathtools`, `siunitx`, `booktabs`, `pgfplots`/TikZ, `algorithm2e`, `biblatex`+`biber`, `cleveref`, and a red `\TODO{}` macro so every gap is visible instead of guessed.
-- **Build:** `bash docs/paper/build.sh` → `latexmk -pdf -bibtex` → `main.pdf`, prints the page count and every open `\TODO`. `clean` argument runs `latexmk -C`. Verified to compile against the installed `texlive-full`.
-- **Content hard rules** (in `AGENTS.md`): no invented numbers, no invented citations, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps.
+- **Template contents:** `article` + `amsthm` theorem environments (theorem/lemma/proposition/corollary/conjecture/definition/assumption/example/remark), `mathtools`, `siunitx`, `booktabs`, `pgfplots`/TikZ, `algorithm2e`, `cleveref`, and a red `\TODO{}` macro so every gap is visible instead of guessed.
+- **No references, by design.** AI-written papers are self-contained: no bibliography, no `refs.bib`, no `\cite`, no reference list. Prior art is described in prose. `verify.sh` fails if bibliography machinery reappears in the template.
+- **Build:** `bash docs/paper/build.sh` → `latexmk -pdf` → `main.pdf`, prints the page count and every open `\TODO`. `clean` argument runs `latexmk -C`. Verified to compile against the installed `texlive-full`.
+- **Content hard rules** (in `AGENTS.md`): no invented numbers, no references, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps.
+- **The paper stays current.** Once `docs/paper/` exists, any scientifically relevant change (method, theorem, assumption, experimental setup, measured number, limitation) updates the paper and rebuilds it in the **same turn** — the trigger does not have to be re-typed. Refactors/tooling changes do not count unless a reported number or stated claim moves.
 - `docs/paper/` is **committed** (product, not session state).
 
 ## 6. Memory policy

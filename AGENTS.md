@@ -195,23 +195,31 @@ When the user says **`writepaper_project`** (optionally `writepaper_project <pat
 ### Procedure
 
 1. Resolve the project root (given path, else cwd walk-up stopping before `$HOME`). Read `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`, then the actual **code, tests, benchmarks, logs, and result files**. Never read `session_transcript.md` (Transcript privacy).
-2. Scaffold `docs/paper/` from `~/.agents/paper-template/` (`main.tex`, `refs.bib`, `build.sh`, `figures/`) if not already there; otherwise extend what exists — never silently overwrite a paper in progress.
+2. Scaffold `docs/paper/` from `~/.agents/paper-template/` (`main.tex`, `build.sh`, `figures/`) if not already there; otherwise extend what exists — never silently overwrite a paper in progress.
 3. Write the paper. Then **build it**: `bash docs/paper/build.sh` (latexmk → `main.pdf`). Fix every LaTeX error and every undefined reference/citation; a paper that does not compile is not delivered. `texlive-full` is installed — no package is missing, never stub one out.
 4. Report: page count, section list, and an explicit **Gaps** list (what is `\TODO` and why).
 5. Same turn: append the milestone to `session_transcript.md`, log paper-level choices (scope, claims, framing) in `docs/DECISIONS.md`, rewrite `session_compact.md`.
 
 ### Required structure (drop a section only if it truly does not apply, and say so)
 
-Abstract · keywords · **Introduction** (motivation, gap, explicit contribution list) · **Related work** · **Preliminaries & notation** (symbol table; every symbol defined before use) · **Problem statement** (formal, with assumptions stated as such) · **Method / construction** · **Theory**: definitions, lemmas, theorems, propositions, corollaries — numbered `amsthm` environments, each with a proof (full proofs may move to an appendix, sketch in-line) · **Complexity / cost analysis** (time, space, sample, or numerical-error bounds as fitting) · **Algorithms** in pseudocode · **Implementation** (architecture, key design decisions from `DECISIONS.md`) · **Experimental setup** (hardware, software versions, seeds, datasets, hyperparameters) · **Results**: tables + figures with real numbers, `n`, mean ± CI or std, appropriate hypothesis test with its statistic, p-value and **effect size**, ablations · **Discussion** · **Limitations & threats to validity** · **Conclusion & future work** · **References** (biblatex/biber) · **Appendices**: full proofs, extra derivations, and a **reproducibility appendix** (exact commands, commit hash, environment).
+Abstract · keywords · **Introduction** (motivation, gap, explicit contribution list) · **Background** (self-contained, no citations — see below) · **Preliminaries & notation** (symbol table; every symbol defined before use) · **Problem statement** (formal, with assumptions stated as such) · **Method / construction** · **Theory**: definitions, lemmas, theorems, propositions, corollaries — numbered `amsthm` environments, each with a proof (full proofs may move to an appendix, sketch in-line) · **Complexity / cost analysis** (time, space, sample, or numerical-error bounds as fitting) · **Algorithms** in pseudocode · **Implementation** (architecture, key design decisions from `DECISIONS.md`) · **Experimental setup** (hardware, software versions, seeds, datasets, hyperparameters) · **Results**: tables + figures with real numbers, `n`, mean ± CI or std, appropriate hypothesis test with its statistic, p-value and **effect size**, ablations · **Discussion** · **Limitations & threats to validity** · **Conclusion & future work** · **Appendices**: full proofs, extra derivations, and a **reproducibility appendix** (exact commands, commit hash, environment).
 
 Use the science the project actually needs and do not water it down: formal statements over prose claims, derivations shown, units and error bars everywhere, `booktabs` tables, `pgfplots`/TikZ figures (generate data files from real runs), `algorithm2e` pseudocode, `siunitx` for quantities.
 
 ### HARD RULES for the content
 
 - **No invented numbers.** Every reported measurement traces to something in the repo — a run you executed, a logged metric, a test output. If a number is needed and does not exist, either produce it by running the code, or write `\TODO{measure: …}` and list it under Gaps. Never fill a results table with plausible-looking values.
-- **No invented citations.** Only real, checkable works; verify the identifier when unsure. No fabricated DOIs, arXiv IDs, or page numbers. Uncertain reference → `\TODO{cite: …}`.
+- **NO REFERENCES AT ALL.** The paper is AI-written and self-contained: no bibliography, no `refs.bib`, no `\cite`, no numbered reference list, no "[1]"-style markers, no DOIs or arXiv IDs. If prior art must be mentioned, describe the idea in plain prose ("the standard fixed-point argument", "classical Runge–Kutta") without a citation key. A citation is never the reason to skip a derivation — derive it in the paper or state it as an assumption.
 - **No overclaiming.** Theorems get proofs or they become conjectures. Empirical claims get the statistic that supports them. Scope conditions and failure cases go in Limitations, not omitted.
 - Keep the paper a **living artifact**: re-running `writepaper_project` updates and extends it (new results, new sections), it does not restart from scratch.
+
+### Keeping the paper current — HARD RULE once `docs/paper/` exists
+
+After a project has a paper, **the paper is part of that project's definition of done.** Whenever anything scientifically relevant changes, update `docs/paper/` in the **same turn** as the change — no waiting for the user to re-say `writepaper_project`.
+
+Scientifically relevant = anything the paper asserts: the method or algorithm, a definition, a theorem/lemma/proof, complexity, assumptions or their scope, experimental setup (hardware, versions, seeds, hyperparameters, datasets), any measured number, an ablation, a limitation, or a decision logged in `docs/DECISIONS.md` that the paper describes. Refactors, renames, tooling, and CI changes are **not** relevant unless they change a reported number or a stated claim.
+
+Each such update: patch the affected sections (and the abstract/contributions if the claim moved), rebuild with `bash docs/paper/build.sh`, and say in one line what the paper now says differently. Numbers that went stale but have not been re-measured become `\TODO{measure: …}` — never left silently wrong. Mention the paper update in `session_transcript.md` at the next milestone.
 
 `docs/paper/` **is committed** (it is product, not session state) — for `~/projects/sites/*` the Sites rule still applies to `AGENTS.md` only.
 
@@ -254,6 +262,7 @@ When `create_project` lands under `~/projects/sites/`, merge the usual session i
 
 - **Meaningful choice made** (architecture, naming, security trade-off, rejected alternative) → append an ADR entry to `docs/DECISIONS.md` **in the same turn**. Include *why* and what was rejected.
 - **Durable fact** (commands, paths, conventions) → project `AGENTS.md`; global fact → this file.
+- **Project has `docs/paper/` and something scientifically relevant changed** (method, theorem, assumption, setup, measured number, limitation) → update the paper and rebuild it in the **same turn** (see `writepaper_project` → "Keeping the paper current").
 - **Milestone reached** → append to `session_transcript.md`.
 - **Before compaction or ending a long session** → rewrite `session_compact.md`.
 

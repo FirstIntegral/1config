@@ -26,9 +26,9 @@
 % --- algorithms ---------------------------------------------------------
 \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
 
-% --- bibliography -------------------------------------------------------
-\usepackage[backend=biber,style=numeric-comp,sorting=none,maxbibnames=99]{biblatex}
-\addbibresource{refs.bib}
+% --- no bibliography by design ------------------------------------------
+% The paper is AI-written and self-contained: no bibliography, no \cite, no
+% reference list. Prior art is described in prose, never cited.
 
 % --- links (load late) --------------------------------------------------
 \usepackage[colorlinks=true,allcolors=blue]{hyperref}
@@ -75,9 +75,9 @@
   \item \TODO{contribution 3 — empirical}
 \end{itemize}
 
-\section{Related work}
-\label{sec:related}
-\TODO{real, checkable references only — no invented citations}
+\section{Background}
+\label{sec:background}
+\TODO{self-contained context in prose — no citations, no reference list; derive or assume, never defer to a reference}
 
 \section{Preliminaries and notation}
 \label{sec:prelim}
@@ -181,8 +181,6 @@
 \section{Conclusion and future work}
 \label{sec:conclusion}
 \TODO{conclusion}
-
-\printbibliography
 
 \appendix
 

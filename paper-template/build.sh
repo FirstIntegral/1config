@@ -11,7 +11,8 @@ if [ "${1:-}" = "clean" ]; then
   exit 0
 fi
 
-latexmk -pdf -bibtex -interaction=nonstopmode -halt-on-error main.tex
+# No bibliography by design — no biber/bibtex pass.
+latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 
 pages="$(pdfinfo main.pdf 2>/dev/null | awk '/^Pages:/ {print $2}')"
 echo "built main.pdf (${pages:-?} pages)"
