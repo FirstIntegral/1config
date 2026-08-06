@@ -198,7 +198,19 @@ git -C <root> remote                      # does it have a remote?
 
 **HARD RULE: a checkpoint never creates a repo, never adds a remote, never creates a GitHub repo.** A project without a repo is a deliberate state — scratch work, a scaffold, something not meant to be published — and a checkpoint is a note-taking action that must not silently change it. Publishing something the user never chose to publish is not recoverable by deleting it afterwards. If a project looks like it wants a repo, say so and let them decide next session.
 
-Also check the **root**, not just "somewhere in a repo": `git rev-parse --show-toplevel` differing from the project root means the project sits inside someone else's repo (or a parent worktree). Do not commit in that case — say so and skip.
+Also check the **root**, not just "somewhere in a repo": `git rev-parse --show-toplevel` walks *up*, so it succeeds for any subdirectory. A toplevel differing from the project root means the project sits inside someone else's repo (or a parent worktree), and committing there would sweep unrelated work into the checkpoint. Do not commit in that case — say so and skip.
+
+**What "has a remote" means here.** The test is a configured remote, not GitHub specifically — a self-hosted or GitLab origin pushes exactly the same way, and nothing in this trigger is GitHub-aware. Two consequences worth stating:
+
+- **Read the URL before pushing, do not just count remotes.** `git remote get-url --push origin`. If `origin` does not exist but other remotes do, do **not** guess which one to push to — commit locally, name the remotes found, and let the user choose. If the branch already has an upstream, push there and ignore all of this.
+- **A configured remote is not a reachable one.** The URL can point at a repo that was deleted, renamed, or that this key cannot write to.
+
+**When the push fails, the checkpoint still succeeded.** Steps 1-5 are the checkpoint; the push is a backup. On any push failure: report the exact error, leave the commit in place, and finish with "committed <hash>, push failed: <reason>". Then stop. Specifically never, in response to a failed push:
+
+- `gh repo create`, or add/rewrite a remote — the repo not existing is an answer, not an obstacle
+- `--force` / `--force-with-lease` — a non-fast-forward means someone else pushed; that is merged deliberately next session, not overwritten at the end of a day
+- `git rebase`, `git reset`, amending, or any history rewrite to make the push go through
+- retrying with a different branch or remote than the one that failed
 
 Repo with a remote, the normal path:
 
