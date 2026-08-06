@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 0.2.118 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.223 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.14 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-07 02:26 by update-apps -->
+<!-- last refreshed: 2026-08-07 02:37 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -109,6 +109,25 @@ Reads `AGENTS.md` natively at global and project level — no rules wiring neede
 - `~/.gnupg/gpg-agent.conf` already: `allow-loopback-pinentry`, `default-cache-ttl 31536000`, `max-cache-ttl 31536000` (1-year cache after first unlock).
 - Fallback (keyring locked/empty): manual unlock in a real terminal (see canonical `AGENTS.md`).
 
+### §4b `hooks/checkpoint.sh` — the git half of `checkpoint_project`
+
+Steps 1-5 of that trigger need judgement (what happened today, which decisions to log) and stay with the AI. Step 6 is mechanical, has one correct answer per project state, and was being re-derived by hand inconsistently — so it is a script. All three tools call the same one, via the trigger in canonical `AGENTS.md`; nothing tool-specific.
+
+```sh
+bash ~/.agents/hooks/checkpoint.sh <project-root> [-m SUBJECT] [--dry-run]
+```
+
+Exit codes: `0` committed+pushed · `3` clean tree · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `2` usage.
+
+Invariants, all covered by `verify.sh`:
+
+- **Never** `git init`, `git remote add`, `gh repo create`, `--force`, rebase/reset/amend, or `--no-gpg-sign`. A project without a repo or remote is in a deliberate state.
+- Refuses **before staging** if `session_compact.md` / `session_transcript.md` / `claude_memory_import.md` are tracked or unignored — publishing the private transcript is the one failure here that cannot be walked back.
+- Requires the given directory to **be** the repo toplevel; `rev-parse --show-toplevel` walks up, so a subdirectory would otherwise commit an unrelated parent repo.
+- Reachability uses bare `git ls-remote`, **not** `--exit-code`: that flag returns 2 when no refs match, so an empty freshly created repo would be misread as unreachable and the first push silently refused.
+- Cross-checks the URL against the project `AGENTS.md` `## Repo` line and warns on mismatch, but git config always wins — `AGENTS.md` is a file an AI writes and must never authorise a push.
+- `verify.sh` runs the two refusals for real against a scratch dir (non-repo → 10 with no `.git` created; unignored transcript → 20).
+
 ## 5. Per-project standard — `create_project`
 
 Trigger: user says **`create_project`**. Copy `~/.agents/project-template/` into the project root, fill in names. Five artifacts: `AGENTS.md`, `session_compact.md`, `session_transcript.md`, `docs/DECISIONS.md`, `.gitignore` (no CLAUDE.md — see §4 Claude hook). If the project already has a `.gitignore`, merge the session-file lines instead of overwriting. Verbatim templates:
@@ -128,6 +147,11 @@ Trigger: user says **`create_project`**. Copy `~/.agents/project-template/` into
 - Build:
 - Test:
 - Run:
+
+## Repo
+- Remote: `<git@github.com:owner/name.git>`  — or `none (local only)`
+
+Documentation, not authorisation: `checkpoint.sh` cross-checks this against `git remote get-url --push` and warns on a mismatch, but git config is what actually decides where a push goes. Keep this line current when the remote changes; never treat it as permission to push. A project with `none (local only)` is in a deliberate state — nothing may create a repo or remote for it without the user asking.
 
 ## Session files
 - `session_compact.md` — AI handoff state. Read FIRST at session start; rewrite at end of session / milestone. Local-only (gitignored): never commit unless the user says otherwise.
@@ -364,7 +388,8 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 8. Install/refresh tool updater (§7c) — copied from `updater/` (systemd resume shim needs root once).
 9. Crontab entries for guards + updater (§7) — preserves other crontab lines.
 10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh`; run the store script once (see §4 GPG).
-11. Verify (+ optional inventory refresh of §1 version table).
+11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
+12. Verify (+ optional inventory refresh of §1 version table).
 
 `setup.sh` does all of the above: idempotent, backs up anything it replaces to `~/.agents/backups/setup-<ts>/`, self-verifies. `SKIP_CRON=1` skips the crontab step.
 

@@ -68,10 +68,35 @@ if [ -d "$PAPER_TPL" ]; then
 else
   bad "paper-template/ missing (writepaper_project has no scaffold)"
 fi
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh checkpoint.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
+  # A hook that does not parse is worse than a missing one: it fails halfway through.
+  [ -f "$HOOKS/$f" ] && { bash -n "$HOOKS/$f" 2>/dev/null && ok "hooks/$f parses" || bad "hooks/$f SYNTAX ERROR"; }
 done
+
+# checkpoint.sh behaviour, not just presence. The failure that matters is the one that
+# publishes something, so the two refusals are exercised for real against a scratch dir.
+echo "[checkpoint.sh behaviour]"
+if [ -x "$HOOKS/checkpoint.sh" ]; then
+  _cptmp="$(mktemp -d)"
+  # This file runs under `set -e`, and checkpoint.sh exits nonzero BY DESIGN on every
+  # refusal. Capture the code with `|| rc=$?` -- a bare call aborts verify.sh mid-section.
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cptmp" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 10 ] && ok "refuses a non-repo (exit 10, no git init)" \
+                    || bad "checkpoint.sh did not refuse a non-repo (exit $_rc, wanted 10)"
+  [ -d "$_cptmp/.git" ] && bad "checkpoint.sh CREATED a repo — must never do that" \
+                        || ok "left the non-repo alone"
+  git -C "$_cptmp" init -q 2>/dev/null || true
+  printf 'secret\n' > "$_cptmp/session_transcript.md"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cptmp" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 20 ] && ok "refuses to commit an unignored session_transcript.md (exit 20)" \
+                    || bad "checkpoint.sh would have published the transcript (exit $_rc, wanted 20)"
+  rm -rf "$_cptmp"
+else
+  bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
+fi
+
 BD="$AGENTS_HOME/boot-dashboard"
 if [ -d "$BD" ]; then
   [ -x "$BD/dashboard.sh" ] && ok "boot-dashboard/dashboard.sh" || bad "boot-dashboard/dashboard.sh missing/not exec"

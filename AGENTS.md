@@ -130,7 +130,7 @@ When the user says **`create_project`** (starting a new project), always set up 
 
 | File | Audience | Maintenance |
 |------|----------|-------------|
-| `AGENTS.md` | all AI tools | Project rules/conventions. Canonical and ONLY project rules file (Claude Code loads it via SessionStart hook — never create a project CLAUDE.md). Committed by default — **except** `~/projects/sites/*` (see Sites rule). |
+| `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code loads it via SessionStart hook — never create a project CLAUDE.md). Committed by default — **except** `~/projects/sites/*` (see Sites rule). |
 | `session_transcript.md` | **human ONLY** | Append-only narrative log of each work session, newest at bottom. Written for the user to read back. AI agents NEVER read it (Transcript privacy HARD RULE). |
 | `session_compact.md` | **AI handoff** | Concise state: current status, where we left off, next steps, key decisions, open issues. Always records the active **model + effort**. **Rewrite** (not append) at end of session / major milestone / before context compaction. |
 | `docs/DECISIONS.md` | all AI tools | ADR log: decision + why + rejected alternatives, appended in the same turn a choice is made. Versioned (committed in repos). |
@@ -142,7 +142,8 @@ Rules:
 2. **During work:** append to `session_transcript.md` at milestones (human-readable, chronological, verbose OK).
 3. **End of session / milestone / before compaction:** rewrite `session_compact.md` to reflect the latest state. It must always be accurate enough for a fresh AI session to resume work from it alone.
 4. Session files live in the project root. **Never commit them unless the user explicitly says otherwise** — `session_transcript.md` and `session_compact.md` are local-only; the template `.gitignore` enforces this. If copying files by hand (no template), add the same ignore lines.
-5. **Model tracking:** at `create_project`, record the active model + effort in `session_compact.md` (read the tool's config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask the user once). The **Models used** list in compact is CUMULATIVE: preserve it across rewrites, mark the current one, add a line whenever model or effort changes. Every switch also goes to `session_transcript.md` (old → new, reason if known) — the transcript is the lossless copy. If the user says they switched models, log it immediately.
+5. **`create_project` never creates a git repo or a remote.** Whether a project goes to GitHub is the user's call, made explicitly. Fill the `## Repo` line with `none (local only)` and leave it; update it the same turn a remote is actually added, so `checkpoint.sh`'s cross-check stays meaningful.
+6. **Model tracking:** at `create_project`, record the active model + effort in `session_compact.md` (read the tool's config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask the user once). The **Models used** list in compact is CUMULATIVE: preserve it across rewrites, mark the current one, add a line whenever model or effort changes. Every switch also goes to `session_transcript.md` (old → new, reason if known) — the transcript is the lossless copy. If the user says they switched models, log it immediately.
 
 ---
 
@@ -181,14 +182,30 @@ When the user says **`checkpoint_project`** (done for the day — leave and resu
 
 Same for all three tools. Formalizes the existing "End of session / milestone" rule as an explicit trigger.
 
-### Step 6 in detail
-
-**Gate first — check what the project actually is, before touching git at all:**
+### Step 6 in detail — run the script, do not hand-roll git
 
 ```sh
-git -C <root> rev-parse --show-toplevel   # is it a repo, and is <root> really its root?
-git -C <root> remote                      # does it have a remote?
+bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"
 ```
+
+**Do not open-code these git commands.** Step 6 is mechanical and has exactly one correct answer per project state; hand-running it produced inconsistent behaviour on consecutive checkpoints of the same project. The script is the behaviour; the prose below documents what it does, and `verify.sh` exercises its two refusals for real on every run.
+
+Read its exit code and report accordingly:
+
+| exit | meaning | what happened |
+|---|---|---|
+| `0` | committed and pushed | normal path |
+| `3` | clean tree | nothing to commit |
+| `10` | **not a git repo** | nothing done, no `git init` |
+| `11` | project is inside another repo, not its root | nothing done |
+| `12` | no remote | committed locally, not pushed |
+| `13` | remote configured but unreachable | committed, not pushed, **not created** |
+| `20` | **refused** — session files would be published | nothing done; fix `.gitignore` and re-run |
+| `21` | commit or push failed | any commit made is safe; not retried, not forced |
+
+`--dry-run` prints the plan and changes nothing. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
+
+**Gate the script applies, before touching git at all:**
 
 | project is | do |
 |---|---|
@@ -199,6 +216,10 @@ git -C <root> remote                      # does it have a remote?
 **HARD RULE: a checkpoint never creates a repo, never adds a remote, never creates a GitHub repo.** A project without a repo is a deliberate state — scratch work, a scaffold, something not meant to be published — and a checkpoint is a note-taking action that must not silently change it. Publishing something the user never chose to publish is not recoverable by deleting it afterwards. If a project looks like it wants a repo, say so and let them decide next session.
 
 Also check the **root**, not just "somewhere in a repo": `git rev-parse --show-toplevel` walks *up*, so it succeeds for any subdirectory. A toplevel differing from the project root means the project sits inside someone else's repo (or a parent worktree), and committing there would sweep unrelated work into the checkpoint. Do not commit in that case — say so and skip.
+
+**Which projects get a remote is a manual decision, and stays one.** Nothing in this setup creates repos; `create_project` does not, and neither does a checkpoint. A project has a remote because someone deliberately ran `gh repo create` or `git remote add`. That is the whole policy.
+
+**The project's `AGENTS.md` records the remote as documentation — never as authorisation.** The `## Repo` section in `project-template/AGENTS.md` carries the URL so it is visible without running git, and `checkpoint.sh` cross-checks it against `git remote get-url --push` and warns on a mismatch. But **git config always wins**, because git config is set by an explicit human action while `AGENTS.md` is a file an AI writes: a line hallucinated into it must never be able to authorise a push, and a stale line must never redirect one. Documentation drifts; the push target cannot be allowed to drift with it.
 
 **What "has a remote" means here.** The test is a configured remote, not GitHub specifically — a self-hosted or GitLab origin pushes exactly the same way, and nothing in this trigger is GitHub-aware. Two consequences worth stating:
 

@@ -453,6 +453,20 @@ for h in gpg-agent-unlock.sh gpg-store-passphrase.sh; do
   fi
 done
 
+# --- checkpoint script (direct-reference, called by the checkpoint_project trigger) --
+echo "[checkpoint] checkpoint.sh (git half of checkpoint_project)"
+CP_SRC="$AGENTS_HOME/hooks/checkpoint.sh"
+if [ -f "$CP_SRC" ]; then
+  chmod +x "$CP_SRC"
+  if bash -n "$CP_SRC" 2>/dev/null; then
+    log "ready   hooks/checkpoint.sh"
+  else
+    log "WARNING: hooks/checkpoint.sh has a syntax error"
+  fi
+else
+  log "WARNING: hooks/checkpoint.sh missing"
+fi
+
 # --- boot dashboard autostart -----------------------------------------------
 echo "[boot-dashboard] install GNOME autostart"
 BD="$AGENTS_HOME/boot-dashboard"
