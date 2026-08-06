@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 0.2.118 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.223 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.14 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-06 21:16 by update-apps -->
+<!-- last refreshed: 2026-08-06 22:17 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -31,12 +31,13 @@ Sections, in order:
 1. Header — wiring map + migration one-liner
 2. Git/GitHub attribution — HARD RULE (no AI attribution in commits/PRs)
 3. Git commit signing — HARD RULE (never bypass signing; keyring auto-unlock; manual fallback)
-4. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
-5. `create_project` trigger (§5)
-6. `continue_project <path>` trigger (§5b)
-7. `checkpoint_project` trigger (§5c)
-8. Global workflow (session start / during / end)
-9. Memory policy (§6)
+4. Permission allowlist — canonical `~/.agents/claude-permissions.json`, merged by `setup.sh` step 5b (§4 Claude Code)
+5. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
+6. `create_project` trigger (§5)
+7. `continue_project <path>` trigger (§5b)
+8. `checkpoint_project` trigger (§5c)
+9. Global workflow (session start / during / end)
+10. Memory policy (§6)
 
 ## 3. Symlinks
 
@@ -84,6 +85,7 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 ```
 
 - Claude `#` memory shortcut is NOT used (creates project CLAUDE.md / feeds auto-memory — both forbidden).
+- **Global permission allowlist** — canonical source `~/.agents/claude-permissions.json`. `setup.sh` step `5b` merges its `permissions.allow` / `permissions.deny` into `~/.claude/settings.json` as a **union** (never drops rules added by hand or by clicking Approve), deduped and idempotent. Matched tool calls run without a prompt in every project; anything unmatched still prompts. Edit the canonical file, then re-run `setup.sh` — never hand-edit `permissions` in `~/.claude/settings.json`, the next merge would leave it orphaned from source. Adopted 2026-08-06 by promoting the per-project allowlist from `philosophy_human_communication_framework_vs_llm/.claude/settings.json`.
 
 ### OpenCode
 

@@ -53,6 +53,18 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 
 ---
 
+## Permission allowlist (Claude Code) — canonical file
+
+Global no-prompt allowlist lives in **`~/.agents/claude-permissions.json`**. `setup.sh` step `5b` merges it into `~/.claude/settings.json` (union, deduped, idempotent — existing rules are never dropped).
+
+- Add or remove a rule → edit `~/.agents/claude-permissions.json`, then `bash ~/.agents/setup.sh`.
+- **Never hand-edit `permissions` in `~/.claude/settings.json`** — it would drift from canonical and survive only until someone re-reads the source.
+- Allowed = runs with no prompt in **every** project. Unmatched calls still prompt. `deny` entries are hard-blocked, not prompted.
+- Deliberately NOT allowlisted (still prompt): `rm`, `sudo`, `curl`/`wget`, `git push`, package installs, `chmod`/`chown`, `mv`, `dd`.
+- Per-project `.claude/settings.local.json` files accumulate one-off absolute-path rules from clicking Approve. That is disposable noise — do not promote it wholesale; lift only the generic patterns.
+
+---
+
 ## Caveman mode — ALWAYS ON (global default)
 
 **Every response.** Every project. No opt-in per session.

@@ -177,6 +177,47 @@ PYEOF
   fi
 fi
 
+# --- 5b claude global permission allowlist (source: claude-permissions.json) --
+echo "[5b/9] claude global permission allowlist"
+PERMS_SRC="$AGENTS_HOME/claude-permissions.json"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+if [ ! -f "$PERMS_SRC" ]; then
+  log "WARNING: $PERMS_SRC missing — copy ~/.agents fully; skipping permission merge"
+else
+  [ -f "$CLAUDE_SETTINGS" ] && cp -p "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-perms.json"
+  PERMS_SRC="$PERMS_SRC" CLAUDE_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PYEOF'
+import json, os, pathlib
+
+src = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
+p = pathlib.Path(os.environ["CLAUDE_SETTINGS"])
+cfg = json.loads(p.read_text()) if p.exists() else {}
+
+perms = cfg.setdefault("permissions", {})
+added = {}
+for bucket in ("allow", "deny"):
+    wanted = src.get("permissions", {}).get(bucket, [])
+    if not wanted:
+        continue
+    current = perms.setdefault(bucket, [])
+    seen = set(current)
+    new = [rule for rule in wanted if rule not in seen]
+    current.extend(new)          # union: never drop rules added by hand or by /permissions
+    if new:
+        added[bucket] = len(new)
+
+if added:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cfg, indent=2) + "\n")
+    print("  merged   " + ", ".join(f"{n} {b}" for b, n in added.items()) + " rule(s)")
+else:
+    print("  ok       permission allowlist already in sync")
+PYEOF
+  # Backup dedupe: drop the pre-copy if nothing changed
+  if [ -f "$BACKUP_DIR/claude-settings-perms.json" ] && cmp -s "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-perms.json"; then
+    rm -f "$BACKUP_DIR/claude-settings-perms.json"
+  fi
+fi
+
 # --- 6 symlink guard (source: hooks/check-links.sh) -------------------------
 echo "[6/9] symlink guard script (refresh from hooks/)"
 LINK_GUARD_SRC="$AGENTS_HOME/hooks/check-links.sh"
