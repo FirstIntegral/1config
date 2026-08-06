@@ -63,6 +63,27 @@ Global no-prompt allowlist lives in **`~/.agents/claude-permissions.json`**. `se
 - Deliberately NOT allowlisted (still prompt): `rm`, `sudo`, `curl`/`wget`, `git push`, package installs, `chmod`/`chown`, `mv`, `dd`.
 - Per-project `.claude/settings.local.json` files accumulate one-off absolute-path rules from clicking Approve. That is disposable noise — do not promote it wholesale; lift only the generic patterns.
 
+### Prompts an allowlist cannot remove — write a script file instead
+
+Some Bash calls prompt **regardless** of any allow rule, because Claude Code decides them before consulting the allowlist:
+
+- **Obfuscation / parse verdicts** — e.g. `Contains brace with quote character (expansion obfuscation)`. Fired by heredocs whose body mixes `{...}` with quotes (Python f-strings are the usual cause: `print(f"n={n}")`). Also: commands over 10,000 chars, anything the parser can't fully parse.
+- **Exec wrappers** — `watch`, `setsid`, `ionice`, `flock`, `find -exec`, `find -delete`. Only an exact-match rule for the whole command string helps.
+- **Env runners** — `npx`, `docker exec`, `mise exec`, `devbox run`, `direnv exec` are not stripped; the rule must name runner **and** inner command.
+
+**So: never pipe multi-line Python (or any brace-heavy script) through a heredoc.** Write it to a file under the session scratchpad, then run the file — `python3 /tmp/.../probe.py`, `.venv/bin/python /tmp/.../probe.py`. That form matches the normal allowlist and never prompts. Keep it as a file for reruns instead of re-pasting a heredoc.
+
+Wrappers that ARE stripped before matching (safe to prefix a rule's command with): `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, bare `xargs` (no flags). `Bash(pytest *)` therefore covers `timeout 900 pytest -q`. Interpreter **paths** are not normalized: `Bash(python *)` does not cover `.venv/bin/python` — venv paths need their own rules (they are in the canonical file).
+
+---
+
+## Machine toolchains (this machine)
+
+- **TeX: `texlive-full` installed** (Debian pkg `texlive-full` 2025.x, TeX Live 2025). Full scheme — every CTAN package, every engine, all fonts. Write scientific papers, posters, TikZ/PGFPlots, beamer, bibliographies directly; **never** ask the user to install a LaTeX package, and never fall back to a Markdown-only deliverable for lack of TeX.
+  - Engines: `pdflatex`, `xelatex`, `lualatex`, `tex` · build: `latexmk` (preferred, handles reruns) · bib: `biber`, `bibtex` · index: `makeindex` · also `texcount`, `latexdiff`.
+  - `tectonic` also installed (`~/.local/bin`) — self-contained one-shot builds; use when a project's build script already calls it.
+  - All of the above are allowlisted (no prompt). Package installs (`tlmgr install`) are not — and with `texlive-full` should never be needed.
+
 ---
 
 ## Caveman mode — ALWAYS ON (global default)
