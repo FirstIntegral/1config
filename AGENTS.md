@@ -183,7 +183,24 @@ Same for all three tools. Formalizes the existing "End of session / milestone" r
 
 ### Step 6 in detail
 
-Project root is a git repo with a remote → commit and push, no asking:
+**Gate first — check what the project actually is, before touching git at all:**
+
+```sh
+git -C <root> rev-parse --show-toplevel   # is it a repo, and is <root> really its root?
+git -C <root> remote                      # does it have a remote?
+```
+
+| project is | do |
+|---|---|
+| **not a git repo** | **nothing.** No commit, no push, no `git init`. Say "not a git repo — nothing pushed" and finish the checkpoint normally. |
+| a repo with **no remote** | commit locally, **do not push**, do not add a remote. Say "committed locally, no remote". |
+| a repo with a remote | commit and push, no asking |
+
+**HARD RULE: a checkpoint never creates a repo, never adds a remote, never creates a GitHub repo.** A project without a repo is a deliberate state — scratch work, a scaffold, something not meant to be published — and a checkpoint is a note-taking action that must not silently change it. Publishing something the user never chose to publish is not recoverable by deleting it afterwards. If a project looks like it wants a repo, say so and let them decide next session.
+
+Also check the **root**, not just "somewhere in a repo": `git rev-parse --show-toplevel` differing from the project root means the project sits inside someone else's repo (or a parent worktree). Do not commit in that case — say so and skip.
+
+Repo with a remote, the normal path:
 
 ```sh
 git add -A                      # session files are gitignored, so they stay local
@@ -195,10 +212,9 @@ git push                        # -u origin <branch> if the branch has no upstre
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
 - **`git push` is not allowlisted and will prompt.** That is deliberate and stays that way: the prompt is the last look before work leaves the machine. Answer it; do not route around it.
 - **Nothing to commit** → skip, say "nothing to commit" in the closing line.
-- **No git repo, or a repo with no remote** → skip, say so in one line. Never `git init` a project, add a remote, or create a GitHub repo just to satisfy a checkpoint.
-- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Under `~/projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
+- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
 
-Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement.
+Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.
 
 ---
 
