@@ -11,6 +11,9 @@
     "permissive defaults are never tightened by this file — the deny list still lands.",
     "Scope: matched calls run WITHOUT a prompt in every project. Anything unmatched still prompts.",
     "Deliberately absent: rm, sudo, curl/wget, git push, package installs, chmod/chown, dd, mv.",
+    "Exception: `bash ~/.agents/sync.sh` is allowlisted. It is the ONLY no-prompt path to a push, and it",
+    "can only ever push ~/.agents (the brain repo) after setup.sh + verify.sh pass. Generic `git push`",
+    "still prompts in every repo, including that one.",
     "Matching notes: wrappers timeout/time/nice/nohup/stdbuf/command/builtin/bare-xargs are stripped before",
     "matching, so 'Bash(pytest *)' already covers 'timeout 900 pytest -q'. Interpreter PATHS are not",
     "normalized, hence the explicit .venv/venv entries below. Heredocs whose body mixes braces with quotes",
@@ -83,6 +86,8 @@
       "Bash(bash docs/paper/build.sh *)",
       "Bash(bash ~/.agents/setup.sh)",
       "Bash(bash ~/.agents/verify.sh)",
+      "Bash(bash ~/.agents/sync.sh)",
+      "Bash(bash ~/.agents/sync.sh *)",
       "Skill(update-config)"
     ],
     "deny": [

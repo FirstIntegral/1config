@@ -19,11 +19,11 @@ Hooks, guards, SETUP, template, and this file are one system. Changing one file 
 **Same turn after any change under `~/.agents/`:**
 
 ```bash
-bash ~/.agents/setup.sh      # re-copy hooks → cron-jobs, fix symlinks/config, refresh inventory
-bash ~/.agents/verify.sh     # optional extra; setup already runs verify at the end
+bash ~/.agents/setup.sh                 # re-copy hooks → cron-jobs, fix symlinks/config, refresh inventory
+bash ~/.agents/sync.sh -m "<subject>"   # setup + verify + signed commit + push to github:FirstIntegral/1config
 ```
 
-Do not end a turn that edited `~/.agents/**` without running `setup.sh`. `verify.sh` alone is check-only (does not install).
+Do not end a turn that edited `~/.agents/**` without running **both**. `verify.sh` alone is check-only (does not install); `sync.sh` re-runs `setup.sh` itself and refuses to commit if verify fails. The brain is a git repo — a local-only edit is an unfinished edit (see `global_brain_update`).
 
 **Boot dashboard:** `~/.agents/boot-dashboard/` — on GNOME login opens a status terminal (autostart). Not project code; machine health only.
 
@@ -222,6 +222,21 @@ Scientifically relevant = anything the paper asserts: the method or algorithm, a
 Each such update: patch the affected sections (and the abstract/contributions if the claim moved), rebuild with `bash docs/paper/build.sh`, and say in one line what the paper now says differently. Numbers that went stale but have not been re-measured become `\TODO{measure: …}` — never left silently wrong. Mention the paper update in `session_transcript.md` at the next milestone.
 
 `docs/paper/` **is committed** (it is product, not session state) — for `~/projects/sites/*` the Sites rule still applies to `AGENTS.md` only.
+
+---
+
+## `global_brain_update` trigger
+
+When the user says **`global_brain_update <what to change>`**, the target is **the brain itself** — `~/.agents/` — not the current project. The trailing text is the change to make.
+
+1. **Read before writing.** `AGENTS.md` (canonical rules) and `SETUP.md` (spec), plus whatever the request touches: `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`. Never patch the brain blind — half of it installs the other half.
+2. **Put the change in its canonical home**, never in a tool-local path: rules & triggers → `AGENTS.md` · spec / how it installs → `SETUP.md` · install logic → `setup.sh` · checks → `verify.sh` · permissions → `permissions.json` · scripts → `hooks/` (or `updater/`) · scaffolds → `project-template/` / `paper-template/`.
+3. **Tri-tool parity applies** (see that HARD RULE): land it for Claude Code + Grok + OpenCode, install it in `setup.sh`, check it in `verify.sh`. A brain change with no verify check is not done.
+4. `bash ~/.agents/setup.sh` → must end `== PASS ==` with `warnings=0`. Fix anything it reports before moving on.
+5. `bash ~/.agents/sync.sh -m "<commit subject>"` → re-runs setup+verify, signed commit, push to `github:FirstIntegral/1config` (`main`).
+6. **Report:** what changed, which files, verify result, pushed commit hash.
+
+**Standing rule — the brain repo is the source of truth.** ANY change under `~/.agents/**`, whether or not the trigger was typed, ends the same turn with `setup.sh` **and** `sync.sh`. Never leave the brain dirty locally, never push a brain that fails verify, never bypass signing, no AI attribution in the commit (see the Git rules above). `backups/` is gitignored runtime residue and stays out of the repo.
 
 ---
 

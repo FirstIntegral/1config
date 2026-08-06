@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 0.2.118 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.223 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.14 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-06 23:55 by update-apps -->
+<!-- last refreshed: 2026-08-07 00:02 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -39,8 +39,9 @@ Sections, in order:
 9. `continue_project <path>` trigger (§5b)
 10. `checkpoint_project` trigger (§5c)
 11. `writepaper_project` trigger (§5d)
-12. Global workflow (session start / during / end)
-13. Memory policy (§6)
+12. `global_brain_update` trigger (§5e) — changes to `~/.agents` itself, ending in `setup.sh` + `sync.sh`
+13. Global workflow (session start / during / end)
+14. Memory policy (§6)
 
 ## 3. Symlinks
 
@@ -260,6 +261,31 @@ Trigger: user says **`writepaper_project`** (optionally with a path or topic/ven
 - **Content hard rules** (in `AGENTS.md`): no invented numbers, no references, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps.
 - **The paper stays current.** Once `docs/paper/` exists, any scientifically relevant change (method, theorem, assumption, experimental setup, measured number, limitation) updates the paper and rebuilds it in the **same turn** — the trigger does not have to be re-typed. Refactors/tooling changes do not count unless a reported number or stated claim moves.
 - `docs/paper/` is **committed** (product, not session state).
+
+## 5e. `global_brain_update`
+
+Trigger: user says **`global_brain_update <what to change>`**. Target is `~/.agents` itself, not the current project. Full spec in canonical `AGENTS.md` — that file wins if they ever diverge.
+
+1. Read the brain first (`AGENTS.md`, `SETUP.md`, plus whatever the request touches — `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`).
+2. Change the **canonical** home of the thing, never a tool-local copy.
+3. Tri-tool parity: all three tools, installed by `setup.sh`, checked by `verify.sh`.
+4. `bash ~/.agents/setup.sh` → must end `== PASS ==`, `warnings=0`.
+5. `bash ~/.agents/sync.sh -m "<subject>"` → signed commit + push.
+6. Report changed files, verify result, pushed commit.
+
+### The brain is a git repo
+
+`~/.agents` is versioned and pushed to **`git@github.com:FirstIntegral/1config.git`** (branch `main`, signed commits, no AI attribution, `backups/` gitignored). **Any** change under `~/.agents/**` — trigger typed or not — ends the same turn with `setup.sh` + `sync.sh`. Local-only edits are unfinished edits.
+
+`sync.sh` is the single scripted path:
+
+```bash
+bash ~/.agents/sync.sh -m "Commit subject"    # setup+verify → signed commit → push
+bash ~/.agents/sync.sh --no-setup -m "msg"    # skip setup.sh (already ran this turn)
+bash ~/.agents/sync.sh --dry-run              # show what would be committed, change nothing
+```
+
+It refuses to commit when `setup.sh`/`verify.sh` fail, unlocks the GPG agent through the keyring hook, and **never** bypasses signing (a locked key is an error to fix). It is allowlisted for all three tools precisely because it can only ever push this one repo — generic `git push` still prompts everywhere, including here. `verify.sh` reports the brain's remote and warns when the working tree is dirty.
 
 ## 6. Memory policy
 

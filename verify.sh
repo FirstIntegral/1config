@@ -23,6 +23,7 @@ warns=0
 ok()   { echo "  OK    $*"; }
 bad()  { echo "  FAIL  $*"; fail=1; }
 note() { echo "  WARN  $*"; warns=$((warns + 1)); }
+info() { echo "  INFO  $*"; }               # transient state, not a defect — never counts as a warning
 
 echo "== ~/.agents verify — $(date) =="
 
@@ -32,6 +33,21 @@ echo "[core]"
 [ -f "$SETUP" ]  && ok "SETUP.md" || bad "missing SETUP.md"
 [ -x "$AGENTS_HOME/setup.sh" ] && ok "setup.sh executable" || bad "setup.sh missing or not executable"
 [ -x "$AGENTS_HOME/verify.sh" ] && ok "verify.sh executable" || bad "verify.sh missing or not executable"
+[ -x "$AGENTS_HOME/sync.sh" ] && ok "sync.sh executable (brain → github)" || bad "sync.sh missing or not executable"
+if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+  brain_remote="$(git -C "$AGENTS_HOME" remote get-url origin 2>/dev/null || true)"
+  [ -n "$brain_remote" ] && ok "brain repo origin → $brain_remote" || bad "brain repo has no origin remote"
+  # Dirty/ahead is normal mid-edit (verify runs before the commit), so it is INFO, not a warning.
+  brain_dirty="$(git -C "$AGENTS_HOME" status --porcelain)"
+  brain_ahead="$(git -C "$AGENTS_HOME" log origin/main..main --oneline 2>/dev/null || true)"
+  if [ -z "$brain_dirty" ] && [ -z "$brain_ahead" ]; then
+    ok "brain repo clean + pushed"
+  else
+    info "brain repo not yet pushed ($(printf '%s' "$brain_dirty" | grep -c . || true) dirty, $(printf '%s' "$brain_ahead" | grep -c . || true) unpushed) — finish with: bash ~/.agents/sync.sh -m \"…\""
+  fi
+else
+  bad "$AGENTS_HOME is not a git repo (brain must be versioned + pushed)"
+fi
 [ -d "$TEMPLATE" ] && ok "project-template/" || bad "project-template/ missing"
 for f in AGENTS.md session_compact.md session_transcript.md docs/DECISIONS.md .gitignore; do
   [ -e "$TEMPLATE/$f" ] && ok "template $f" || bad "template missing $f"
@@ -198,7 +214,7 @@ else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project 'Tri-tool parity'; do
+  for needle in checkpoint_project writepaper_project global_brain_update 'Tri-tool parity'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
