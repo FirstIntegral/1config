@@ -176,9 +176,29 @@ When the user says **`checkpoint_project`** (done for the day — leave and resu
 3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, and the cumulative **Models used** list (current marked).
 4. Append a `## <YYYY-MM-DD> — wrap-up` entry to `session_transcript.md` (write-only): what was done today + the next step.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
-6. Finish with: "Checkpoint saved — next step: <X>".
+6. **Commit and push** (see below). Half-finished work is expected and fine — the point is that the machine is not the only copy.
+7. Finish with: "Checkpoint saved — next step: <X>", plus the pushed commit hash (or one line saying why nothing was pushed).
 
 Same for all three tools. Formalizes the existing "End of session / milestone" rule as an explicit trigger.
+
+### Step 6 in detail
+
+Project root is a git repo with a remote → commit and push, no asking:
+
+```sh
+git add -A                      # session files are gitignored, so they stay local
+git commit -m "checkpoint: <YYYY-MM-DD> <what moved today>"
+git push                        # -u origin <branch> if the branch has no upstream
+```
+
+- **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → `bash ~/.agents/hooks/gpg-agent-unlock.sh`, retry. Never bypass.
+- **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
+- **`git push` is not allowlisted and will prompt.** That is deliberate and stays that way: the prompt is the last look before work leaves the machine. Answer it; do not route around it.
+- **Nothing to commit** → skip, say "nothing to commit" in the closing line.
+- **No git repo, or a repo with no remote** → skip, say so in one line. Never `git init` a project, add a remote, or create a GitHub repo just to satisfy a checkpoint.
+- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Under `~/projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
+
+Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement.
 
 ---
 
