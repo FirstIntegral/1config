@@ -205,10 +205,20 @@ for bucket in ("allow", "deny"):
     if new:
         added[bucket] = len(new)
 
-if added:
+# defaults.edit_without_prompt -> permissions.defaultMode (Claude's nearest equivalent to
+# grok's always-approve). acceptEdits skips file-write prompts only; Bash still obeys the
+# allow list above, so this cannot approve a command no rule matches.
+mode = "acceptEdits" if src.get("defaults", {}).get("edit_without_prompt") else "default"
+mode_changed = perms.get("defaultMode") != mode
+perms["defaultMode"] = mode
+
+if added or mode_changed:
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(cfg, indent=2) + "\n")
-    print("  merged   " + ", ".join(f"{n} {b}" for b, n in added.items()) + " rule(s)")
+    msg = ", ".join(f"{n} {b}" for b, n in added.items()) + " rule(s)" if added else ""
+    if mode_changed:
+        msg = (msg + ", " if msg else "") + f'defaultMode="{mode}"'
+    print("  merged   " + msg)
 else:
     print("  ok       permission allowlist already in sync")
 PYEOF
@@ -260,12 +270,41 @@ else:
                 if lines[i].lstrip().startswith("[")), len(lines))
     text = "\n".join(lines[:start] + section.rstrip("\n").splitlines() + lines[end:]) + "\n"
 
+# defaults.edit_without_prompt -> [ui] permission_mode = "always-approve". Grok has no
+# edit-only mode; always-approve is the nearest and is BROADER (it approves every prompt,
+# not just edits) — recorded as a per-tool difference in SETUP.md §4. Deny rules still apply.
+want_mode = bool(src.get("defaults", {}).get("edit_without_prompt"))
+MODE_LINE = 'permission_mode = "always-approve"'
+before_ui = text
+lines = text.splitlines()
+ui = next((i for i, l in enumerate(lines) if l.strip() == "[ui]"), None)
+if ui is None:
+    if want_mode:
+        lines += ["", "[ui]", MODE_LINE]
+else:
+    end = next((i for i in range(ui + 1, len(lines))
+                if lines[i].lstrip().startswith("[")), len(lines))
+    idx = next((i for i in range(ui + 1, end)
+                if re.match(r"\s*permission_mode\s*=", lines[i])), None)
+    if want_mode:
+        if idx is None:
+            lines.insert(ui + 1, MODE_LINE)
+        else:
+            lines[idx] = MODE_LINE
+    elif idx is not None:
+        del lines[idx]                       # off -> fall back to grok's own default, don't guess a value
+text = "\n".join(lines) + "\n"
+mode_changed = text != before_ui
+
 p.parent.mkdir(parents=True, exist_ok=True)
 p.write_text(text)
 tomllib.loads(text)                          # fail loudly rather than ship a broken config
-if added:
-    print("  merged   " + ", ".join(f"{n} {b}" for b, n in added.items()) + " rule(s) → [permission]")
-else:
+bits = [f"{n} {b}" for b, n in added.items()]
+if bits:
+    print("  merged   " + ", ".join(bits) + " rule(s) → [permission]")
+if mode_changed:
+    print(f'  merged   [ui] permission_mode {"set" if want_mode else "removed"}')
+elif not bits:
     print("  ok       grok [permission] already in sync")
 PYEOF
   if [ -f "$BACKUP_DIR/grok-config-perms.toml" ] && cmp -s "$GROK_CFG" "$BACKUP_DIR/grok-config-perms.toml"; then
@@ -337,12 +376,18 @@ for pat in bash_patterns("deny"):
 perm["bash"] = bash
 # No catch-all is invented: OpenCode's permissive defaults stay as they are, only these rules are pinned.
 
-if json.dumps(bash) != before:
+# defaults.edit_without_prompt -> permission.edit. Written explicitly even though OpenCode
+# already defaults to "allow", so the setting is visible and verify.sh can check all three.
+edit_before = perm.get("edit")
+perm["edit"] = "allow" if src.get("defaults", {}).get("edit_without_prompt") else "ask"
+edit_changed = perm["edit"] != edit_before
+
+if json.dumps(bash) != before or edit_changed:
     p.parent.mkdir(parents=True, exist_ok=True)
     if had_comments:
         print("  note     comments in opencode.jsonc dropped by rewrite (pre-copy is in the backup dir)")
     p.write_text(json.dumps(cfg, indent=2) + "\n")
-    print(f"  merged   permission.bash now pins {len(bash)} rule(s)")
+    print(f'  merged   permission.bash now pins {len(bash)} rule(s), edit="{perm["edit"]}"')
 else:
     print("  ok       opencode permission.bash already in sync")
 PYEOF

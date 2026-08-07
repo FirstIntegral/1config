@@ -289,7 +289,8 @@ else
   parity_out="$(PERMS_SRC="$PERMS_SRC" python3 - <<'PY'
 import json, os, pathlib, re, tomllib
 
-src = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text()).get("permissions", {})
+canon = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
+src = canon.get("permissions", {})
 home = pathlib.Path.home()
 want = {b: src.get(b, []) for b in ("allow", "deny")}
 
@@ -332,6 +333,35 @@ if p.is_file():
     report("opencode", miss, len(pats("allow")) + len(pats("deny")))
 else:
     print("SKIP\topencode\t-\tno opencode.jsonc")
+
+# defaults.edit_without_prompt — one canonical switch, three native spellings (see permissions.json)
+on = bool(canon.get("defaults", {}).get("edit_without_prompt"))
+
+def mode(tool, path, got, expect):
+    if not path.is_file():
+        print(f"SKIP\t{tool}\t-\tno {path.name}")
+    elif got == expect:
+        print(f"MODEOK\t{tool}\t{got or 'unset'}\t")
+    else:
+        print(f"MODEMISS\t{tool}\t{got or 'unset'}\t{expect or 'unset'}")
+
+p = home / ".claude/settings.json"
+mode("claude", p,
+     json.loads(p.read_text()).get("permissions", {}).get("defaultMode") if p.is_file() else None,
+     "acceptEdits" if on else "default")
+
+p = home / ".grok/config.toml"
+mode("grok", p,
+     tomllib.loads(p.read_text()).get("ui", {}).get("permission_mode") if p.is_file() else None,
+     "always-approve" if on else None)
+
+p = home / ".config/opencode/opencode.jsonc"
+if p.is_file():
+    text = re.sub(r"^\s*//.*$", "", p.read_text(), flags=re.M)
+    got = json.loads(text).get("permission", {}).get("edit")
+else:
+    got = None
+mode("opencode", p, got, "allow" if on else "ask")
 PY
 )" || parity_out=""
   if [ -z "$parity_out" ]; then
@@ -339,9 +369,11 @@ PY
   else
     while IFS=$'\t' read -r status tool count detail; do
       case "$status" in
-        OK)   ok   "$tool carries all canonical rules ($count)" ;;
-        MISS) bad  "$tool missing canonical rules ($count) e.g. $detail — run setup.sh" ;;
-        SKIP) note "$tool: $detail" ;;
+        OK)       ok   "$tool carries all canonical rules ($count)" ;;
+        MISS)     bad  "$tool missing canonical rules ($count) e.g. $detail — run setup.sh" ;;
+        MODEOK)   ok   "$tool edit-without-prompt mode = $count" ;;
+        MODEMISS) bad  "$tool edit-without-prompt mode = $count, canonical wants $detail — run setup.sh" ;;
+        SKIP)     note "$tool: $detail" ;;
       esac
     done <<< "$parity_out"
   fi

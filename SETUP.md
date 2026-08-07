@@ -11,10 +11,10 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 <!-- TOOL_INVENTORY_START -->
 | Tool | Version | Binary | Config |
 |------|---------|--------|--------|
-| Grok Build | 0.2.118 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
-| Claude Code | 2.1.223 | `~/.local/bin/claude` | `~/.claude/settings.json` |
-| OpenCode | 1.18.14 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-07 02:37 by update-apps -->
+| Grok Build | 1.0.0 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
+| Claude Code | 2.1.224 | `~/.local/bin/claude` | `~/.claude/settings.json` |
+| OpenCode | 1.18.15 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
+<!-- last refreshed: 2026-08-07 18:12 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -74,6 +74,7 @@ enabled = false  # memory lives in shared markdown, not grok's store
 
 - **Grok memory dir removed.** If `~/.grok/memory/` exists, `setup.sh` archives it under `~/.agents/backups/setup-<ts>/grok-memory/` then deletes it. Do not recreate.
 - **Permission rules** — `setup.sh` step `5c` writes `[permission] allow = [...] / deny = [...]` from `~/.agents/permissions.json`, union-merged with whatever is already there, and re-parses the TOML afterwards so a broken config can never ship. Grok uses the **same `Bash(...)` rule syntax as Claude**, so rules go in verbatim. `[ui] permission_mode = "always-approve"` is on, which auto-approves allow-side prompts anyway — **deny rules still apply in that mode**, which is why they are written too.
+- **`permission_mode` is now brain-managed** (added 2026-08-07) — step `5c` writes/updates the `[ui] permission_mode` line from `defaults.edit_without_prompt`. **Per-tool difference, recorded per the parity rule:** Grok has no edit-only autonomy mode, so `always-approve` is the nearest equivalent and is *broader* than Claude's `acceptEdits` / OpenCode's `permission.edit` — it approves every prompt, not just file writes. With the flag `false` the key is **deleted** rather than set to a guessed off-value (grok's enum for that field is not documented in the binary), so grok falls back to its own default.
 
 ### Claude Code
 
@@ -91,6 +92,8 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 
 - Claude `#` memory shortcut is NOT used (creates project CLAUDE.md / feeds auto-memory — both forbidden).
 - **Global permission allowlist** — canonical source `~/.agents/permissions.json` (renamed from `claude-permissions.json` on 2026-08-06 when it stopped being Claude-only). `setup.sh` step `5b` merges its `permissions.allow` / `permissions.deny` into `~/.claude/settings.json` as a **union** (never drops rules added by hand or by clicking Approve), deduped and idempotent. Matched tool calls run without a prompt in every project; anything unmatched still prompts. Edit the canonical file, then re-run `setup.sh` — never hand-edit `permissions` in `~/.claude/settings.json`, the next merge would leave it orphaned from source. Adopted 2026-08-06 by promoting the per-project allowlist from `philosophy_human_communication_framework_vs_llm/.claude/settings.json`. The same file also drives Grok (§Grok) and OpenCode (§OpenCode); `verify.sh` section `[permission parity]` fails if any of the three drifts.
+- **`permissions.defaultMode = "acceptEdits"`** (added 2026-08-07) — written by step `5b` from `defaults.edit_without_prompt` in the canonical file; this is Claude's nearest equivalent to grok's always-approve. It removes the *"Do you want to create X?"* write prompts only; **Bash still goes through the allow list**, so no command runs that no rule matches. `false` → step `5b` writes `"default"` instead.
+- **Compound-command matching** — Claude approves a pipeline / `;` / `&&` chain only when **every** segment matches a rule, and the prompt text names only some of the offenders. A hardware probe (`lscpu | grep …; free -g | head -2; uname -srm; lsb_release -d`) therefore prompted despite `grep`/`head` being allowed. Fixed 2026-08-07 by allowlisting the read-only sysinfo set (`uname`, `lscpu`, `lsb_release`, `free`, `df`, `nproc`, `lsblk`, `lspci`, `vmstat`, `getconf`, `hostnamectl`, `uptime`, `id`, `whoami`, `pwd`, `date`, `ps`, `pgrep`, `file`, `readlink`, `tree`, `sha256sum`, `md5sum`, `crontab -l`), the read-only git verbs (`rev-parse`, `remote get-url`, `ls-files`, `config --get`, `describe`, `blame`), and `sed`/`awk` — in **both** bare and `<cmd> *` forms, since a bare `lscpu` does not match `Bash(lscpu *)`.
 - **Prompts the allowlist can't remove** — obfuscation/parse verdicts (e.g. `Contains brace with quote character (expansion obfuscation)`, thrown by heredocs whose body mixes braces with quotes, i.e. Python f-strings), exec wrappers (`watch`, `setsid`, `flock`, `find -exec`), and env runners (`npx`, `docker exec`). Decided before rule matching. Workaround is behavioural, not config: write the script to a scratchpad file and run the file. Documented in `AGENTS.md` §Permission allowlist.
 - **TeX** — `texlive-full` (TeX Live 2025) is installed machine-wide, plus `tectonic` in `~/.local/bin`. All engines/build tools are allowlisted; `tlmgr install` is not, and is unnecessary under the full scheme.
 
@@ -98,7 +101,7 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 
 Reads `AGENTS.md` natively at global and project level — no rules wiring needed.
 
-- **Permission rules** — `setup.sh` step `5d` translates the `Bash(X)` rules from `~/.agents/permissions.json` into the `permission.bash` map in `~/.config/opencode/opencode.jsonc`: `Bash(python3 *)` → `"python3 *": "allow"`, deny rules → `"deny"`. Deny entries are written **last** because OpenCode takes the last matching rule. Non-`Bash` rules (`Skill(...)`) have no OpenCode equivalent and are skipped. **No catch-all `"*"` is invented** — OpenCode's defaults are permissive (`bash`/`edit` default to `allow`), and this merge only pins the canonical rules rather than tightening everything else. The file is rewritten as plain JSON; if it ever gains `//` comments they are dropped on merge and the pre-copy lands in the setup backup dir.
+- **Permission rules** — `setup.sh` step `5d` translates the `Bash(X)` rules from `~/.agents/permissions.json` into the `permission.bash` map in `~/.config/opencode/opencode.jsonc`: `Bash(python3 *)` → `"python3 *": "allow"`, deny rules → `"deny"`. Deny entries are written **last** because OpenCode takes the last matching rule. Non-`Bash` rules (`Skill(...)`) have no OpenCode equivalent and are skipped. **No catch-all `"*"` is invented** — OpenCode's defaults are permissive (`bash`/`edit` default to `allow`), and this merge only pins the canonical rules rather than tightening everything else. Step `5d` also writes `permission.edit` from `defaults.edit_without_prompt` (`allow` / `ask`) — same value OpenCode would default to, written explicitly so the switch is visible in the file and `verify.sh` can compare all three tools. The file is rewritten as plain JSON; if it ever gains `//` comments they are dropped on merge and the pre-copy lands in the setup backup dir.
 
 ### GPG signing unlock (GNOME keyring)
 

@@ -68,8 +68,24 @@ Global no-prompt allowlist lives in **`~/.agents/permissions.json`**. `setup.sh`
 - OpenCode gets only the `Bash(...)` rules; `Skill(...)` and other tool rules are Claude/Grok-only. No catch-all is written for OpenCode, so its permissive defaults are never tightened by this file — the deny list still lands.
 - Grok runs `[ui] permission_mode = "always-approve"`, so allow rules are moot there today; **deny rules still apply** in that mode, which is why they are fanned out too.
 - Allowed = runs with no prompt in **every** project. Unmatched calls still prompt. `deny` entries are hard-blocked, not prompted.
-- Deliberately NOT allowlisted (still prompt): `rm`, `sudo`, `curl`/`wget`, `git push`, package installs, `chmod`/`chown`, `mv`, `dd`.
+- Deliberately NOT allowlisted (still prompt): `rm`, `sudo`, `curl`/`wget`, `git push`, package installs, `chmod`/`chown`, `mv`, `dd`. Also absent on purpose: `xargs -I`, `sh -c`, `bash -c`, `npx` — they run an arbitrary inner command, so allowing them would launder every rule above.
 - Per-project `.claude/settings.local.json` files accumulate one-off absolute-path rules from clicking Approve. That is disposable noise — do not promote it wholesale; lift only the generic patterns.
+
+### `defaults.edit_without_prompt` — file writes never prompt (all three tools)
+
+Same canonical file, second block: `defaults.edit_without_prompt` (currently **true**). One switch, three native spellings, fanned out by the same `setup.sh` steps and checked by `verify.sh`:
+
+| Tool | Setting written | Scope |
+|------|-----------------|-------|
+| Claude Code | `permissions.defaultMode = "acceptEdits"` | file writes/edits only — Bash still obeys the allow list |
+| Grok | `[ui] permission_mode = "always-approve"` | Grok's only knob, and **broader**: approves every prompt, not just edits |
+| OpenCode | `permission.edit = "allow"` | file writes/edits (already OpenCode's default; pinned so it is visible and checkable) |
+
+Flip it to `false` + `setup.sh` to be asked again (Claude → `"default"`, OpenCode → `"ask"`, Grok's key removed). `deny` rules bite in every mode, including Grok's always-approve.
+
+### Compound commands: every segment must match
+
+A pipeline or `;`/`&&`/`||` chain is approved only if **each** segment matches a rule. One unlisted `lscpu` in a ten-part probe prompts for the whole line, and the prompt names only part of what it wants. So when a probe prompts, the fix is to find the *one* unlisted segment — or split the probe into separate calls — not to re-run the same chain.
 
 ### Prompts an allowlist cannot remove — write a script file instead
 
