@@ -28,14 +28,20 @@
   "defaults": {
     "_comment": [
       "Tool-agnostic autonomy defaults. setup.sh translates each key per tool, verify.sh checks all three.",
-      "edit_without_prompt: writing/creating files needs no prompt (Bash still obeys the allow list below).",
-      "  claude   -> permissions.defaultMode = \"acceptEdits\" in ~/.claude/settings.json",
-      "  grok     -> [ui] permission_mode = \"always-approve\" — Grok's ONLY knob, and it is broader:",
-      "              it auto-approves every prompt, not just edits. deny rules still bite in that mode.",
+      "edit_without_prompt: writing/creating files needs no prompt.",
+      "  claude   -> used only when bash_without_prompt is false: defaultMode = \"acceptEdits\"",
+      "  grok     -> [ui] permission_mode = \"always-approve\" (Grok's only knob; broader than edits)",
       "  opencode -> permission.edit = \"allow\"",
-      "Set false + re-run setup.sh to be asked again (claude -> \"default\", opencode -> \"ask\", grok key dropped)."
+      "bash_without_prompt: NO bash permission prompts. Required for Claude — allowlist alone cannot",
+      "kill hard-coded safety prompts (cd+write path-bypass, cd+git untrusted-hooks, parse verdicts).",
+      "  claude   -> permissions.defaultMode = \"bypassPermissions\" (takes precedence over acceptEdits)",
+      "  grok     -> same always-approve (already covers bash when edit_without_prompt is true)",
+      "  opencode -> permission.bash catch-all \"*\" = \"allow\" (deny rules still written last)",
+      "With bash_without_prompt true, Claude deny list is best-effort only — bypass skips checks.",
+      "Set either false + re-run setup.sh to tighten (claude falls back to acceptEdits or default)."
     ],
-    "edit_without_prompt": true
+    "edit_without_prompt": true,
+    "bash_without_prompt": true
   },
   "permissions": {
     "allow": [

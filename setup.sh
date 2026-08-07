@@ -205,10 +205,17 @@ for bucket in ("allow", "deny"):
     if new:
         added[bucket] = len(new)
 
-# defaults.edit_without_prompt -> permissions.defaultMode (Claude's nearest equivalent to
-# grok's always-approve). acceptEdits skips file-write prompts only; Bash still obeys the
-# allow list above, so this cannot approve a command no rule matches.
-mode = "acceptEdits" if src.get("defaults", {}).get("edit_without_prompt") else "default"
+# defaults.bash_without_prompt / edit_without_prompt -> permissions.defaultMode.
+# bypassPermissions is the ONLY Claude mode that kills hard-coded safety prompts
+# (cd+write path-bypass, cd+git untrusted-hooks, some parse verdicts). acceptEdits
+# only skips file-write prompts; Bash still goes through the allow list.
+defaults = src.get("defaults", {})
+if defaults.get("bash_without_prompt"):
+    mode = "bypassPermissions"
+elif defaults.get("edit_without_prompt"):
+    mode = "acceptEdits"
+else:
+    mode = "default"
 mode_changed = perms.get("defaultMode") != mode
 perms["defaultMode"] = mode
 
@@ -270,10 +277,11 @@ else:
                 if lines[i].lstrip().startswith("[")), len(lines))
     text = "\n".join(lines[:start] + section.rstrip("\n").splitlines() + lines[end:]) + "\n"
 
-# defaults.edit_without_prompt -> [ui] permission_mode = "always-approve". Grok has no
-# edit-only mode; always-approve is the nearest and is BROADER (it approves every prompt,
-# not just edits) — recorded as a per-tool difference in SETUP.md §4. Deny rules still apply.
-want_mode = bool(src.get("defaults", {}).get("edit_without_prompt"))
+# defaults.edit_without_prompt OR bash_without_prompt -> [ui] permission_mode = "always-approve".
+# Grok has no edit-only mode; always-approve is the only knob and is BROADER (approves every
+# prompt, not just edits). Deny rules still apply. See SETUP.md §4.
+_d = src.get("defaults", {})
+want_mode = bool(_d.get("edit_without_prompt") or _d.get("bash_without_prompt"))
 MODE_LINE = 'permission_mode = "always-approve"'
 before_ui = text
 lines = text.splitlines()
@@ -368,18 +376,21 @@ elif not isinstance(bash, dict):
 before = json.dumps(bash)
 
 # Order matters: OpenCode takes the LAST matching rule, so deny is written after allow.
+# When bash_without_prompt: pin catch-all "*" = allow first so unmatched bash never asks.
+defaults = src.get("defaults", {})
+if defaults.get("bash_without_prompt"):
+    bash.setdefault("*", "allow")
 for pat in bash_patterns("allow"):
     bash.setdefault(pat, "allow")
 for pat in bash_patterns("deny"):
     bash.pop(pat, None)
     bash[pat] = "deny"
 perm["bash"] = bash
-# No catch-all is invented: OpenCode's permissive defaults stay as they are, only these rules are pinned.
 
 # defaults.edit_without_prompt -> permission.edit. Written explicitly even though OpenCode
 # already defaults to "allow", so the setting is visible and verify.sh can check all three.
 edit_before = perm.get("edit")
-perm["edit"] = "allow" if src.get("defaults", {}).get("edit_without_prompt") else "ask"
+perm["edit"] = "allow" if defaults.get("edit_without_prompt") else "ask"
 edit_changed = perm["edit"] != edit_before
 
 if json.dumps(bash) != before or edit_changed:

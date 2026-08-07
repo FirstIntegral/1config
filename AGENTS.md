@@ -67,37 +67,31 @@ Global no-prompt allowlist lives in **`~/.agents/permissions.json`**. `setup.sh`
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
 - OpenCode gets only the `Bash(...)` rules; `Skill(...)` and other tool rules are Claude/Grok-only. No catch-all is written for OpenCode, so its permissive defaults are never tightened by this file — the deny list still lands.
 - Grok runs `[ui] permission_mode = "always-approve"`, so allow rules are moot there today; **deny rules still apply** in that mode, which is why they are fanned out too.
-- Allowed = runs with no prompt in **every** project. Unmatched calls still prompt. `deny` entries are hard-blocked, not prompted.
-- Deliberately NOT allowlisted (still prompt): `rm`, `sudo`, `curl`/`wget`, `git push`, package installs, `chmod`/`chown`, `mv`, `dd`. Also absent on purpose: `xargs -I`, `sh -c`, `bash -c`, `npx` — they run an arbitrary inner command, so allowing them would launder every rule above.
-- Per-project `.claude/settings.local.json` files accumulate one-off absolute-path rules from clicking Approve. That is disposable noise — do not promote it wholesale; lift only the generic patterns.
+- Allowed = runs with no prompt in **every** project. Unmatched calls still prompt **unless** `bash_without_prompt` is on (Claude then uses `bypassPermissions`). `deny` entries are hard-blocked when the mode still consults the list.
+- Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project `.claude/settings.local.json` one-offs from clicking Approve are disposable noise — do not promote wholesale.
 
-### `defaults.edit_without_prompt` — file writes never prompt (all three tools)
+### `defaults.edit_without_prompt` + `defaults.bash_without_prompt`
 
-Same canonical file, second block: `defaults.edit_without_prompt` (currently **true**). One switch, three native spellings, fanned out by the same `setup.sh` steps and checked by `verify.sh`:
+Same canonical file, `defaults` block. Both currently **true**. Fanned out by `setup.sh` steps 5b/5c/5d; checked by `verify.sh`.
 
-| Tool | Setting written | Scope |
-|------|-----------------|-------|
-| Claude Code | `permissions.defaultMode = "acceptEdits"` | file writes/edits only — Bash still obeys the allow list |
-| Grok | `[ui] permission_mode = "always-approve"` | Grok's only knob, and **broader**: approves every prompt, not just edits |
-| OpenCode | `permission.edit = "allow"` | file writes/edits (already OpenCode's default; pinned so it is visible and checkable) |
+| Flag | Claude Code | Grok | OpenCode |
+|------|-------------|------|----------|
+| `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if bash flag false) | `[ui] permission_mode = "always-approve"` | `permission.edit = "allow"` |
+| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | same always-approve | `permission.bash["*"] = "allow"` (deny last) |
 
-Flip it to `false` + `setup.sh` to be asked again (Claude → `"default"`, OpenCode → `"ask"`, Grok's key removed). `deny` rules bite in every mode, including Grok's always-approve.
+**Why `bypassPermissions` for Claude bash:** the allowlist cannot remove hard-coded safety prompts — e.g. *"Compound command contains cd with write operation"*, *"This command changes directory before running git, which can execute untrusted hooks"*, obfuscation/parse verdicts. Only `bypassPermissions` (or `--dangerously-skip-permissions`) kills those. Grok/OpenCode never had that class.
 
-### Compound commands: every segment must match
+With `bash_without_prompt` true, Claude's deny list is **best-effort only** (bypass skips permission checks). Flip either flag `false` + `setup.sh` to tighten (Claude → `acceptEdits` or `default`, OpenCode edit → `"ask"`, Grok key removed if both off).
 
-A pipeline or `;`/`&&`/`||` chain is approved only if **each** segment matches a rule. One unlisted `lscpu` in a ten-part probe prompts for the whole line, and the prompt names only part of what it wants. So when a probe prompts, the fix is to find the *one* unlisted segment — or split the probe into separate calls — not to re-run the same chain.
+### Compound commands (when bash_without_prompt is false)
 
-### Prompts an allowlist cannot remove — write a script file instead
+A pipeline or `;`/`&&`/`||` chain is approved only if **each** segment matches a rule. One unlisted segment prompts the whole line. Fix: allowlist the missing segment, or split the probe.
 
-Some Bash calls prompt **regardless** of any allow rule, because Claude Code decides them before consulting the allowlist:
+### Prompts an allowlist cannot remove (Claude)
 
-- **Obfuscation / parse verdicts** — e.g. `Contains brace with quote character (expansion obfuscation)`. Fired by heredocs whose body mixes `{...}` with quotes (Python f-strings are the usual cause: `print(f"n={n}")`). Also: commands over 10,000 chars, anything the parser can't fully parse. **The quoted-heredoc part of this class is now auto-rewritten on Claude Code** by the PreToolUse hook `~/.agents/hooks/heredoc-rewrite.sh` (wired by `setup.sh` step 5e): `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs with a quoted delimiter are rewritten to scratchpad files (`~/.cache/agents-heredoc/`) and auto-allowed — no prompt. Unquoted heredocs (`<<EOF`) and heredocs under `bash`/`sh`/`sudo`/other interpreters are untouched and still prompt.
-- **Exec wrappers** — `watch`, `setsid`, `ionice`, `flock`, `find -exec`, `find -delete`. Only an exact-match rule for the whole command string helps.
-- **Env runners** — `npx`, `docker exec`, `mise exec`, `devbox run`, `direnv exec` are not stripped; the rule must name runner **and** inner command.
+Even with a full allowlist, Claude still prompts for: obfuscation/parse verdicts (heredoc f-strings — mitigated by PreToolUse `heredoc-rewrite` hook), exec wrappers (`watch`, `setsid`, `find -exec`), env runners (`npx`, `docker exec`), and hard-coded compound safety (cd+write, cd+git). **`bash_without_prompt → bypassPermissions` is the fix for those.** Prefer script files over heredocs regardless — reusable, no parse-verdict class.
 
-**So: prefer script files over heredocs regardless** — write multi-line Python (or any brace-heavy script) to a file under the session scratchpad, then run the file — `python3 /tmp/.../probe.py`, `.venv/bin/python /tmp/.../probe.py`. That form matches the normal allowlist, never prompts, and is reusable for reruns. The hook above is the safety net for when a heredoc still slips through; it is not a licence to keep writing them.
-
-Wrappers that ARE stripped before matching (safe to prefix a rule's command with): `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, bare `xargs` (no flags). `Bash(pytest *)` therefore covers `timeout 900 pytest -q`. Interpreter **paths** are not normalized: `Bash(python *)` does not cover `.venv/bin/python` — venv paths need their own rules (they are in the canonical file).
+Wrappers stripped before matching: `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, bare `xargs`. Interpreter **paths** are not normalized — venv paths need their own rules (in the canonical file).
 
 ---
 

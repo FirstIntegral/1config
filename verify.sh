@@ -334,8 +334,10 @@ if p.is_file():
 else:
     print("SKIP\topencode\t-\tno opencode.jsonc")
 
-# defaults.edit_without_prompt — one canonical switch, three native spellings (see permissions.json)
-on = bool(canon.get("defaults", {}).get("edit_without_prompt"))
+# defaults.edit_without_prompt / bash_without_prompt — canonical switches, native spellings
+defaults = canon.get("defaults", {})
+edit_on = bool(defaults.get("edit_without_prompt"))
+bash_on = bool(defaults.get("bash_without_prompt"))
 
 def mode(tool, path, got, expect):
     if not path.is_file():
@@ -345,23 +347,41 @@ def mode(tool, path, got, expect):
     else:
         print(f"MODEMISS\t{tool}\t{got or 'unset'}\t{expect or 'unset'}")
 
+# Claude: bash_without_prompt wins → bypassPermissions; else edit → acceptEdits; else default
+if bash_on:
+    claude_expect = "bypassPermissions"
+elif edit_on:
+    claude_expect = "acceptEdits"
+else:
+    claude_expect = "default"
 p = home / ".claude/settings.json"
 mode("claude", p,
      json.loads(p.read_text()).get("permissions", {}).get("defaultMode") if p.is_file() else None,
-     "acceptEdits" if on else "default")
+     claude_expect)
 
 p = home / ".grok/config.toml"
 mode("grok", p,
      tomllib.loads(p.read_text()).get("ui", {}).get("permission_mode") if p.is_file() else None,
-     "always-approve" if on else None)
+     "always-approve" if (edit_on or bash_on) else None)
 
 p = home / ".config/opencode/opencode.jsonc"
 if p.is_file():
     text = re.sub(r"^\s*//.*$", "", p.read_text(), flags=re.M)
-    got = json.loads(text).get("permission", {}).get("edit")
+    oc = json.loads(text).get("permission", {})
+    got_edit = oc.get("edit")
+    got_bash = oc.get("bash") if isinstance(oc.get("bash"), dict) else {}
 else:
-    got = None
-mode("opencode", p, got, "allow" if on else "ask")
+    got_edit = None
+    got_bash = {}
+mode("opencode", p, got_edit, "allow" if edit_on else "ask")
+# OpenCode bash catch-all when bash_without_prompt
+if bash_on:
+    if not p.is_file():
+        print(f"SKIP\topencode-bash\t-\tno opencode.jsonc")
+    elif got_bash.get("*") == "allow":
+        print(f"MODEOK\topencode-bash\t*=allow\t")
+    else:
+        print(f"MODEMISS\topencode-bash\t{got_bash.get('*') or 'unset'}\tallow")
 PY
 )" || parity_out=""
   if [ -z "$parity_out" ]; then
