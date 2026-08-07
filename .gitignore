@@ -1,2 +1,6 @@
 # Runtime archives — never commit (setup replace-backups, residue packets, strays)
 backups/
+
+# Python bytecode (verify.sh py_compile smoke test regenerates it)
+__pycache__/
+*.pyc
