@@ -68,7 +68,7 @@ if [ -d "$PAPER_TPL" ]; then
 else
   bad "paper-template/ missing (writepaper_project has no scaffold)"
 fi
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh checkpoint.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh checkpoint.sh heredoc-rewrite.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -396,6 +396,73 @@ PY
   fi
 else
   note "no claude settings.json — skip hook check"
+fi
+
+# --- claude PreToolUse heredoc-rewrite hook --------------------------------
+echo "[claude heredoc-rewrite hook]"
+HR_SH="$HOOKS/heredoc-rewrite.sh"
+HR_PY="$HOOKS/heredoc-rewrite.py"
+if [ -f "$HR_SH" ] && [ -f "$HR_PY" ]; then
+  [ -x "$HR_SH" ] || note "hooks/heredoc-rewrite.sh not executable"
+  python3 -m py_compile "$HR_PY" 2>/dev/null && ok "heredoc-rewrite.py parses" || bad "heredoc-rewrite.py SYNTAX ERROR"
+  if command -v python3 >/dev/null && [ -f "$HOME/.claude/settings.json" ]; then
+    if python3 - <<'PY'
+import json, pathlib, sys
+cfg = json.loads(pathlib.Path.home().joinpath(".claude/settings.json").read_text())
+pre = cfg.get("hooks", {}).get("PreToolUse", [])
+cmds = [h.get("command", "") for g in pre for h in g.get("hooks", [])]
+sys.exit(0 if any("heredoc-rewrite" in c for c in cmds) else 1)
+PY
+    then
+      ok "PreToolUse wires heredoc-rewrite.sh"
+    else
+      bad "PreToolUse missing heredoc-rewrite.sh (run setup.sh)"
+    fi
+  else
+    note "no claude settings.json — skip wiring check"
+  fi
+  # Smoke: python3 heredoc -> rewritten + allowed; cat-append heredoc -> rewritten;
+  # plain command and non-rewrite-class heredoc -> no decision (normal prompt flow).
+  out="$(python3 - <<'SMOKE1' | python3 "$HR_PY"
+import json
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cd '/tmp' && python3 - <<'PY'\nP = 1\nprint(f\"n={P}\")\nPY\n"}}))
+SMOKE1
+)"
+  if printf '%s' "$out" | grep -q '"decision": *"allow"' && printf '%s' "$out" | grep -q 'python3 /'; then
+    ok "smoke: python3 heredoc rewritten + allowed"
+  else
+    bad "smoke: python3 heredoc not rewritten (got: $(printf '%s' "$out" | head -c 120))"
+  fi
+  out="$(python3 - <<'SMOKE2' | python3 "$HR_PY"
+import json
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat >> docs/x.md <<'EOF'\n## 2026-08-07 entry\n(ADR-001) with 'quotes'\nEOF\n"}}))
+SMOKE2
+)"
+  if printf '%s' "$out" | grep -q '"decision": *"allow"' && printf '%s' "$out" | grep -q 'io.py' && printf '%s' "$out" | grep -q ' a'; then
+    ok "smoke: cat-append heredoc rewritten + allowed"
+  else
+    bad "smoke: cat-append heredoc not rewritten (got: $(printf '%s' "$out" | head -c 120))"
+  fi
+  out="$(python3 - <<'SMOKE3' | python3 "$HR_PY"
+import json
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"ls /tmp"}}))
+SMOKE3
+)"
+  [ -z "$out" ] && ok "smoke: plain command untouched (no decision)" || bad "smoke: plain command got a decision"
+  out="$(python3 - <<'SMOKE4' | python3 "$HR_PY"
+import json
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"sudo rm -rf / <<'EOF'\nx\nEOF\n"}}))
+SMOKE4
+)"
+  [ -z "$out" ] && ok "smoke: sudo heredoc falls through (still prompts)" || bad "smoke: sudo heredoc got a decision"
+  out="$(python3 - <<'SMOKE5' | python3 "$HR_PY"
+import json
+print(json.dumps({"tool_name":"Bash","tool_input":{"command":"python3 - <<EOF\nprint('x')\nEOF\n"}}))
+SMOKE5
+)"
+  [ -z "$out" ] && ok "smoke: unquoted heredoc falls through (still prompts)" || bad "smoke: unquoted heredoc got a decision"
+else
+  bad "heredoc-rewrite hook files missing (run setup.sh)"
 fi
 
 # --- crontab ---------------------------------------------------------------

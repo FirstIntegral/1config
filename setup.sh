@@ -396,6 +396,39 @@ PYEOF
   fi
 fi
 
+# --- 5e claude PreToolUse hook: quoted-heredoc -> scratchpad rewrite --------
+echo "[5e/9] claude PreToolUse heredoc-rewrite hook"
+HR_SH="$AGENTS_HOME/hooks/heredoc-rewrite.sh"
+HR_PY="$AGENTS_HOME/hooks/heredoc-rewrite.py"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+if [ ! -f "$HR_SH" ] || [ ! -f "$HR_PY" ]; then
+  log "WARNING: hooks/heredoc-rewrite.{sh,py} missing — copy ~/.agents fully; skipping PreToolUse wiring"
+else
+  chmod +x "$HR_SH" "$HR_PY"
+  [ -f "$CLAUDE_SETTINGS" ] && cp -p "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-heredoc.json"
+  CLAUDE_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PYEOF'
+import json, os, pathlib
+p = pathlib.Path(os.environ["CLAUDE_SETTINGS"])
+cfg = json.loads(p.read_text()) if p.exists() else {}
+cmd = 'bash "$HOME/.agents/hooks/heredoc-rewrite.sh"'
+hooks = cfg.setdefault("hooks", {})
+pre = hooks.setdefault("PreToolUse", [])
+existing = [h.get("command", "") for g in pre for h in g.get("hooks", [])]
+if any("heredoc-rewrite" in c for c in existing):
+    print("  ok       PreToolUse heredoc-rewrite already wired")
+else:
+    entry = {"type": "command", "command": cmd, "timeout": 5,
+             "statusMessage": "heredoc -> scratchpad rewrite"}
+    pre.append({"matcher": "Bash", "hooks": [entry]})
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cfg, indent=2) + "\n")
+    print("  wired    PreToolUse -> heredoc-rewrite.sh")
+PYEOF
+  if [ -f "$BACKUP_DIR/claude-settings-heredoc.json" ] && cmp -s "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-heredoc.json"; then
+    rm -f "$BACKUP_DIR/claude-settings-heredoc.json"
+  fi
+fi
+
 # --- 6 symlink guard (source: hooks/check-links.sh) -------------------------
 echo "[6/9] symlink guard script (refresh from hooks/)"
 LINK_GUARD_SRC="$AGENTS_HOME/hooks/check-links.sh"

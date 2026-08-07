@@ -91,11 +91,11 @@ A pipeline or `;`/`&&`/`||` chain is approved only if **each** segment matches a
 
 Some Bash calls prompt **regardless** of any allow rule, because Claude Code decides them before consulting the allowlist:
 
-- **Obfuscation / parse verdicts** — e.g. `Contains brace with quote character (expansion obfuscation)`. Fired by heredocs whose body mixes `{...}` with quotes (Python f-strings are the usual cause: `print(f"n={n}")`). Also: commands over 10,000 chars, anything the parser can't fully parse.
+- **Obfuscation / parse verdicts** — e.g. `Contains brace with quote character (expansion obfuscation)`. Fired by heredocs whose body mixes `{...}` with quotes (Python f-strings are the usual cause: `print(f"n={n}")`). Also: commands over 10,000 chars, anything the parser can't fully parse. **The quoted-heredoc part of this class is now auto-rewritten on Claude Code** by the PreToolUse hook `~/.agents/hooks/heredoc-rewrite.sh` (wired by `setup.sh` step 5e): `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs with a quoted delimiter are rewritten to scratchpad files (`~/.cache/agents-heredoc/`) and auto-allowed — no prompt. Unquoted heredocs (`<<EOF`) and heredocs under `bash`/`sh`/`sudo`/other interpreters are untouched and still prompt.
 - **Exec wrappers** — `watch`, `setsid`, `ionice`, `flock`, `find -exec`, `find -delete`. Only an exact-match rule for the whole command string helps.
 - **Env runners** — `npx`, `docker exec`, `mise exec`, `devbox run`, `direnv exec` are not stripped; the rule must name runner **and** inner command.
 
-**So: never pipe multi-line Python (or any brace-heavy script) through a heredoc.** Write it to a file under the session scratchpad, then run the file — `python3 /tmp/.../probe.py`, `.venv/bin/python /tmp/.../probe.py`. That form matches the normal allowlist and never prompts. Keep it as a file for reruns instead of re-pasting a heredoc.
+**So: prefer script files over heredocs regardless** — write multi-line Python (or any brace-heavy script) to a file under the session scratchpad, then run the file — `python3 /tmp/.../probe.py`, `.venv/bin/python /tmp/.../probe.py`. That form matches the normal allowlist, never prompts, and is reusable for reruns. The hook above is the safety net for when a heredoc still slips through; it is not a licence to keep writing them.
 
 Wrappers that ARE stripped before matching (safe to prefix a rule's command with): `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, bare `xargs` (no flags). `Bash(pytest *)` therefore covers `timeout 900 pytest -q`. Interpreter **paths** are not normalized: `Bash(python *)` does not cover `.venv/bin/python` — venv paths need their own rules (they are in the canonical file).
 
