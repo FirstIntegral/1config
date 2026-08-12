@@ -93,6 +93,34 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   [ "$_rc" -eq 20 ] && ok "refuses to commit an unignored session_transcript.md (exit 20)" \
                     || bad "checkpoint.sh would have published the transcript (exit $_rc, wanted 20)"
   rm -rf "$_cptmp"
+
+  # A clean tree with commits that never left the machine is the state where the
+  # backup is most needed, and the early "nothing to commit" exit used to skip the
+  # push entirely. Exercised against a real bare remote, not mocked.
+  _cpwork="$(mktemp -d)"; _cpremote="$(mktemp -d)"
+  git init -q --bare "$_cpremote/remote.git"
+  git init -q "$_cpwork"
+  git -C "$_cpwork" config user.email verify@local
+  git -C "$_cpwork" config user.name verify
+  git -C "$_cpwork" config commit.gpgsign false
+  printf 'session_compact.md\nsession_transcript.md\n' > "$_cpwork/.gitignore"
+  echo one > "$_cpwork/a.txt"
+  git -C "$_cpwork" add -A && git -C "$_cpwork" commit -qm one
+  git -C "$_cpwork" remote add origin "$_cpremote/remote.git"
+  _br="$(git -C "$_cpwork" rev-parse --abbrev-ref HEAD)"
+  git -C "$_cpwork" push -qu origin "$_br" 2>/dev/null
+  echo two > "$_cpwork/b.txt"
+  git -C "$_cpwork" add -A && git -C "$_cpwork" commit -qm two
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" >/dev/null 2>&1 || _rc=$?
+  _remote_count="$(git -C "$_cpremote/remote.git" rev-list --count HEAD 2>/dev/null || echo 0)"
+  [ "$_rc" -eq 0 ] && [ "$_remote_count" -eq 2 ] \
+    && ok "pushes commits that a clean tree would otherwise strand (exit 0)" \
+    || bad "checkpoint.sh left unpushed commits on a clean tree (exit $_rc, remote has $_remote_count)"
+  # and with nothing unpushed either, it must still be a no-op
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 3 ] && ok "clean and in sync is still a no-op (exit 3)" \
+                   || bad "checkpoint.sh did not no-op when clean and in sync (exit $_rc)"
+  rm -rf "$_cpwork" "$_cpremote"
 else
   bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
 fi

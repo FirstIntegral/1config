@@ -94,11 +94,24 @@ fi
 echo "  session  compact/transcript correctly excluded"
 
 # --- 3. anything to do? -------------------------------------------------------------
+# A clean tree is not the same as nothing to do. Commits made earlier in the session and
+# never pushed are exactly the state where "the machine is not the only copy" fails, so a
+# clean tree still goes through the push path -- it just skips the commit.
+#
+# `HEAD --not --remotes` counts commits absent from EVERY remote, which answers the
+# question for a branch with no upstream as well as for one that has drifted ahead of it.
+NOTHING_TO_COMMIT=0
 if [ -z "$(git -C "$PROJECT" status --porcelain)" ]; then
-  echo "  tree     clean — nothing to commit"
-  exit 3
+  UNPUSHED="$(git -C "$PROJECT" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)"
+  if [ "${UNPUSHED:-0}" -eq 0 ]; then
+    echo "  tree     clean — nothing to commit, nothing unpushed"
+    exit 3
+  fi
+  echo "  tree     clean — nothing to commit, but $UNPUSHED commit(s) not on any remote"
+  NOTHING_TO_COMMIT=1
+else
+  echo "  staging  $(git -C "$PROJECT" add -A --dry-run | wc -l) path(s)"
 fi
-echo "  staging  $(git -C "$PROJECT" add -A --dry-run | wc -l) path(s)"
 
 # --- 4. remote: configured? and does it actually exist? -----------------------------
 # `git remote get-url --push` is the authority for WHERE to push. An AGENTS.md line is
@@ -157,6 +170,11 @@ UNREACHABLE="${UNREACHABLE:-0}"
 
 # --- 5. commit (signed; never bypassed) ---------------------------------------------
 SUBJECT="${SUBJECT:-checkpoint: $(date +%F)}"
+if [ "$NOTHING_TO_COMMIT" = 1 ]; then
+  # Nothing new to record; the work is already committed and only the backup is missing.
+  HASH="$(git -C "$PROJECT" rev-parse --short HEAD)"
+  echo "  commit   skipped — nothing to commit; pushing $UNPUSHED existing commit(s)"
+else
 run git -C "$PROJECT" add -A
 if [ "$DRY" != 1 ]; then
   if ! git -C "$PROJECT" commit -q -m "$SUBJECT"; then
@@ -176,17 +194,18 @@ else
   run git -C "$PROJECT" commit -m "$SUBJECT"
   HASH="(dry-run)"
 fi
+fi
 
 # --- 6. push ------------------------------------------------------------------------
 if [ -z "$REMOTE" ]; then
   if [ "$UNREACHABLE" = 1 ]; then
     echo "  push     skipped — remote configured but not reachable"
     echo "           NOT creating it. If the repo should exist, create it yourself and re-run."
-    echo "== checkpoint: committed $HASH, not pushed (remote unreachable)"
+    echo "== checkpoint: $HASH not pushed (remote unreachable)"
     exit 13
   fi
-  echo "  push     skipped — no remote; committed locally only"
-  echo "== checkpoint: committed $HASH, not pushed (no remote)"
+  echo "  push     skipped — no remote; local only"
+  echo "== checkpoint: $HASH not pushed (no remote)"
   exit 12
 fi
 if [ "$DRY" = 1 ]; then
@@ -206,5 +225,9 @@ if [ $RC -ne 0 ]; then
   exit 21
 fi
 echo "  push     ok -> $REMOTE/$BRANCH"
-echo "== checkpoint: committed and pushed $HASH"
+if [ "$NOTHING_TO_COMMIT" = 1 ]; then
+  echo "== checkpoint: pushed $UNPUSHED existing commit(s), nothing new to commit ($HASH)"
+else
+  echo "== checkpoint: committed and pushed $HASH"
+fi
 exit 0

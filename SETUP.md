@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 1.0.3 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.228 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.16 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-12 12:47 by update-apps -->
+<!-- last refreshed: 2026-08-12 19:13 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -125,7 +125,7 @@ Steps 1-5 of that trigger need judgement (what happened today, which decisions t
 bash ~/.agents/hooks/checkpoint.sh <project-root> [-m SUBJECT] [--dry-run]
 ```
 
-Exit codes: `0` committed+pushed · `3` clean tree · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `2` usage.
+Exit codes: `0` committed+pushed (or pushed commits a clean tree would have stranded) · `3` clean tree **and** nothing unpushed · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `2` usage.
 
 Invariants, all covered by `verify.sh`:
 
@@ -134,7 +134,8 @@ Invariants, all covered by `verify.sh`:
 - Requires the given directory to **be** the repo toplevel; `rev-parse --show-toplevel` walks up, so a subdirectory would otherwise commit an unrelated parent repo.
 - Reachability uses bare `git ls-remote`, **not** `--exit-code`: that flag returns 2 when no refs match, so an empty freshly created repo would be misread as unreachable and the first push silently refused.
 - Cross-checks the URL against the project `AGENTS.md` `## Repo` line and warns on mismatch, but git config always wins — `AGENTS.md` is a file an AI writes and must never authorise a push.
-- `verify.sh` runs the two refusals for real against a scratch dir (non-repo → 10 with no `.git` created; unignored transcript → 20).
+- **A clean tree is not the same as nothing to do.** Commits made earlier and never pushed are exactly the state where "the machine is not the only copy" fails, so a clean tree still takes the push path and only skips the commit. Unpushed is counted as `HEAD --not --remotes`, which is also right for a branch with no upstream.
+- `verify.sh` runs the refusals and the push path for real against scratch dirs and a bare remote (non-repo → 10 with no `.git` created; unignored transcript → 20; clean tree with one unpushed commit → pushed, exit 0; clean and in sync → exit 3).
 
 ### §4c `hooks/watch-stale.sh` — staleness watch for detached runs
 
