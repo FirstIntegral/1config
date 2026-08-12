@@ -68,7 +68,7 @@ if [ -d "$PAPER_TPL" ]; then
 else
   bad "paper-template/ missing (writepaper_project has no scaffold)"
 fi
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh checkpoint.sh heredoc-rewrite.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -95,6 +95,36 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   rm -rf "$_cptmp"
 else
   bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
+fi
+
+# watch-stale.sh behaviour. A watch that never fires is worse than none, so the
+# stale verdict and the exit line are both exercised against a real scratch process.
+echo "[watch-stale.sh behaviour]"
+if [ -x "$HOOKS/watch-stale.sh" ]; then
+  _rc=0; bash "$HOOKS/watch-stale.sh" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 2 ] && ok "rejects missing arguments (exit 2)" \
+                   || bad "watch-stale.sh accepted missing arguments (exit $_rc, wanted 2)"
+  # A pid above pid_max cannot exist, so this is the no-such-process path, not a race.
+  _rc=0; bash "$HOOKS/watch-stale.sh" 4194305 - 1 >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 3 ] && ok "rejects a pid that does not exist (exit 3)" \
+                   || bad "watch-stale.sh accepted a dead pid (exit $_rc, wanted 3)"
+  _wstmp="$(mktemp -d)"
+  : > "$_wstmp/run.log"
+  sleep 3 &
+  _wspid=$!
+  _wsout="$(bash "$HOOKS/watch-stale.sh" "$_wspid" "$_wstmp/run.log" 1 2>&1 || true)"
+  wait "$_wspid" 2>/dev/null || true
+  case "$_wsout" in
+    *STALE*) ok "flags an idle pid with a flat log as STALE" ;;
+    *)       bad "watch-stale.sh missed a stale run: ${_wsout:-<no output>}" ;;
+  esac
+  case "$_wsout" in
+    *EXITED*) ok "ends with EXITED once the pid is gone" ;;
+    *)        bad "watch-stale.sh did not report EXITED: ${_wsout:-<no output>}" ;;
+  esac
+  rm -rf "$_wstmp"
+else
+  bad "hooks/watch-stale.sh not executable — detached runs have no staleness watch"
 fi
 
 BD="$AGENTS_HOME/boot-dashboard"
@@ -239,7 +269,7 @@ else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update 'Tri-tool parity'; do
+  for needle in checkpoint_project writepaper_project global_brain_update 'Tri-tool parity' watch-stale.sh; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else

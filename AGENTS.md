@@ -120,6 +120,39 @@ Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md
 
 ---
 
+## Detached runs get a staleness watch — HARD RULE
+
+Any shell work that outlives the turn — a benchmark sweep, a long build, a training run, anything
+launched with `nohup`/`setsid`/background — is armed with a periodic staleness check **in the same
+turn it is launched**. Default interval **10 minutes**. Never launch a multi-hour job and then
+report on it only when asked.
+
+```sh
+bash ~/.agents/hooks/watch-stale.sh <pid> <logfile|-> [interval_seconds]   # default 600
+```
+
+One line per interval on stdout, so it feeds a monitor directly (each line = one notification);
+it ends by itself when the pid is gone. Exit `0` watched process exited · `2` usage · `3` no such pid.
+
+- **Watch the worker pid, not a wrapper.** A `bash -c` around the real process burns no CPU, so a
+  naive CPU check on it reads zero forever and cries hang. Resolve the pid against the interpreter
+  and script (`pgrep -af 'bin/python -u path/to/script.py args'`) and take the process that is
+  actually doing the work.
+- **Stale means BOTH signals flat** — no log growth *and* effectively no CPU across a whole
+  interval. Either alone is a normal working run: a job grinding through one expensive step is
+  silent, and a job blocked on I/O still writes. Alerting on one signal produces false hangs, which
+  is how a watch gets ignored.
+- **Silence is not success and it is not failure either.** The watch reports what it measured
+  (`alive` / `STALE` / `EXITED`) every interval, including when nothing changed. A monitor that
+  only speaks on bad news is indistinguishable from a monitor that died.
+- **A staleness watch is not a completion watch.** It says whether the job is moving, never whether
+  it did the right thing. Pair it with something that fires once on exit and reports the tail of the
+  log, and read the actual output before believing the run.
+- Applies to detached/long-running work only. A foreground command that returns in a second cannot
+  go stale, and wrapping one in a watch is noise.
+
+---
+
 ## Caveman mode — ALWAYS ON (global default)
 
 **Every response.** Every project. No opt-in per session.

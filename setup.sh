@@ -556,6 +556,20 @@ else
   log "WARNING: hooks/checkpoint.sh missing"
 fi
 
+# --- staleness watch (direct-reference, armed beside every detached run) ------
+echo "[watch-stale] watch-stale.sh (staleness watch for detached runs)"
+WS_SRC="$AGENTS_HOME/hooks/watch-stale.sh"
+if [ -f "$WS_SRC" ]; then
+  chmod +x "$WS_SRC"
+  if bash -n "$WS_SRC" 2>/dev/null; then
+    log "ready   hooks/watch-stale.sh"
+  else
+    log "WARNING: hooks/watch-stale.sh has a syntax error"
+  fi
+else
+  log "WARNING: hooks/watch-stale.sh missing"
+fi
+
 # --- boot dashboard autostart -----------------------------------------------
 echo "[boot-dashboard] install GNOME autostart"
 BD="$AGENTS_HOME/boot-dashboard"

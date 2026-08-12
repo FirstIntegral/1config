@@ -11,10 +11,10 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 <!-- TOOL_INVENTORY_START -->
 | Tool | Version | Binary | Config |
 |------|---------|--------|--------|
-| Grok Build | 1.0.0 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
-| Claude Code | 2.1.224 | `~/.local/bin/claude` | `~/.claude/settings.json` |
-| OpenCode | 1.18.15 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-07 20:58 by update-apps -->
+| Grok Build | 1.0.3 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
+| Claude Code | 2.1.228 | `~/.local/bin/claude` | `~/.claude/settings.json` |
+| OpenCode | 1.18.16 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
+<!-- last refreshed: 2026-08-12 12:47 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -135,6 +135,36 @@ Invariants, all covered by `verify.sh`:
 - Reachability uses bare `git ls-remote`, **not** `--exit-code`: that flag returns 2 when no refs match, so an empty freshly created repo would be misread as unreachable and the first push silently refused.
 - Cross-checks the URL against the project `AGENTS.md` `## Repo` line and warns on mismatch, but git config always wins — `AGENTS.md` is a file an AI writes and must never authorise a push.
 - `verify.sh` runs the two refusals for real against a scratch dir (non-repo → 10 with no `.git` created; unignored transcript → 20).
+
+### §4c `hooks/watch-stale.sh` — staleness watch for detached runs
+
+Every long-running job launched detached is armed with one, in the same turn, per the canonical
+`AGENTS.md` rule. Tool-agnostic bash: Claude drives it through its Monitor/background-task
+mechanism, Grok and OpenCode by backgrounding it and reading its stdout — the script is identical
+and lives in one place.
+
+```sh
+bash ~/.agents/hooks/watch-stale.sh <pid> <logfile|-> [interval_seconds]   # default 600
+```
+
+One stdout line per interval (`alive` / `STALE`), one final `EXITED` line, then it ends on its own.
+Exit codes: `0` watched process exited · `2` usage · `3` no such pid.
+
+Invariants, covered by `verify.sh`:
+
+- **Stale requires BOTH** flat log growth and under 1s of CPU across the interval. Either signal
+  alone is a working run — a job inside one expensive step writes nothing, a job blocked on I/O
+  still writes — and single-signal alerting yields false hangs until the watch is ignored.
+- **CPU is read from `/proc/<pid>/stat` fields 14+15** (utime+stime), parsed *after* stripping
+  through the last `)`: the comm field can contain spaces and parens, so positional `awk` on the
+  raw line misreads any process whose name is not a single bare word.
+- Reports every interval including quiet ones — a watch that speaks only on bad news cannot be
+  told apart from a watch that died.
+- Watches the pid it is given and never guesses; the caller resolves the *worker* pid
+  (`pgrep -af '<interpreter> -u <script> <args>'`), because a shell wrapper burns no CPU and would
+  read as hung forever.
+- `verify.sh` exercises it for real against a scratch process: an idle pid with a flat log must
+  report `STALE`, and the same watch must end with `EXITED` once that pid is gone.
 
 ## 5. Per-project standard — `create_project`
 
@@ -397,7 +427,8 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 9. Crontab entries for guards + updater (§7) — preserves other crontab lines.
 10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh`; run the store script once (see §4 GPG).
 11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
-12. Verify (+ optional inventory refresh of §1 version table).
+12. `watch-stale.sh` — `chmod +x hooks/watch-stale.sh` + `bash -n` syntax gate (§4c).
+13. Verify (+ optional inventory refresh of §1 version table).
 
 `setup.sh` does all of the above: idempotent, backs up anything it replaces to `~/.agents/backups/setup-<ts>/`, self-verifies. `SKIP_CRON=1` skips the crontab step.
 
