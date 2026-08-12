@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 1.0.3 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.228 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.16 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-12 19:13 by update-apps -->
+<!-- last refreshed: 2026-08-12 20:43 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -34,14 +34,15 @@ Sections, in order:
 4. Permission allowlist — canonical `~/.agents/permissions.json`, fanned out to all three tools by `setup.sh` steps 5b/5c/5d (§4); includes the "prompts an allowlist cannot remove" subsection
 5. Tri-tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode, installed by `setup.sh`, checked by `verify.sh`
 6. Machine toolchains — `texlive-full` + `tectonic` installed; write LaTeX directly, never ask for installs
-7. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
-8. `create_project` trigger (§5)
-9. `continue_project <path>` trigger (§5b)
-10. `checkpoint_project` trigger (§5c)
-11. `writepaper_project` trigger (§5d)
-12. `global_brain_update` trigger (§5e) — changes to `~/.agents` itself, ending in `setup.sh` + `sync.sh`
-13. Global workflow (session start / during / end)
-14. Memory policy (§6)
+7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
+8. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
+9. `create_project` trigger (§5)
+10. `continue_project <path>` trigger (§5b)
+11. `checkpoint_project` trigger (§5c)
+12. `writepaper_project` trigger (§5d)
+13. `global_brain_update` trigger (§5e) — changes to `~/.agents` itself, ending in `setup.sh` + `sync.sh`
+14. Global workflow (session start / during / end)
+15. Memory policy (§6)
 
 ## 3. Symlinks
 
@@ -445,7 +446,7 @@ bash ~/.agents/setup.sh    # sync installs + inventory + verify
 bash ~/.agents/verify.sh
 ```
 
-`verify.sh` fails if: symlinks wrong, hooks≠installed guards, flag names missing, inventory markers gone, grok memory switches wrong, Claude SessionStart hook missing, crontab guards missing, or project-session skill regressed to retired workflow.
+`verify.sh` fails if: symlinks wrong, hooks≠installed guards, updater user-scripts≠source, flag names missing, inventory markers gone or versions drift from installed binaries, grok memory switches wrong, permission fan-out drifts, Claude SessionStart/heredoc hooks missing or smoke tests fail, crontab guards missing, `project-template/` ≠ §5 blocks, paper-template grows a bibliography, or `checkpoint.sh` / `watch-stale.sh` behaviour regresses. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
 
 ## 9. Verification
 
