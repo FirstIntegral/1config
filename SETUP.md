@@ -11,10 +11,10 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 <!-- TOOL_INVENTORY_START -->
 | Tool | Version | Binary | Config |
 |------|---------|--------|--------|
-| Grok Build | 1.0.3 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
-| Claude Code | 2.1.228 | `~/.local/bin/claude` | `~/.claude/settings.json` |
-| OpenCode | 1.18.16 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-12 20:43 by update-apps -->
+| Grok Build | 1.0.5 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
+| Claude Code | 2.1.238 | `~/.local/bin/claude` | `~/.claude/settings.json` |
+| OpenCode | 1.18.19 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
+<!-- last refreshed: 2026-08-21 03:12 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -140,10 +140,15 @@ Invariants, all covered by `verify.sh`:
 
 ### §4c `hooks/watch-stale.sh` — staleness watch for detached runs
 
-Every long-running job launched detached is armed with one, in the same turn, per the canonical
+Every long-running **job** launched detached is armed with one, in the same turn, per the canonical
 `AGENTS.md` rule. Tool-agnostic bash: Claude drives it through its Monitor/background-task
 mechanism, Grok and OpenCode by backgrounding it and reading its stdout — the script is identical
 and lives in one place.
+
+**Not for preview/dev servers** (`http.server`, `npm start`, …). Those are idle-by-design; a
+staleness watch would false-alarm. Kill them at end of turn unless the user still needs the URL
+(`AGENTS.md` — "Preview / dev servers are not jobs"). Grok's TUI `◎ 1 command still running` line
+stays up until that background task dies — that is the TUI, not a hang.
 
 ```sh
 bash ~/.agents/hooks/watch-stale.sh <pid> <logfile|-> [interval_seconds]   # default 600

@@ -297,7 +297,7 @@ else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update 'Tri-tool parity' watch-stale.sh; do
+  for needle in checkpoint_project writepaper_project global_brain_update 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else

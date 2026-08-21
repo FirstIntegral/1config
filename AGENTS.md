@@ -148,8 +148,25 @@ it ends by itself when the pid is gone. Exit `0` watched process exited · `2` u
 - **A staleness watch is not a completion watch.** It says whether the job is moving, never whether
   it did the right thing. Pair it with something that fires once on exit and reports the tail of the
   log, and read the actual output before believing the run.
-- Applies to detached/long-running work only. A foreground command that returns in a second cannot
-  go stale, and wrapping one in a watch is noise.
+- Applies to detached/long-running **jobs** only (builds, sweeps, training). A foreground command
+  that returns in a second cannot go stale, and wrapping one in a watch is noise.
+
+### Preview / dev servers are not jobs
+
+A local `http.server` / `npm start` / similar, launched so a screenshot or the user can hit a URL,
+is **idle-by-design**. Do **not** wrap it in `watch-stale.sh` — no log growth + no CPU is the
+healthy state, and the watch would cry `STALE` forever.
+
+Grok's TUI keeps `◎ 1 command still running` for as long as that background task lives, **even
+after the turn that started it has finished**. That is the TUI working, not a hang. An unexplained
+status line after "done" looks like a leak.
+
+Policy:
+
+1. **During the turn** — fine. Name the URL.
+2. **End of turn** — kill the preview unless the user still needs it. Closing line says either
+   "preview killed" or "still running: `<cmd>` on :<port> — stop with X".
+3. Never leave an unnamed background command.
 
 ---
 
