@@ -12,9 +12,9 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Tool | Version | Binary | Config |
 |------|---------|--------|--------|
 | Grok Build | 1.0.5 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
-| Claude Code | 2.1.238 | `~/.local/bin/claude` | `~/.claude/settings.json` |
-| OpenCode | 1.18.19 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-21 03:12 by update-apps -->
+| Claude Code | 2.1.250 | `~/.local/bin/claude` | `~/.claude/settings.json` |
+| OpenCode | 1.18.23 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
+<!-- last refreshed: 2026-08-29 01:17 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -451,7 +451,7 @@ bash ~/.agents/setup.sh    # sync installs + inventory + verify
 bash ~/.agents/verify.sh
 ```
 
-`verify.sh` fails if: symlinks wrong, hooks≠installed guards, updater user-scripts≠source, flag names missing, inventory markers gone or versions drift from installed binaries, grok memory switches wrong, permission fan-out drifts, Claude SessionStart/heredoc hooks missing or smoke tests fail, crontab guards missing, `project-template/` ≠ §5 blocks, paper-template grows a bibliography, or `checkpoint.sh` / `watch-stale.sh` behaviour regresses. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
+`verify.sh` fails if: symlinks wrong, hooks≠installed guards, updater user-scripts≠source, flag names missing, inventory markers gone or versions drift from installed binaries, grok memory switches wrong, permission fan-out drifts, Claude SessionStart/heredoc hooks missing or smoke tests fail, crontab guards missing, `project-template/` ≠ §5 blocks, project-template files not tracked in git (`project-template/.gitignore` self-shadows the session-file templates — they must be `git add -f`-ed once and stay tracked), paper-template grows a bibliography, or `checkpoint.sh` / `watch-stale.sh` behaviour regresses. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
 
 ## 9. Verification
 

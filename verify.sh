@@ -52,6 +52,18 @@ fi
 for f in AGENTS.md session_compact.md session_transcript.md docs/DECISIONS.md .gitignore; do
   [ -e "$TEMPLATE/$f" ] && ok "template $f" || bad "template missing $f"
 done
+# Presence on disk is not enough: project-template/.gitignore self-shadows its own
+# session files (they ARE its ignore patterns), so an untracked template silently
+# breaks every fresh clone — happened on the first migration to a new machine.
+if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+  for f in AGENTS.md session_compact.md session_transcript.md docs/DECISIONS.md .gitignore; do
+    if git -C "$AGENTS_HOME" ls-files --error-unmatch "project-template/$f" >/dev/null 2>&1; then
+      ok "template $f tracked in git"
+    else
+      bad "template $f NOT tracked (gitignored by its own .gitignore — git add -f project-template/$f)"
+    fi
+  done
+fi
 [ -f "$AGENTS_HOME/permissions.json" ] && ok "permissions.json (canonical, all 3 tools)" || bad "permissions.json missing"
 PAPER_TPL="$AGENTS_HOME/paper-template"
 if [ -d "$PAPER_TPL" ]; then

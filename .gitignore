@@ -4,3 +4,6 @@ backups/
 # Python bytecode (verify.sh py_compile smoke test regenerates it)
 __pycache__/
 *.pyc
+
+# Machine-local opencode skills (e.g. Omarchy-provided) — not part of the brain
+skills/
