@@ -13,11 +13,11 @@
 #   not a git repo                  -> do nothing at all                    (exit 10)
 #   dir is not the repo toplevel    -> do nothing at all                    (exit 11)
 #   session files not ignored       -> refuse, change nothing               (exit 20)
-#   nothing to commit               -> do nothing                           (exit  3)
+#   clean + no locally unpushed work -> do nothing                           (exit  3)
 #   no remote configured            -> commit locally, do not push          (exit 12)
 #   remote unreachable / missing    -> commit, do not push                  (exit 13)
 #   push fails                      -> commit stays, report                 (exit 21)
-#   otherwise                       -> commit + push                        (exit  0)
+#   otherwise                       -> commit if needed + push              (exit  0)
 #
 # NEVER, under any circumstance: create a repo, add a remote, create a GitHub repo,
 # force-push, rebase, reset, amend, or bypass commit signing. A project without a repo or

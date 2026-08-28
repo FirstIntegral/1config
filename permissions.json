@@ -1,21 +1,21 @@
 {
   "_comment": [
-    "CANONICAL permission allowlist for ALL THREE tools (Claude Code, Grok, OpenCode).",
+    "CANONICAL permission policy for ALL THREE tools (Claude Code, Grok, OpenCode).",
     "Edit ONLY here, then run `bash ~/.agents/setup.sh`. Never hand-edit the per-tool copies.",
-    "setup.sh fans this file out, union-style and deduped, preserving anything already there:",
-    "  [5b] Claude   -> ~/.claude/settings.json            permissions.allow / permissions.deny  (verbatim rules)",
-    "  [5c] Grok     -> ~/.grok/config.toml [permission]   allow / deny                          (verbatim rules)",
-    "  [5d] OpenCode -> ~/.config/opencode/opencode.jsonc  permission.bash map                   (Bash(X) -> \"X\": allow|deny)",
-    "Rule syntax below is Claude/Grok native. OpenCode entries are derived: only Bash(...) rules translate;",
-    "non-Bash rules (Skill(...) etc.) are Claude/Grok-only. No catch-all is written for OpenCode, so its",
-    "permissive defaults are never tightened by this file — the deny list still lands.",
-    "Scope: matched calls run WITHOUT a prompt in every project. Anything unmatched still prompts.",
-    "Deliberately absent: rm, sudo, curl/wget, git push, package installs, chmod/chown, dd, mv.",
+    "setup.sh replaces generated permission buckets from this file so revocations propagate; other config survives:",
+    "  [5b] Claude   -> ~/.claude/settings.json            permissions.allow / permissions.ask / permissions.deny",
+    "  [5c] Grok     -> ~/.grok/config.toml [permission]   allow / ask / deny                    (verbatim rules)",
+    "  [5d] OpenCode -> ~/.config/opencode/opencode.jsonc  permission.bash map                   (Bash(X) -> \"X\": allow|ask|deny)",
+    "Rule syntax below is Claude-native. Grok/OpenCode entries are derived from enforceable Bash(...) rules;",
+    "non-Bash rules (Skill(...) etc.) are Claude-only. OpenCode gets a managed catch-all: allow when",
+    "bash_without_prompt=true, otherwise ask. Specific canonical allow/ask/deny rules are written after it.",
+    "Allow entries run WITHOUT a prompt; ask entries prompt; deny entries block. Unmatched Bash asks by default.",
+    "Deliberately absent from allow: rm, sudo, curl/wget, git push, package installs, chmod/chown, dd, mv.",
     "Also absent on purpose: xargs -I / sh -c / bash -c / npx — they run an arbitrary inner command, so",
     "allowing them would launder every rule here. 'sed *' IS allowed and covers in-place 'sed -i' writes;",
     "that is intended (edits are prompt-free anyway, see defaults.edit_without_prompt).",
     "Exception: `bash ~/.agents/sync.sh` is allowlisted. It is the ONLY no-prompt path to a push, and it",
-    "can only ever push ~/.agents (the brain repo) after setup.sh + verify.sh pass. Generic `git push`",
+    "can only push signed main commits from the ~/.agents repo root after strict PASS with zero warnings. Generic `git push`",
     "still prompts in every repo, including that one.",
     "Matching notes: wrappers timeout/time/nice/nohup/stdbuf/command/builtin/bare-xargs are stripped before",
     "matching, so 'Bash(pytest *)' already covers 'timeout 900 pytest -q'. Interpreter PATHS are not",
@@ -30,18 +30,19 @@
       "Tool-agnostic autonomy defaults. setup.sh translates each key per tool, verify.sh checks all three.",
       "edit_without_prompt: writing/creating files needs no prompt.",
       "  claude   -> used only when bash_without_prompt is false: defaultMode = \"acceptEdits\"",
-      "  grok     -> [ui] permission_mode = \"always-approve\" (Grok's only knob; broader than edits)",
+      "  grok     -> [ui] permission_mode = \"acceptEdits\"",
       "  opencode -> permission.edit = \"allow\"",
       "bash_without_prompt: NO bash permission prompts. Required for Claude — allowlist alone cannot",
       "kill hard-coded safety prompts (cd+write path-bypass, cd+git untrusted-hooks, parse verdicts).",
       "  claude   -> permissions.defaultMode = \"bypassPermissions\" (takes precedence over acceptEdits)",
-      "  grok     -> same always-approve (already covers bash when edit_without_prompt is true)",
-      "  opencode -> permission.bash catch-all \"*\" = \"allow\" (deny rules still written last)",
-      "With bash_without_prompt true, Claude deny list is best-effort only — bypass skips checks.",
-      "Set either false + re-run setup.sh to tighten (claude falls back to acceptEdits or default)."
+      "  grok     -> [ui] permission_mode = \"always-approve\"",
+      "  opencode -> permission.bash catch-all \"*\" = \"allow\" (specific rules still written later)",
+      "With bash_without_prompt true, Claude ask/deny lists are best-effort only — bypass skips checks.",
+      "Current policy keeps edit_without_prompt=true and bash_without_prompt=false: edits are accepted,",
+      "canonical safe commands run silently, and unmatched Bash (including generic git push) asks."
     ],
     "edit_without_prompt": true,
-    "bash_without_prompt": true
+    "bash_without_prompt": false
   },
   "permissions": {
     "allow": [
@@ -151,8 +152,11 @@
       "Bash(bash ~/.agents/setup.sh)",
       "Bash(bash ~/.agents/verify.sh)",
       "Bash(bash ~/.agents/sync.sh)",
-      "Bash(bash ~/.agents/sync.sh *)",
-      "Skill(update-config)"
+      "Bash(bash ~/.agents/sync.sh *)"
+    ],
+    "ask": [
+      "Bash(git push)",
+      "Bash(git push *)"
     ],
     "deny": [
       "Bash(rm -rf /)",

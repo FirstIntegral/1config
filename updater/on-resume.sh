@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
 # Called by /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh on resume
 # from suspend/hibernate. Args: $1 = pre|post  $2 = suspend|hibernate|hybrid-sleep|suspend-then-hibernate
-# Only act on "post" (resume). Run the boot-check as the current user, detached
-# so systemd doesn't block.
+# Only act on "post" (resume). The root shim schedules this as a delayed
+# transient service under the target user, so this process stays supervised.
 # SOURCE: ~/.agents/updater/ — setup.sh copies to ~/cron-jobs/ai-terminal-tools-update-on-boot/
-set -u
+set -euo pipefail
 [ "${1:-}" = "post" ] || exit 0
 
-user="${USER:-brwsk}"
-home="$HOME"
-DIR="$home/cron-jobs/ai-terminal-tools-update-on-boot"
+DIR="${UPD_INSTALL_DIR:-$HOME/cron-jobs/ai-terminal-tools-update-on-boot}"
 script="$DIR/boot-check.sh"
 
-# Drop into user, fully detached, no waiting — update runs in background.
-runuser -u "$user" -- env -i HOME="$home" USER="$user" PATH="$home/.opencode/bin:$home/.grok/bin:$home/.local/bin:/usr/local/bin:/usr/bin:/bin" \
-  nohup "$script" </dev/null >>"$DIR/update-apps.log" 2>&1 &
-exit 0
+[ -x "$script" ] || { echo "on-resume: missing executable $script" >&2; exit 1; }
+exec "$script"

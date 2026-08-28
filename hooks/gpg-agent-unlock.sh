@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # gpg-agent-unlock.sh — auto-unlock the GPG signing key from the GNOME keyring.
 #
-# No manual unlock ever needed: the passphrase lives in the keyring (encrypted
-# at rest; unlocked at login by PAM with the login password). This script
-# test-signs; if the agent has no cached passphrase it fetches it via the
-# Secret Service D-Bus API and unlocks with --pinentry-mode loopback.
+# The passphrase lives in the keyring, encrypted at rest. This script test-signs;
+# if the agent has no cached passphrase it fetches it through Secret Service and
+# unlocks with --pinentry-mode loopback. Password logins usually unlock the
+# keyring through PAM; autologin sessions may leave it locked and need fallback.
 #
 # Runs at login from the boot dashboard; invoke anytime:
 #   bash ~/.agents/hooks/gpg-agent-unlock.sh

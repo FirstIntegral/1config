@@ -6,7 +6,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 
 ## 1. Inventory
 
-**Versions are auto-maintained** by `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh` (boot + resume). That script upgrades binaries, then rewrites the table below. Do not hand-edit versions.
+**Versions are auto-maintained** by `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh` (boot + resume). It rewrites the table only when installed version rows change, so no-op updater runs do not dirty the repo. Do not hand-edit versions.
 
 <!-- TOOL_INVENTORY_START -->
 | Tool | Version | Binary | Config |
@@ -17,11 +17,11 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 <!-- last refreshed: 2026-08-29 01:39 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
-Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
+Platform: linux. Requires: `python3`, `cron`, `flock`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
 
-### Boot dashboard (login)
+### Boot dashboard (graphical login)
 
-On GNOME login, a terminal opens with a one-screen summary of boot health (symlinks, guards, `verify.sh`, tool versions, tool-updater log). Lives in `~/.agents/boot-dashboard/`. Autostart desktop installed by `setup.sh` → `~/.config/autostart/agents-boot-status.desktop`. Manual: `bash ~/.agents/boot-dashboard/launch.sh`.
+On any XDG graphical login, a terminal opens with a one-screen summary of boot health (symlinks, guards, `verify.sh`, tool versions, tool-updater log). The desktop entry has no `OnlyShowIn` filter, so both Wayland sessions such as Hyprland and X11 desktops run it. Lives in `~/.agents/boot-dashboard/`. Installed by `setup.sh` → `~/.config/autostart/agents-boot-status.desktop`. Manual: `bash ~/.agents/boot-dashboard/launch.sh`.
 
 ## 2. Canonical rules file
 
@@ -31,7 +31,7 @@ Sections, in order:
 1. Header — wiring map + migration one-liner
 2. Git/GitHub attribution — HARD RULE (no AI attribution in commits/PRs)
 3. Git commit signing — HARD RULE (never bypass signing; keyring auto-unlock; manual fallback)
-4. Permission allowlist — canonical `~/.agents/permissions.json`, fanned out to all three tools by `setup.sh` steps 5b/5c/5d (§4); includes the "prompts an allowlist cannot remove" subsection
+4. Permission policy — canonical `~/.agents/permissions.json`, fanned out to all three tools by `setup.sh` steps 5b/5c/5d (§4); includes the "prompts an allowlist cannot remove" subsection
 5. Tri-tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode, installed by `setup.sh`, checked by `verify.sh`
 6. Machine toolchains — `texlive-full` + `tectonic` installed; write LaTeX directly, never ask for installs
 7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
@@ -60,7 +60,7 @@ ln -s ~/.agents/AGENTS.md ~/.claude/CLAUDE.md
 
 ### Grok — `~/.grok/config.toml`
 
-Append/merge these keys; **preserve all existing content**:
+Append/merge these switches while preserving other config. The brain-managed permission buckets are the explicit replacement exception described below:
 
 ```toml
 [compat.claude]
@@ -74,13 +74,13 @@ enabled = false  # memory lives in shared markdown, not grok's store
 (`skills`/`mcps`/`hooks` compat intentionally left enabled.)
 
 - **Grok memory dir removed.** If `~/.grok/memory/` exists, `setup.sh` archives it under `~/.agents/backups/setup-<ts>/grok-memory/` then deletes it. Do not recreate.
-- **Permission rules** — `setup.sh` step `5c` writes `[permission] allow = [...] / deny = [...]` from `~/.agents/permissions.json`, union-merged with whatever is already there, and re-parses the TOML afterwards so a broken config can never ship. Grok uses the **same `Bash(...)` rule syntax as Claude**, so rules go in verbatim. `[ui] permission_mode = "always-approve"` is on, which auto-approves allow-side prompts anyway — **deny rules still apply in that mode**, which is why they are written too.
-- **`permission_mode` is brain-managed** (added 2026-08-07; extended 2026-08-07 for bash) — step `5c` writes/updates the `[ui] permission_mode` line when either `defaults.edit_without_prompt` **or** `defaults.bash_without_prompt` is true. Grok has no edit-only / bash-only split: `always-approve` is the only knob and covers every prompt. Both flags false → key **deleted** (no guessed off-value).
+- **Permission rules** — `setup.sh` step `5c` replaces `[permission] allow / ask / deny` from `~/.agents/permissions.json`, filtering out unsupported non-`Bash` rules. Replacement makes revocations effective. Unknown existing keys such as structured `rules` cause setup to stop before writing instead of silently deleting them; move desired policy into canonical first. The transformed TOML is parsed before replacing the live file.
+- **`permission_mode` is brain-managed** — step `5c` maps Bash autonomy to `always-approve`, edit-only autonomy to `acceptEdits`, and both flags off to `ask`. Current mode is `acceptEdits`, so edits are silent while unmatched Bash and explicit `git push` ask rules prompt.
 
 ### Claude Code
 
 - Global file `~/.claude/CLAUDE.md` → symlink (§3).
-- **Project AGENTS.md via SessionStart hook** — Claude Code (2.1.219) does NOT read project `AGENTS.md` natively (verified empirically 2026-07-26). `setup.sh` step 3b wires `~/.agents/hooks/load-project-agents.sh` into `~/.claude/settings.json` `hooks.SessionStart`; the script walks up from cwd (stopping before `$HOME`) and injects the nearest `AGENTS.md` into context. Result: identical behavior to Grok/OpenCode. **No project CLAUDE.md files exist — never create one** (stubs retired 2026-07-26).
+- **Project AGENTS.md via SessionStart hook** — Claude Code (2.1.219) does NOT read project `AGENTS.md` natively (verified empirically 2026-07-26). `setup.sh` step 5 wires `~/.agents/hooks/load-project-agents.sh` into `~/.claude/settings.json` `hooks.SessionStart`; the script walks up from cwd (stopping before `$HOME`) and injects the nearest `AGENTS.md` into context. Result: identical behavior to Grok/OpenCode. **No project CLAUDE.md files exist — never create one** (stubs retired 2026-07-26).
 - **Auto-memory wiped to a stub only.** For every `~/.claude/projects/*/memory/` dir (including empty ones): archive anything that is not already a lone DISABLED stub, delete all other files in that dir, write exactly:
 
 ```markdown
@@ -92,27 +92,27 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 ```
 
 - Claude `#` memory shortcut is NOT used (creates project CLAUDE.md / feeds auto-memory — both forbidden).
-- **Global permission allowlist** — canonical source `~/.agents/permissions.json` (renamed from `claude-permissions.json` on 2026-08-06 when it stopped being Claude-only). `setup.sh` step `5b` merges its `permissions.allow` / `permissions.deny` into `~/.claude/settings.json` as a **union** (never drops rules added by hand or by clicking Approve), deduped and idempotent. Matched tool calls run without a prompt in every project; anything unmatched still prompts. Edit the canonical file, then re-run `setup.sh` — never hand-edit `permissions` in `~/.claude/settings.json`, the next merge would leave it orphaned from source. Adopted 2026-08-06 by promoting the per-project allowlist from `philosophy_human_communication_framework_vs_llm/.claude/settings.json`. The same file also drives Grok (§Grok) and OpenCode (§OpenCode); `verify.sh` section `[permission parity]` fails if any of the three drifts.
+- **Global permission policy** — canonical source `~/.agents/permissions.json`. `setup.sh` step `5b` replaces `permissions.allow / ask / deny` so removing a canonical rule removes it from the live policy. Other Claude settings survive. Matched allow calls run silently; explicit ask calls prompt; denies block. Never hand-edit generated global permission buckets. The same file drives Grok and OpenCode; `verify.sh` checks exact content, including stale grants.
 - **`permissions.defaultMode`** (added 2026-08-07 as `acceptEdits`; extended 2026-08-07 for full bash auto-approve) — written by step `5b` from the canonical defaults:
   - `bash_without_prompt: true` → `"bypassPermissions"` (**wins**; only mode that kills hard-coded Claude safety prompts such as *cd with write operation* and *cd before git / untrusted hooks*)
   - else `edit_without_prompt: true` → `"acceptEdits"` (file writes only; Bash still uses allow list)
   - else → `"default"`
-  User request 2026-08-07: zero Claude bash prompts → default is now `bypassPermissions`. Deny list is best-effort under that mode.
+  Current policy keeps Bash autonomy off so generic pushes retain a last-look prompt; edit autonomy remains on.
 - **Compound-command matching** (relevant only when not in `bypassPermissions`) — Claude approves a pipeline / `;` / `&&` chain only when **every** segment matches a rule. Allowlist still carries the read-only sysinfo set, read-only git verbs, `sed`/`awk`, etc., so flipping `bash_without_prompt` off does not immediately re-prompt day-to-day probes.
-- **Prompts the allowlist can't remove** — obfuscation/parse verdicts, exec wrappers, env runners, and hard-coded compound safety (`cd`+write path-bypass, `cd`+git untrusted-hooks). **Fixed for this machine by `bash_without_prompt` → `bypassPermissions`.** Heredoc f-strings still also rewritten by the PreToolUse hook (below).
-- **Quoted-heredoc parse-verdict class — auto-rewritten via PreToolUse hook** (added 2026-08-07, prompted by 21 heredoc prompts in one Claude session). `setup.sh` step `5e` wires `~/.agents/hooks/heredoc-rewrite.sh` (bash wrapper → `heredoc-rewrite.py`) into `~/.claude/settings.json` `hooks.PreToolUse` with `matcher: Bash`. The hook rewrites quoted-delimiter `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs to scratchpad files under `~/.cache/agents-heredoc/` (7-day sweep) and answers `decision: allow` for the rewritten form, which is allowlist-shaped (`python3 <file>`). Unquoted heredocs and heredocs under `bash`/`sh`/`sudo`/anything else produce **no decision** and still prompt. **Claude-only, recorded per the parity rule:** Grok (`permission_mode = "always-approve"`) and OpenCode (permissive bash matcher) have no parse-verdict prompt class and no PreToolUse equivalent; the behavioural rule in `AGENTS.md` (prefer script files over heredocs) applies everywhere. Verified by `verify.sh` `[claude heredoc-rewrite hook]` section, including five smoke tests (rewrite+allow for python3 and cat-append, no-decision for plain commands, sudo heredocs, and unquoted heredocs).
+- **Prompts the allowlist can't remove** — obfuscation/parse verdicts, exec wrappers, env runners, and hard-coded compound safety (`cd`+write path-bypass, `cd`+git untrusted-hooks). Full Bash autonomy removes them but also removes the generic-push review gate, so it remains off. Heredoc f-strings are separately rewritten by the PreToolUse hook below.
+- **Quoted-heredoc parse-verdict class — auto-rewritten via PreToolUse hook** (added 2026-08-07, prompted by 21 heredoc prompts in one Claude session). `setup.sh` step `5e` wires `~/.agents/hooks/heredoc-rewrite.sh` (bash wrapper → `heredoc-rewrite.py`) into `~/.claude/settings.json` `hooks.PreToolUse` with `matcher: Bash`. The hook rewrites quoted-delimiter `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs to scratchpad files under `~/.cache/agents-heredoc/` (7-day sweep) and answers `decision: allow` for the rewritten form, which is allowlist-shaped (`python3 <file>`). Unquoted heredocs and heredocs under `bash`/`sh`/`sudo`/anything else produce **no decision** and still prompt. **Claude-only, recorded per the parity rule:** Grok and OpenCode do not have Claude's parse-verdict prompt class or a matching PreToolUse rewrite mechanism; the behavioral rule in `AGENTS.md` (prefer script files over heredocs) applies everywhere. Verified by `verify.sh` `[claude heredoc-rewrite hook]` section, including five smoke tests.
 - **TeX** — `texlive-full` (TeX Live 2025) is installed machine-wide, plus `tectonic` in `~/.local/bin`. All engines/build tools are allowlisted; `tlmgr install` is not, and is unnecessary under the full scheme.
 
 ### OpenCode
 
 Reads `AGENTS.md` natively at global and project level — no rules wiring needed.
 
-- **Permission rules** — `setup.sh` step `5d` translates the `Bash(X)` rules from `~/.agents/permissions.json` into the `permission.bash` map in `~/.config/opencode/opencode.jsonc`: `Bash(python3 *)` → `"python3 *": "allow"`, deny rules → `"deny"`. Deny entries are written **last** because OpenCode takes the last matching rule. Non-`Bash` rules (`Skill(...)`) have no OpenCode equivalent and are skipped. When `defaults.bash_without_prompt` is true, step `5d` also pins `"*": "allow"` (deny still last). Step `5d` writes `permission.edit` from `defaults.edit_without_prompt` (`allow` / `ask`). File rewritten as plain JSON; comments dropped on merge (pre-copy in setup backup dir).
+- **Permission rules** — `setup.sh` step `5d` replaces OpenCode's `permission.bash` map from canonical `Bash(X)` rules, making removals effective. It writes a managed catch-all first (`"*": "ask"` normally, `"allow"` under full Bash autonomy), then allow, ask, and deny patterns; OpenCode takes the last match. Non-`Bash` rules are skipped. Other OpenCode config survives. Valid JSONC comments and trailing commas are accepted; output becomes plain JSON after a backup.
 
-### GPG signing unlock (GNOME keyring)
+### GPG signing unlock (Secret Service keyring)
 
-- Passphrase lives in the GNOME keyring (Secret Service), **not on disk**. Keyring unlocks at login via PAM → silent unlock forever after a one-time store.
-- `hooks/gpg-agent-unlock.sh` — test-sign; if the agent has no cached passphrase, fetch from keyring + unlock with `--pinentry-mode loopback`. Runs at login via the boot dashboard; standalone anytime.
+- Passphrase lives in the Secret Service keyring, **not on disk**. Password-based desktop login normally unlocks it through PAM; autologin may not.
+- `hooks/gpg-agent-unlock.sh` — test-sign; if the agent has no cached passphrase, fetch from keyring + unlock with `--pinentry-mode loopback`. The boot dashboard attempts this at every graphical login; standalone anytime.
 - `hooks/gpg-store-passphrase.sh` — one-time store (prompts once; nothing on disk). Re-run after a passphrase change.
 - **gnome-keyring 50.x API quirk (verified 2026-08):** `CreateItem` lives on the **Collection** interface (not Service), `GetSecret` on the **Item** interface, and the Secret struct signature is `(oayays)` with a single `ay` parameters field. The plain-session handle marshals correctly only via the **vendored `jeepney`** (`~/.agents/vendor/jeepney`, MIT, pure python — dbus-python/GLib validate object paths and fail). No system packages needed.
 - `~/.gnupg/gpg-agent.conf` already: `allow-loopback-pinentry`, `default-cache-ttl 31536000`, `max-cache-ttl 31536000` (1-year cache after first unlock).
@@ -126,7 +126,7 @@ Steps 1-5 of that trigger need judgement (what happened today, which decisions t
 bash ~/.agents/hooks/checkpoint.sh <project-root> [-m SUBJECT] [--dry-run]
 ```
 
-Exit codes: `0` committed+pushed (or pushed commits a clean tree would have stranded) · `3` clean tree **and** nothing unpushed · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `2` usage.
+Exit codes: `0` remote backup completed (new commit and/or existing commits pushed) · `3` clean tree and `HEAD` has no commit absent from local remote-tracking refs · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `2` usage.
 
 Invariants, all covered by `verify.sh`:
 
@@ -135,8 +135,8 @@ Invariants, all covered by `verify.sh`:
 - Requires the given directory to **be** the repo toplevel; `rev-parse --show-toplevel` walks up, so a subdirectory would otherwise commit an unrelated parent repo.
 - Reachability uses bare `git ls-remote`, **not** `--exit-code`: that flag returns 2 when no refs match, so an empty freshly created repo would be misread as unreachable and the first push silently refused.
 - Cross-checks the URL against the project `AGENTS.md` `## Repo` line and warns on mismatch, but git config always wins — `AGENTS.md` is a file an AI writes and must never authorise a push.
-- **A clean tree is not the same as nothing to do.** Commits made earlier and never pushed are exactly the state where "the machine is not the only copy" fails, so a clean tree still takes the push path and only skips the commit. Unpushed is counted as `HEAD --not --remotes`, which is also right for a branch with no upstream.
-- `verify.sh` runs the refusals and the push path for real against scratch dirs and a bare remote (non-repo → 10 with no `.git` created; unignored transcript → 20; clean tree with one unpushed commit → pushed, exit 0; clean and in sync → exit 3).
+- **A clean tree is not the same as nothing to do.** Commits made earlier and never pushed are exactly the state where "the machine is not the only copy" fails, so a clean tree still takes the push path and only skips the commit. Local unpushed state is counted as `HEAD --not --remotes`; no fetch occurs, so exit `3` does not claim a live remote is reachable or unchanged.
+- `verify.sh` runs the refusals and the push path for real against scratch dirs and a bare remote (non-repo → 10 with no `.git` created; unignored transcript → 20; clean tree with one locally unpushed commit → pushed, exit 0; clean with no locally unpushed commit → exit 3).
 
 ### §4c `hooks/watch-stale.sh` — staleness watch for detached runs
 
@@ -314,7 +314,8 @@ Trigger: user says **`checkpoint_project`** (done for the day — leave and resu
 3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, cumulative **Models used** list (current marked).
 4. Append a `## <YYYY-MM-DD> — wrap-up` entry to `session_transcript.md` (write-only): what was done today + the next step.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
-6. Finish with: "Checkpoint saved — next step: <X>".
+6. Run `bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"` to commit and push according to §4b. Half-finished work is expected and should still be backed up.
+7. Finish with: "Checkpoint saved — next step: <X>", plus the pushed commit hash or the script's exact non-push reason.
 
 Same for all three tools. Formalizes the "End of session / milestone" rule as an explicit trigger.
 
@@ -344,17 +345,17 @@ Trigger: user says **`global_brain_update <what to change>`**. Target is `~/.age
 
 ### The brain is a git repo
 
-`~/.agents` is versioned and pushed to **`git@github.com:FirstIntegral/1config.git`** (branch `main`, signed commits, no AI attribution, `backups/` gitignored). **Any** change under `~/.agents/**` — trigger typed or not — ends the same turn with `setup.sh` + `sync.sh`. Local-only edits are unfinished edits.
+`~/.agents` is versioned and pushed to **`https://github.com/FirstIntegral/1config.git`** (SSH equivalent also accepted; branch `main`, signed commits, no AI attribution, `backups/` gitignored). **Any** change under `~/.agents/**` — trigger typed or not — ends the same turn with `setup.sh` + `sync.sh`. Local-only edits are unfinished edits.
 
 `sync.sh` is the single scripted path:
 
 ```bash
 bash ~/.agents/sync.sh -m "Commit subject"    # setup+verify → signed commit → push
-bash ~/.agents/sync.sh --no-setup -m "msg"    # skip setup.sh (already ran this turn)
+bash ~/.agents/sync.sh --no-setup -m "msg"    # skip installation, still run verify.sh
 bash ~/.agents/sync.sh --dry-run              # show what would be committed, change nothing
 ```
 
-It refuses to commit when `setup.sh`/`verify.sh` fail, unlocks the GPG agent through the keyring hook, and **never** bypasses signing (a locked key is an error to fix). It is allowlisted for all three tools precisely because it can only ever push this one repo — generic `git push` still prompts everywhere, including here. `verify.sh` reports the brain's remote and warns when the working tree is dirty.
+It requires repository root + branch `main`, validates every origin fetch and push URL against `FirstIntegral/1config`, and requires `== PASS (warnings=0) ==` before any commit, including with `--no-setup`. Normal sync fetches first; `--dry-run` skips both install and fetch so it changes nothing. New commits use explicit `git commit -S`, and every outgoing commit must have a good signature before push. It is allowlisted because it is the narrow verified push path; generic `git push` has explicit ask rules. `verify.sh` reports dirty/ahead brain state as `INFO`, because that state is expected before sync.
 
 ## 6. Memory policy
 
@@ -415,11 +416,12 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 
 ### 7c. Tool updater (boot / resume)
 
-- **Source:** `~/.agents/updater/` (`boot-check.sh`, `update-apps.sh`, `on-resume.sh`, `system-sleep-shim.sh`).
+- **Source:** `~/.agents/updater/` (`boot-check.sh`, `update-apps.sh`, `on-resume.sh`, `refresh-inventory.py`, `system-sleep-shim.sh`).
 - **Installed by** `setup.sh` → `~/cron-jobs/ai-terminal-tools-update-on-boot/` (user scripts only, byte-identical; `update-apps.log` + `.update.lock` stay in the installed dir). `verify.sh` byte-compares.
-- **Crontab:** `@reboot .../boot-check.sh` (managed by setup.sh). **Resume:** root-installed systemd hook `/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh` — install once per machine: `sudo cp ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`.
-- `update-apps.sh` refreshes the SETUP.md inventory table (`by update-apps` — same marker as setup.sh).
-- Both guards **and** the updater hold `flock`s; setup.sh runs serialized.
+- **Crontab:** `@reboot .../boot-check.sh` (managed by setup.sh). **Resume:** root-installed systemd hook `/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`; install or refresh with `sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`.
+- The root hook discovers logged-in users through `loginctl`/`getent`, then asks the system manager to start a delayed transient service with explicit `--uid`, `HOME`, `USER`, and `LOGNAME`. It never executes a user-owned script as root, never relies on root's `$HOME`, and does not detach a child into the sleep hook's cgroup.
+- `update-apps.sh` and `setup.sh` refresh the SETUP.md inventory only when version rows change; the timestamp records which path made a real change.
+- Updater, standalone setup, and normal sync share `.update.lock`; sync holds it through verification, commit, and push so inventory cannot change after the gate.
 
 ## 8. Manual recreation (or just `bash ~/.agents/setup.sh`)
 
@@ -430,7 +432,7 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 5. Claude AGENTS.md SessionStart hook (§4) — merged into `~/.claude/settings.json`, preserving existing hooks.
 6. Install/refresh symlink guard + stray-merge hook (§7a) — copied from `hooks/check-links.sh` + `hooks/merge-strays.sh`.
 7. Install/refresh claude-memory-guard (§6b/§7b) — copied from `hooks/check-claude-memory.sh`.
-8. Install/refresh tool updater (§7c) — copied from `updater/` (systemd resume shim needs root once).
+8. Install/refresh tool updater (§7c) — user scripts copied from `updater/`; install the root resume shim with the `sudo install` command above and repeat after shim changes.
 9. Crontab entries for guards + updater (§7) — preserves other crontab lines.
 10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh`; run the store script once (see §4 GPG).
 11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
@@ -451,7 +453,7 @@ bash ~/.agents/setup.sh    # sync installs + inventory + verify
 bash ~/.agents/verify.sh
 ```
 
-`verify.sh` fails if: symlinks wrong, hooks≠installed guards, updater user-scripts≠source, flag names missing, inventory markers gone or versions drift from installed binaries, grok memory switches wrong, permission fan-out drifts, Claude SessionStart/heredoc hooks missing or smoke tests fail, crontab guards missing, `project-template/` ≠ §5 blocks, project-template files not tracked in git (`project-template/.gitignore` self-shadows the session-file templates — they must be `git add -f`-ed once and stay tracked), paper-template grows a bibliography, or `checkpoint.sh` / `watch-stale.sh` behaviour regresses. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
+`verify.sh` fails if: brain root/branch/push URL is wrong; sync can bypass verification; symlinks or XDG autostart drift; guards, updater scripts, or root resume shim differ from source; resume scheduling loses user/home or masks failure; inventory refresh is non-idempotent; permission policy or modes differ across tools; hooks, cron, templates, checkpoint behavior, or staleness-watch behavior regress. It also rejects bibliography machinery in the paper template and untracked project-template files. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
 
 ## 9. Verification
 

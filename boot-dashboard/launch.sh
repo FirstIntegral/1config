@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Open a terminal window running the boot dashboard.
-# Used by GNOME autostart (.desktop) and for manual: bash ~/.agents/boot-dashboard/launch.sh
+# Used by XDG autostart (.desktop) and for manual: bash ~/.agents/boot-dashboard/launch.sh
 set -u
 
 DASH="${AGENTS_HOME:-$HOME/.agents}/boot-dashboard/dashboard.sh"
@@ -16,12 +16,12 @@ if [ ! -x "$DASH" ]; then
   chmod +x "$DASH" 2>/dev/null || true
 fi
 
-# Small delay so Wayland/GNOME session + network are up (autostart can fire early)
+# Small delay so the graphical session and network are up (autostart can fire early)
 if [ "${BOOT_DASHBOARD_NO_DELAY:-0}" != "1" ]; then
   sleep "${BOOT_DASHBOARD_DELAY:-4}"
 fi
 
-# Prefer ptyxis (this machine's default), then xdg-terminal-exec, then fallbacks
+# Prefer Ptyxis when installed, then xdg-terminal-exec (Foot here), then fallbacks
 run_cmd="bash -lc $(printf '%q' "$DASH")"
 
 # ── Ptyxis: temporary normal size so we don't inherit fullscreen restore ──

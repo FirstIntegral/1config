@@ -35,8 +35,50 @@ echo "[core]"
 [ -x "$AGENTS_HOME/verify.sh" ] && ok "verify.sh executable" || bad "verify.sh missing or not executable"
 [ -x "$AGENTS_HOME/sync.sh" ] && ok "sync.sh executable (brain → github)" || bad "sync.sh missing or not executable"
 if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
-  brain_remote="$(git -C "$AGENTS_HOME" remote get-url origin 2>/dev/null || true)"
-  [ -n "$brain_remote" ] && ok "brain repo origin → $brain_remote" || bad "brain repo has no origin remote"
+  brain_root="$(realpath "$(git -C "$AGENTS_HOME" rev-parse --show-toplevel)")"
+  [ "$brain_root" = "$(realpath "$AGENTS_HOME")" ] \
+    && ok "brain path is repository root" || bad "brain is nested inside repo $brain_root"
+  brain_branch="$(git -C "$AGENTS_HOME" branch --show-current)"
+  [ "$brain_branch" = main ] && ok "brain branch is main" || bad "brain branch is ${brain_branch:-detached}, expected main"
+  mapfile -t brain_fetch_urls < <(git -C "$AGENTS_HOME" remote get-url --all origin 2>/dev/null || true)
+  mapfile -t brain_push_urls < <(git -C "$AGENTS_HOME" remote get-url --push --all origin 2>/dev/null || true)
+  if [ "${#brain_fetch_urls[@]}" -eq 0 ]; then
+    bad "brain repo has no origin fetch URL"
+  else
+    for brain_remote in "${brain_fetch_urls[@]}"; do
+      case "$brain_remote" in
+        https://github.com/FirstIntegral/1config.git|git@github.com:FirstIntegral/1config.git)
+          ok "brain repo fetch URL → $brain_remote" ;;
+        *) bad "brain fetch URL is not FirstIntegral/1config → $brain_remote" ;;
+      esac
+    done
+  fi
+  if [ "${#brain_push_urls[@]}" -eq 0 ]; then
+    bad "brain repo has no origin push URL"
+  else
+    for brain_remote in "${brain_push_urls[@]}"; do
+      case "$brain_remote" in
+        https://github.com/FirstIntegral/1config.git|git@github.com:FirstIntegral/1config.git)
+          ok "brain repo push URL → $brain_remote" ;;
+        *) bad "brain push URL is not FirstIntegral/1config → $brain_remote" ;;
+      esac
+    done
+  fi
+  [ "$(git -C "$AGENTS_HOME" config --bool commit.gpgsign 2>/dev/null || true)" = true ] \
+    && ok "brain commit.gpgsign=true" || bad "brain commit.gpgsign is not true"
+  brain_head_sig="$(git -C "$AGENTS_HOME" show -s --format='%G?' HEAD 2>/dev/null || true)"
+  case "$brain_head_sig" in
+    G|U) ok "brain HEAD has a good signature (sig=$brain_head_sig)" ;;
+    *) bad "brain HEAD signature is not good (sig=${brain_head_sig:-none})" ;;
+  esac
+  brain_unsigned=""
+  while IFS= read -r brain_commit; do
+    [ -n "$brain_commit" ] || continue
+    brain_sig="$(git -C "$AGENTS_HOME" show -s --format='%G?' "$brain_commit")"
+    case "$brain_sig" in G|U) ;; *) brain_unsigned="$brain_commit:$brain_sig"; break ;; esac
+  done < <(git -C "$AGENTS_HOME" rev-list origin/main..main 2>/dev/null || true)
+  [ -z "$brain_unsigned" ] && ok "all outgoing brain commits are signed" \
+    || bad "unsigned/unverifiable outgoing brain commit $brain_unsigned"
   # Dirty/ahead is normal mid-edit (verify runs before the commit), so it is INFO, not a warning.
   brain_dirty="$(git -C "$AGENTS_HOME" status --porcelain)"
   brain_ahead="$(git -C "$AGENTS_HOME" log origin/main..main --oneline 2>/dev/null || true)"
@@ -87,6 +129,74 @@ for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-
   [ -f "$HOOKS/$f" ] && { bash -n "$HOOKS/$f" 2>/dev/null && ok "hooks/$f parses" || bad "hooks/$f SYNTAX ERROR"; }
 done
 
+# Every sync path must require a clean verification result. Scratch scripts let
+# this test the gate without installing anything or contacting a remote.
+echo "[sync.sh behaviour]"
+if [ -x "$AGENTS_HOME/sync.sh" ]; then
+  _syncsrc="$AGENTS_HOME/sync.sh"
+  _synctmp="$(mktemp -d)"
+  git -C "$_synctmp" init -q -b main
+  git -C "$_synctmp" remote add origin https://github.com/FirstIntegral/1config.git
+
+  printf '#!/bin/sh\necho "== FAIL (fail>=1, warnings=0) =="\nexit 1\n' > "$_synctmp/verify.sh"
+  chmod +x "$_synctmp/verify.sh"
+  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -ne 0 ] && ok "--no-setup still refuses failed verify.sh" \
+                    || bad "sync.sh --no-setup bypassed failed verification"
+
+  printf '#!/bin/sh\necho "== PASS (warnings=1) =="\nexit 0\n' > "$_synctmp/setup.sh"
+  chmod +x "$_synctmp/setup.sh"
+  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -ne 0 ] && ok "refuses PASS with warnings even when setup exits zero" \
+                    || bad "sync.sh accepted PASS with warnings"
+
+  printf '#!/bin/sh\necho "== PASS (warnings=0) =="\n' > "$_synctmp/verify.sh"
+  printf '#!/bin/sh\ntouch "$AGENTS_HOME/setup-was-run"\n' > "$_synctmp/setup.sh"
+  chmod +x "$_synctmp/verify.sh" "$_synctmp/setup.sh"
+  printf 'dirty\n' > "$_synctmp/work.txt"
+  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --dry-run >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 0 ] && [ ! -e "$_synctmp/setup-was-run" ] \
+    && ok "--dry-run is check-only and does not run setup.sh" \
+    || bad "sync.sh --dry-run changed installation state (exit $_rc)"
+
+  git -C "$_synctmp" config remote.origin.pushurl https://example.invalid/not-1config.git
+  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -ne 0 ] && ok "refuses an unexpected origin pushurl" \
+                    || bad "sync.sh accepted an unexpected origin pushurl"
+  git -C "$_synctmp" config --unset-all remote.origin.pushurl
+
+  git -C "$_synctmp" remote set-url origin https://example.invalid/not-1config.git
+  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -ne 0 ] && ok "refuses an unexpected origin fetch URL" \
+                    || bad "sync.sh accepted an unexpected origin fetch URL"
+  git -C "$_synctmp" remote set-url origin https://github.com/FirstIntegral/1config.git
+
+  git -C "$_synctmp" symbolic-ref HEAD refs/heads/not-main
+  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -ne 0 ] && ok "refuses to sync from a branch other than main" \
+                    || bad "sync.sh accepted a non-main branch"
+  git -C "$_synctmp" symbolic-ref HEAD refs/heads/main
+
+  mkdir "$_synctmp/nested"
+  _rc=0; AGENTS_HOME="$_synctmp/nested" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -ne 0 ] && ok "refuses an AGENTS_HOME nested inside another repo" \
+                    || bad "sync.sh accepted a nested repo path"
+  rm -rf "$_synctmp"
+else
+  bad "sync.sh unavailable for behaviour checks"
+fi
+if grep -q 'SETUP_STRICT' "$AGENTS_HOME/setup.sh"; then
+  bad "setup.sh still has a lenient SETUP_STRICT path"
+else
+  ok "setup.sh has no lenient verification path"
+fi
+if grep -q 'git commit -S' "$AGENTS_HOME/sync.sh" && grep -q "format='%G?'" "$AGENTS_HOME/sync.sh" \
+    && grep -q 'refs/heads/\$BRANCH:refs/remotes/origin/\$BRANCH' "$AGENTS_HOME/sync.sh"; then
+  ok "sync.sh explicitly signs and verifies outgoing commits after a fresh fetch"
+else
+  bad "sync.sh signed-outgoing enforcement is incomplete"
+fi
+
 # checkpoint.sh behaviour, not just presence. The failure that matters is the one that
 # publishes something, so the two refusals are exercised for real against a scratch dir.
 echo "[checkpoint.sh behaviour]"
@@ -130,8 +240,8 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     || bad "checkpoint.sh left unpushed commits on a clean tree (exit $_rc, remote has $_remote_count)"
   # and with nothing unpushed either, it must still be a no-op
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -eq 3 ] && ok "clean and in sync is still a no-op (exit 3)" \
-                   || bad "checkpoint.sh did not no-op when clean and in sync (exit $_rc)"
+  [ "$_rc" -eq 3 ] && ok "clean with no locally unpushed commit is a no-op (exit 3)" \
+                   || bad "checkpoint.sh did not no-op with no locally unpushed commit (exit $_rc)"
   rm -rf "$_cpwork" "$_cpremote"
 else
   bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
@@ -171,11 +281,25 @@ BD="$AGENTS_HOME/boot-dashboard"
 if [ -d "$BD" ]; then
   [ -x "$BD/dashboard.sh" ] && ok "boot-dashboard/dashboard.sh" || bad "boot-dashboard/dashboard.sh missing/not exec"
   [ -x "$BD/launch.sh" ] && ok "boot-dashboard/launch.sh" || bad "boot-dashboard/launch.sh missing/not exec"
-  if [ -f "$HOME/.config/autostart/agents-boot-status.desktop" ]; then
-    if grep -q 'boot-dashboard/launch.sh' "$HOME/.config/autostart/agents-boot-status.desktop"; then
-      ok "autostart agents-boot-status.desktop"
+  DESK_SRC="$BD/agents-boot-status.desktop"
+  DESK_DST="$HOME/.config/autostart/agents-boot-status.desktop"
+  if [ ! -f "$DESK_SRC" ]; then
+    bad "boot-dashboard desktop source missing"
+  elif grep -qE '^(OnlyShowIn|NotShowIn)=' "$DESK_SRC"; then
+    bad "boot-dashboard desktop file is filtered to selected desktops"
+  else
+    ok "boot-dashboard XDG autostart is cross-desktop (Wayland + X11)"
+  fi
+  if [ -f "$DESK_DST" ]; then
+    if [ -f "$DESK_SRC" ] && cmp -s <(sed "s|^Exec=.*|Exec=$BD/launch.sh|" "$DESK_SRC") "$DESK_DST"; then
+      ok "installed boot-dashboard autostart matches source"
     else
-      bad "autostart desktop present but Exec wrong (run setup.sh)"
+      bad "installed boot-dashboard autostart differs from source (run setup.sh)"
+    fi
+    if grep -qE '^(OnlyShowIn|NotShowIn)=' "$DESK_DST"; then
+      bad "installed boot-dashboard autostart excludes some desktops (run setup.sh)"
+    else
+      ok "installed boot-dashboard autostart has no desktop filter"
     fi
   else
     bad "autostart desktop missing (run setup.sh)"
@@ -227,7 +351,7 @@ fi
 # --- tool updater installed copies must match source byte-for-byte ---------
 echo "[updater vs source]"
 if [ -d "$UPD_SRC" ]; then
-  for s in boot-check.sh update-apps.sh on-resume.sh; do
+  for s in boot-check.sh update-apps.sh on-resume.sh refresh-inventory.py; do
     if [ -f "$UPD_SRC/$s" ] && [ -f "$UPD_DIR/$s" ]; then
       if cmp -s "$UPD_SRC/$s" "$UPD_DIR/$s"; then
         ok "updater $s matches source"
@@ -238,12 +362,47 @@ if [ -d "$UPD_SRC" ]; then
       bad "updater install missing: $UPD_DIR/$s (run setup.sh)"
     fi
   done
-  [ -f "$UPD_SRC/system-sleep-shim.sh" ] && ok "updater system-sleep-shim.sh present" || bad "updater system-sleep-shim.sh missing"
-  if [ -f /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh ]; then
-    ok "systemd resume shim installed (root-owned)"
+  SHIM_SRC="$UPD_SRC/system-sleep-shim.sh"
+  SHIM_DST="/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh"
+  [ -x "$SHIM_SRC" ] && ok "updater system-sleep-shim.sh present + executable" || bad "updater system-sleep-shim.sh missing/not executable"
+  if [ -f "$SHIM_DST" ]; then
+    [ -x "$SHIM_DST" ] && ok "systemd resume shim executable" || bad "systemd resume shim is not executable"
+    [ "$(stat -c '%U:%G' "$SHIM_DST" 2>/dev/null)" = "root:root" ] \
+      && ok "systemd resume shim root-owned" || bad "systemd resume shim is not root:root"
+    cmp -s "$SHIM_SRC" "$SHIM_DST" \
+      && ok "systemd resume shim matches source" \
+      || bad "systemd resume shim DRIFT — refresh with sudo install (see SETUP.md §7c)"
   else
-    note "systemd resume shim not installed (needs root once): sudo cp ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/"
+    info "systemd resume shim not installed (optional): sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh"
   fi
+
+  # Exercise user/home discovery and systemd-run arguments without scheduling a unit.
+  _rstmp="$(mktemp -d)"
+  _rslog="$_rstmp/systemd-run.args"
+  printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$SYSTEMD_RUN_LOG"\n' > "$_rstmp/systemd-run"
+  printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$(id -u) $(id -un) no active" > "$_rstmp/loginctl"
+  printf '#!/bin/sh\nprintf "%%s\\n" "%s:x:%s:%s::%s:/bin/sh"\n' \
+    "$(id -un)" "$(id -u)" "$(id -g)" "$HOME" > "$_rstmp/getent"
+  chmod +x "$_rstmp/systemd-run" "$_rstmp/loginctl" "$_rstmp/getent"
+  _rc=0
+  AI_UPDATE_DELAY=1s SYSTEMD_RUN="$_rstmp/systemd-run" LOGINCTL="$_rstmp/loginctl" \
+    GETENT="$_rstmp/getent" SYSTEMD_RUN_LOG="$_rslog" \
+    sh "$SHIM_SRC" post suspend >/dev/null 2>&1 || _rc=$?
+  if [ "$_rc" -eq 0 ] \
+      && grep -q -- "--uid=$(id -un)" "$_rslog" \
+      && grep -q -- "--setenv=HOME=$HOME" "$_rslog" \
+      && grep -q -- "$UPD_DIR/on-resume.sh" "$_rslog"; then
+    ok "resume shim schedules updater with explicit user + home"
+  else
+    bad "resume shim user/home scheduling smoke failed (exit $_rc)"
+  fi
+  printf '#!/bin/sh\nexit 7\n' > "$_rstmp/systemd-run"
+  _rc=0
+  AI_UPDATE_DELAY=1s SYSTEMD_RUN="$_rstmp/systemd-run" LOGINCTL="$_rstmp/loginctl" \
+    GETENT="$_rstmp/getent" sh "$SHIM_SRC" post suspend >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 1 ] && ok "resume shim propagates scheduling failure" \
+                    || bad "resume shim masked scheduling failure (exit $_rc)"
+  rm -rf "$_rstmp"
 else
   bad "updater/ source missing (copy ~/.agents fully)"
 fi
@@ -300,6 +459,40 @@ if grep -q 'TOOL_INVENTORY_START' "$SETUP" && grep -q 'TOOL_INVENTORY_END' "$SET
 else
   bad "SETUP.md missing TOOL_INVENTORY_START/END markers"
 fi
+INV_REFRESH="$UPD_SRC/refresh-inventory.py"
+if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=os.environ["INV_REFRESH"]; compile(open(p, encoding="utf-8").read(), p, "exec")' 2>/dev/null; then
+  _invtmp="$(mktemp)"
+  cp "$SETUP" "$_invtmp"
+  _inv_rc=0
+  SETUP_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+  if [ "$_inv_rc" -eq 0 ]; then
+    _inv_before="$(sha256sum "$_invtmp" | cut -d' ' -f1)"
+    SETUP_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+    _inv_after="$(sha256sum "$_invtmp" | cut -d' ' -f1)"
+    [ "$_inv_rc" -eq 0 ] && [ "$_inv_before" = "$_inv_after" ] \
+      && ok "inventory refresh is byte-idempotent when versions are unchanged" \
+      || bad "inventory refresh failed or dirtied SETUP.md on a no-op run"
+    INV_FILE="$_invtmp" python3 -c 'import os, pathlib; p=pathlib.Path(os.environ["INV_FILE"]); s=p.read_text(); p.write_text(s.replace("<!-- last refreshed:", "| Bogus Tool | 0.0.0 | x | x |\n<!-- last refreshed:", 1))'
+    SETUP_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+    if [ "$_inv_rc" -eq 0 ] && ! grep -q 'Bogus Tool' "$_invtmp"; then
+      ok "inventory refresh replaces stale or extra rows exactly"
+    else
+      bad "inventory refresh left stale or extra rows"
+    fi
+  else
+    bad "inventory refresh smoke failed (exit $_inv_rc)"
+  fi
+  rm -f "$_invtmp"
+else
+  bad "updater/refresh-inventory.py missing or invalid"
+fi
+if grep -q '\.update\.lock' "$AGENTS_HOME/setup.sh" && grep -q 'flock 8' "$AGENTS_HOME/setup.sh" \
+    && grep -q '\.update\.lock' "$AGENTS_HOME/sync.sh" && grep -q 'AGENTS_UPDATE_LOCK_HELD=1' "$AGENTS_HOME/sync.sh" \
+    && grep -q '\.update\.lock' "$UPD_SRC/update-apps.sh" && grep -q 'flock -n 9' "$UPD_SRC/update-apps.sh"; then
+  ok "sync, setup, and updater share serialization lock"
+else
+  bad "sync/setup/updater serialization lock missing or divergent"
+fi
 
 # --- continue_project parity (SETUP must mention residue check) ------------
 echo "[doc parity]"
@@ -317,6 +510,22 @@ for f in "$CANON" "$SETUP"; do
     fi
   done
 done
+if SETUP_MD="$SETUP" python3 - <<'PY'
+import os, pathlib, re, sys
+text = pathlib.Path(os.environ["SETUP_MD"]).read_text()
+m = re.search(r"## 5c\. `checkpoint_project`(.*?)(?=\n## 5d\.)", text, re.S)
+sys.exit(0 if m and "hooks/checkpoint.sh" in m.group(1) and "commit and push" in m.group(1) else 1)
+PY
+then
+  ok "SETUP.md checkpoint_project includes checkpoint.sh commit/push step"
+else
+  bad "SETUP.md checkpoint_project omits its git half"
+fi
+if grep -qE '\[[0-9]+[a-z]?/[0-9]+\]' "$AGENTS_HOME/setup.sh"; then
+  bad "setup.sh has stale fixed-total step banners"
+else
+  ok "setup.sh stage banners make no stale total-count claim"
+fi
 grep -qF 'math@brwsk.xyz' "$CANON" && ok "paper author contact pinned in AGENTS.md" || bad "paper author contact missing from AGENTS.md"
 if grep -q 'Residue / conflict check' "$SETUP" || grep -q 'Residue / conflict check' "$CANON"; then
   ok "residue/conflict check wording present"
@@ -359,29 +568,85 @@ else
   parity_out="$(PERMS_SRC="$PERMS_SRC" python3 - <<'PY'
 import json, os, pathlib, re, tomllib
 
+def load_jsonc(path):
+    raw = path.read_text()
+    out, i, n, in_string, escaped = [], 0, len(raw), False, False
+    while i < n:
+        c = raw[i]
+        if in_string:
+            out.append(c)
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+            i += 1
+            continue
+        if c == '"':
+            in_string = True
+            out.append(c)
+            i += 1
+        elif raw.startswith("//", i):
+            i = raw.find("\n", i)
+            if i == -1:
+                break
+        elif raw.startswith("/*", i):
+            i = raw.find("*/", i)
+            i = n if i == -1 else i + 2
+        else:
+            out.append(c); i += 1
+    text = "".join(out)
+    out, i, n, in_string, escaped = [], 0, len(text), False, False
+    while i < n:
+        c = text[i]
+        if in_string:
+            out.append(c)
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+            i += 1
+            continue
+        if c == '"':
+            in_string = True
+        elif c == ',':
+            j = i + 1
+            while j < n and text[j].isspace():
+                j += 1
+            if j < n and text[j] in '}]':
+                i += 1
+                continue
+        out.append(c); i += 1
+    return json.loads("".join(out))
+
 canon = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
 src = canon.get("permissions", {})
 home = pathlib.Path.home()
-want = {b: src.get(b, []) for b in ("allow", "deny")}
+want = {b: list(src.get(b, [])) for b in ("allow", "ask", "deny")}
+grok_want = {b: [r for r in want[b] if re.fullmatch(r"Bash\(.*\)", r)] for b in want}
 
-def report(tool, missing, total):
-    print(f"{'OK' if not missing else 'MISS'}\t{tool}\t{total - len(missing)}/{total}\t{missing[0] if missing else ''}")
+def report(tool, problems, total):
+    print(f"{'OK' if not problems else 'MISS'}\t{tool}\t{total if not problems else 0}/{total}\t{problems[0] if problems else ''}")
 
-# Claude — verbatim rules in permissions.allow / permissions.deny
+# Claude — verbatim rules in permissions.allow / permissions.ask / permissions.deny
 p = home / ".claude/settings.json"
 if p.is_file():
     got = json.loads(p.read_text()).get("permissions", {})
-    miss = [r for b in want for r in want[b] if r not in got.get(b, [])]
-    report("claude", miss, sum(len(v) for v in want.values()))
+    problems = [b for b in want if got.get(b, []) != want[b]]
+    report("claude", problems, sum(len(v) for v in want.values()))
 else:
     print("SKIP\tclaude\t-\tno settings.json")
 
-# Grok — verbatim rules in [permission] allow / deny
+# Grok — verbatim rules in [permission] allow / ask / deny
 p = home / ".grok/config.toml"
 if p.is_file():
     got = tomllib.loads(p.read_text()).get("permission", {})
-    miss = [r for b in want for r in want[b] if r not in got.get(b, [])]
-    report("grok", miss, sum(len(v) for v in want.values()))
+    problems = [b for b in grok_want if got.get(b, []) != grok_want[b]]
+    problems += [k for k in got if k not in grok_want]
+    report("grok", problems, sum(len(v) for v in grok_want.values()))
 else:
     print("SKIP\tgrok\t-\tno config.toml")
 
@@ -395,12 +660,16 @@ def pats(bucket):
             out.append(m.group(1))
     return out
 if p.is_file():
-    text = re.sub(r"^\s*//.*$", "", p.read_text(), flags=re.M)
-    got = json.loads(text).get("permission", {}).get("bash", {})
+    oc_cfg = load_jsonc(p)
+    got = oc_cfg.get("permission", {}).get("bash", {})
     got = got if isinstance(got, dict) else {}
-    miss = [x for x in pats("allow") if got.get(x) != "allow"] + \
-           [x for x in pats("deny") if got.get(x) != "deny"]
-    report("opencode", miss, len(pats("allow")) + len(pats("deny")))
+    expected = {"*": "allow" if canon.get("defaults", {}).get("bash_without_prompt") else "ask"}
+    for bucket, action in (("allow", "allow"), ("ask", "ask"), ("deny", "deny")):
+        for pattern in pats(bucket):
+            expected.pop(pattern, None)
+            expected[pattern] = action
+    problems = [] if list(got.items()) == list(expected.items()) else ["permission.bash content/order"]
+    report("opencode", problems, len(expected))
 else:
     print("SKIP\topencode\t-\tno opencode.jsonc")
 
@@ -430,28 +699,32 @@ mode("claude", p,
      claude_expect)
 
 p = home / ".grok/config.toml"
+if bash_on:
+    grok_expect = "always-approve"
+elif edit_on:
+    grok_expect = "acceptEdits"
+else:
+    grok_expect = "ask"
 mode("grok", p,
      tomllib.loads(p.read_text()).get("ui", {}).get("permission_mode") if p.is_file() else None,
-     "always-approve" if (edit_on or bash_on) else None)
+     grok_expect)
 
 p = home / ".config/opencode/opencode.jsonc"
 if p.is_file():
-    text = re.sub(r"^\s*//.*$", "", p.read_text(), flags=re.M)
-    oc = json.loads(text).get("permission", {})
+    oc = oc_cfg.get("permission", {})
     got_edit = oc.get("edit")
     got_bash = oc.get("bash") if isinstance(oc.get("bash"), dict) else {}
 else:
     got_edit = None
     got_bash = {}
 mode("opencode", p, got_edit, "allow" if edit_on else "ask")
-# OpenCode bash catch-all when bash_without_prompt
-if bash_on:
-    if not p.is_file():
-        print(f"SKIP\topencode-bash\t-\tno opencode.jsonc")
-    elif got_bash.get("*") == "allow":
-        print(f"MODEOK\topencode-bash\t*=allow\t")
-    else:
-        print(f"MODEMISS\topencode-bash\t{got_bash.get('*') or 'unset'}\tallow")
+oc_bash_expect = "allow" if bash_on else "ask"
+if not p.is_file():
+    print(f"SKIP\topencode-bash\t-\tno opencode.jsonc")
+elif got_bash.get("*") == oc_bash_expect:
+    print(f"MODEOK\topencode-bash\t*={oc_bash_expect}\t")
+else:
+    print(f"MODEMISS\topencode-bash\t{got_bash.get('*') or 'unset'}\t{oc_bash_expect}")
 PY
 )" || parity_out=""
   if [ -z "$parity_out" ]; then
@@ -459,10 +732,10 @@ PY
   else
     while IFS=$'\t' read -r status tool count detail; do
       case "$status" in
-        OK)       ok   "$tool carries all canonical rules ($count)" ;;
-        MISS)     bad  "$tool missing canonical rules ($count) e.g. $detail — run setup.sh" ;;
-        MODEOK)   ok   "$tool edit-without-prompt mode = $count" ;;
-        MODEMISS) bad  "$tool edit-without-prompt mode = $count, canonical wants $detail — run setup.sh" ;;
+        OK)       ok   "$tool permission policy exactly matches canonical ($count)" ;;
+        MISS)     bad  "$tool permission policy drift ($count) at $detail — run setup.sh" ;;
+        MODEOK)   ok   "$tool permission mode = $count" ;;
+        MODEMISS) bad  "$tool permission mode = $count, canonical wants $detail — run setup.sh" ;;
         SKIP)     note "$tool: $detail" ;;
       esac
     done <<< "$parity_out"
@@ -626,8 +899,6 @@ expect = {
 bad = []
 for k, want in expect.items():
     got = rows.get(k, "")
-    if "unknown" in (want, got):
-        continue
     if want != got:
         bad.append(f"{k}: SETUP.md={got} installed={want}")
 if bad:

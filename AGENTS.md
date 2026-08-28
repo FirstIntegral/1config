@@ -25,7 +25,7 @@ bash ~/.agents/sync.sh -m "<subject>"   # setup + verify + signed commit + push 
 
 Do not end a turn that edited `~/.agents/**` without running **both**. `verify.sh` alone is check-only (does not install); `sync.sh` re-runs `setup.sh` itself and refuses to commit if verify fails. The brain is a git repo — a local-only edit is an unfinished edit (see `global_brain_update`).
 
-**Boot dashboard:** `~/.agents/boot-dashboard/` — on GNOME login opens a status terminal (autostart). Not project code; machine health only.
+**Boot dashboard:** `~/.agents/boot-dashboard/` — on graphical login opens a status terminal through cross-desktop XDG autostart (Wayland or X11). Not project code; machine health only.
 
 ---
 
@@ -46,42 +46,42 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 
 - Do NOT use `--no-gpg-sign`, `-c commit.gpgsign=false`, or any other bypass.
 - If signing fails (locked key, no pinentry), STOP and unlock, then commit. Never work around it.
-- **Unlock is automated** — the passphrase lives in the GNOME keyring (encrypted at rest; keyring unlocks at login via PAM). `~/.agents/hooks/gpg-agent-unlock.sh` test-signs and, if the agent is empty, fetches the passphrase over Secret Service D-Bus and unlocks with `--pinentry-mode loopback`. Runs at login from the boot dashboard; invoke anytime. Nothing to type, ever.
+- **Unlock is attempted automatically** — the passphrase lives in the Secret Service keyring, encrypted at rest. `~/.agents/hooks/gpg-agent-unlock.sh` test-signs and, if the agent is empty, fetches the passphrase over D-Bus and unlocks with `--pinentry-mode loopback`. The boot dashboard runs it at graphical login. Password logins normally unlock the keyring through PAM; autologin or a locked/empty keyring needs the fallback below.
 - One-time setup on a fresh machine (prompts once, stores in keyring, nothing on disk): `bash ~/.agents/hooks/gpg-store-passphrase.sh`
 - If the automated unlock fails (keyring locked/empty, passphrase changed): re-store with the command above, or manual fallback in a real terminal: `export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u 95FBA6E0AA245342 --clearsign -o /dev/null` (prompts, caches). Then retry the commit.
 - History rewrites (rebase, filter-repo, amend) must leave commits re-signed before any push.
 
 ---
 
-## Permission allowlist (all three tools) — canonical file
+## Permission policy (all three tools) — canonical file
 
-Global no-prompt allowlist lives in **`~/.agents/permissions.json`**. `setup.sh` fans it out to every tool, union-style, deduped, idempotent — existing rules are never dropped:
+Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` fans it out to every tool, deduped and idempotent. Canonical permission buckets and modes win so revocations propagate; unrelated non-permission config survives:
 
 | Step | Tool | Lands in | Form |
 |------|------|----------|------|
-| `5b` | Claude Code | `~/.claude/settings.json` → `permissions.allow` / `.deny` | rules verbatim |
-| `5c` | Grok | `~/.grok/config.toml` → `[permission] allow` / `deny` | rules verbatim (Grok speaks the same `Bash(...)` syntax) |
-| `5d` | OpenCode | `~/.config/opencode/opencode.jsonc` → `permission.bash` | `Bash(X)` → `"X": "allow"` / `"deny"` |
+| `5b` | Claude Code | `~/.claude/settings.json` → `permissions.allow` / `.ask` / `.deny` | rules verbatim |
+| `5c` | Grok | `~/.grok/config.toml` → `[permission] allow` / `ask` / `deny` | rules verbatim (Grok speaks the same `Bash(...)` syntax) |
+| `5d` | OpenCode | `~/.config/opencode/opencode.jsonc` → `permission.bash` | `Bash(X)` → `"X": "allow"` / `"ask"` / `"deny"` |
 
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
-- OpenCode gets only the `Bash(...)` rules; `Skill(...)` and other tool rules are Claude/Grok-only. No catch-all is written for OpenCode, so its permissive defaults are never tightened by this file — the deny list still lands.
-- Grok runs `[ui] permission_mode = "always-approve"`, so allow rules are moot there today; **deny rules still apply** in that mode, which is why they are fanned out too.
-- Allowed = runs with no prompt in **every** project. Unmatched calls still prompt **unless** `bash_without_prompt` is on (Claude then uses `bypassPermissions`). `deny` entries are hard-blocked when the mode still consults the list.
-- Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project `.claude/settings.local.json` one-offs from clicking Approve are disposable noise — do not promote wholesale.
+- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; specific canonical rules follow it because OpenCode uses the last match.
+- Grok runs `[ui] permission_mode = "acceptEdits"` under the current policy. File edits need no prompt; Bash still follows allow/ask/deny rules.
+- `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. Generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
+- Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project one-offs remain project-local; global generated permission buckets are replaced from canonical on setup.
 
 ### `defaults.edit_without_prompt` + `defaults.bash_without_prompt`
 
-Same canonical file, `defaults` block. Both currently **true**. Fanned out by `setup.sh` steps 5b/5c/5d; checked by `verify.sh`.
+Same canonical file, `defaults` block. `edit_without_prompt` is **true**; `bash_without_prompt` is **false**. Fanned out by `setup.sh` steps 5b/5c/5d; checked by `verify.sh`.
 
 | Flag | Claude Code | Grok | OpenCode |
 |------|-------------|------|----------|
-| `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if bash flag false) | `[ui] permission_mode = "always-approve"` | `permission.edit = "allow"` |
-| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | same always-approve | `permission.bash["*"] = "allow"` (deny last) |
+| `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if Bash flag false) | `[ui] permission_mode = "acceptEdits"` | `permission.edit = "allow"` |
+| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` |
 
-**Why `bypassPermissions` for Claude bash:** the allowlist cannot remove hard-coded safety prompts — e.g. *"Compound command contains cd with write operation"*, *"This command changes directory before running git, which can execute untrusted hooks"*, obfuscation/parse verdicts. Only `bypassPermissions` (or `--dangerously-skip-permissions`) kills those. Grok/OpenCode never had that class.
+**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. Keep the flag false unless the user explicitly chooses full Bash autonomy.
 
-With `bash_without_prompt` true, Claude's deny list is **best-effort only** (bypass skips permission checks). Flip either flag `false` + `setup.sh` to tighten (Claude → `acceptEdits` or `default`, OpenCode edit → `"ask"`, Grok key removed if both off).
+With `bash_without_prompt` true, Claude's deny and ask lists are **best-effort only** because bypass skips permission checks. Current false setting keeps all three tools in edit-accepting, Bash-reviewing modes.
 
 ### Compound commands (when bash_without_prompt is false)
 
@@ -254,8 +254,8 @@ Read its exit code and report accordingly:
 
 | exit | meaning | what happened |
 |---|---|---|
-| `0` | committed and pushed | normal path |
-| `3` | clean tree | nothing to commit |
+| `0` | remote backup completed | committed new changes and/or pushed existing local commits |
+| `3` | clean tree; `HEAD` has no commit absent from local remote-tracking refs | no local work to back up |
 | `10` | **not a git repo** | nothing done, no `git init` |
 | `11` | project is inside another repo, not its root | nothing done |
 | `12` | no remote | committed locally, not pushed |
@@ -264,6 +264,8 @@ Read its exit code and report accordingly:
 | `21` | commit or push failed | any commit made is safe; not retried, not forced |
 
 `--dry-run` prints the plan and changes nothing. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
+
+Exit `3` is a local-ref statement, not proof that a live remote is reachable or unchanged: the script does not fetch. A clean tree with commits absent from local remote-tracking refs continues to the remote and push path.
 
 **Gate the script applies, before touching git at all:**
 
@@ -304,7 +306,7 @@ git push                        # -u origin <branch> if the branch has no upstre
 - **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → `bash ~/.agents/hooks/gpg-agent-unlock.sh`, retry. Never bypass.
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
 - **`git push` is not allowlisted and will prompt.** That is deliberate and stays that way: the prompt is the last look before work leaves the machine. Answer it; do not route around it.
-- **Nothing to commit** → skip, say "nothing to commit" in the closing line.
+- **Clean with nothing locally unpushed** → exit `3`. Clean with commits absent from local remote-tracking refs → skip the commit but still push.
 - **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
 
 Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.

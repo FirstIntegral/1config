@@ -203,7 +203,7 @@ check_versions() {
 }
 
 check_gpg_sign() {
-  # Auto-unlocks the signing key from the GNOME keyring (no prompts).
+  # Attempts unlock through Secret Service; locked autologin keyrings can fail.
   if [ ! -x "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" ]; then
     row warn "signing" "unlock hook missing"
     return 1
@@ -212,7 +212,7 @@ check_gpg_sign() {
     row ok "signing" "gpg key unlocked (commits silent)"
     return 0
   fi
-  row warn "signing" "not unlocked — run gpg-store-passphrase.sh once"
+  row warn "signing" "not unlocked — keyring locked/empty; see AGENTS.md fallback"
   return 1
 }
 

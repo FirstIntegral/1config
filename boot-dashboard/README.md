@@ -6,7 +6,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 |------|------|
 | `dashboard.sh` | UI + checks |
 | `launch.sh` | opens Ptyxis (or fallback terminal) with the dashboard |
-| `agents-boot-status.desktop` | GNOME autostart template |
+| `agents-boot-status.desktop` | Cross-desktop XDG autostart template (Wayland or X11) |
 
 **Installed by** `~/.agents/setup.sh` → `~/.config/autostart/agents-boot-status.desktop`
 
@@ -23,7 +23,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. Runs **before** ecosystem so inventory refresh finishes first. |
 | **ecosystem** | `verify.sh` PASS (after tool updates — avoids false inventory mismatch at boot) |
 | **tool versions** | grok / claude / opencode on PATH |
-| **signing** | GPG signing key unlocked from GNOME keyring (no prompts); warn → run `gpg-store-passphrase.sh` once |
+| **signing** | Attempts GPG signing-key unlock from Secret Service; warn means keyring is locked/empty or passphrase changed |
 
 ## Window size
 

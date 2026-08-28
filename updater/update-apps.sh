@@ -398,47 +398,11 @@ else
   echo "[$(ts)] claude not found — skipping update" >> "$LOG"
 fi
 
-# --- refresh SETUP.md inventory versions (always; even if upgrades no-op) ---
+# --- refresh SETUP.md inventory only when installed versions changed --------
 if [ -f "$SETUP_MD" ] && command -v python3 >/dev/null 2>&1; then
   echo "[$(ts)] -> refresh SETUP.md tool inventory" >> "$LOG"
-  if SETUP_MD="$SETUP_MD" python3 - >>"$LOG" 2>&1 <<'PY'
-import os, re, subprocess, pathlib, datetime
-
-setup = pathlib.Path(os.environ["SETUP_MD"])
-if not setup.is_file():
-    raise SystemExit(f"missing {setup}")
-
-def run(cmd: str) -> str:
-    try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
-        out = (r.stdout or r.stderr or "").strip().splitlines()
-        return out[0] if out else "unknown"
-    except Exception as e:
-        return f"unknown ({e})"
-
-def ver(cmd: str) -> str:
-    s = run(cmd)
-    m = re.search(r"(\d+\.\d+\.\d+)", s)
-    return m.group(1) if m else (s[:40] or "unknown")
-
-table = (
-    "| Tool | Version | Binary | Config |\n"
-    "|------|---------|--------|--------|\n"
-    f"| Grok Build | {ver('grok --version 2>/dev/null || true')} | `~/.grok/bin/grok` | `~/.grok/config.toml` |\n"
-    f"| Claude Code | {ver('claude --version 2>/dev/null || true')} | `~/.local/bin/claude` | `~/.claude/settings.json` |\n"
-    f"| OpenCode | {ver('opencode --version 2>/dev/null || true')} | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |\n"
-    f"<!-- last refreshed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} by update-apps -->"
-)
-text = setup.read_text()
-pat = re.compile(r"<!-- TOOL_INVENTORY_START -->.*?<!-- TOOL_INVENTORY_END -->", re.S)
-if not pat.search(text):
-    raise SystemExit("TOOL_INVENTORY markers missing in SETUP.md")
-setup.write_text(pat.sub(
-    "<!-- TOOL_INVENTORY_START -->\n" + table + "\n<!-- TOOL_INVENTORY_END -->",
-    text,
-))
-print("inventory OK")
-PY
+  if SETUP_MD="$SETUP_MD" INVENTORY_SOURCE=update-apps \
+      python3 "$DIR/refresh-inventory.py" >>"$LOG" 2>&1
   then
     echo "[$(ts)] inventory OK" >> "$LOG"
   else

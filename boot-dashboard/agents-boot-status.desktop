@@ -10,4 +10,3 @@ Categories=System;Monitor;
 StartupNotify=false
 X-GNOME-Autostart-enabled=true
 X-GNOME-Autostart-Delay=5
-OnlyShowIn=GNOME;Unity;X-Cinnamon;

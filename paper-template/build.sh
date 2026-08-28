@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the paper: latexmk drives pdflatex + biber until references settle.
+# Build the reference-free paper with latexmk until cross-references settle.
 # Usage: bash docs/paper/build.sh [clean]
 set -euo pipefail
 
