@@ -14,7 +14,7 @@ Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.s
 | Grok Build | 1.0.5 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
 | Claude Code | 2.1.250 | `~/.local/bin/claude` | `~/.claude/settings.json` |
 | OpenCode | 1.18.23 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-29 01:17 by update-apps -->
+<!-- last refreshed: 2026-08-29 01:39 by update-apps -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
