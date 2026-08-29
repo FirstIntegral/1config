@@ -2,22 +2,21 @@
 
 Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.svg` is the visual summary; THIS file is the authoritative version. An AI given this file + the `~/.agents/` folder can recreate everything exactly. If a brain change alters what the figure depicts (components, flows, toolchain), regenerate `setup-infographic.svg` in the same turn.
 
-**TL;DR migration:** copy `~/.agents/` to the new machine → `bash ~/.agents/setup.sh` → done. Manual path: §8.
+**TL;DR (Omarchy or Ubuntu):** clone this repo to `~/.agents` → install whatever `[0] platform` prints as missing → `bash ~/.agents/setup.sh` → machine-local GPG + `gh auth` (see `README.md`). Existing box: `git pull && bash ~/.agents/setup.sh`. Manual path: §8.
+
+Human report + opinionated-default table: **`README.md`**. ADRs: **`docs/DECISIONS.md`**. This file remains the machine spec.
 
 ## 1. Inventory
 
-**Versions are auto-maintained** by `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh` (boot + resume). It rewrites the table only when installed version rows change, so no-op updater runs do not dirty the repo. Do not hand-edit versions. All probes (updater + `verify.sh`) run through a login shell (`bash -lc`), so the table always records the PATH-resolved binary — mise shims included — regardless of caller environment. Tools whose login-shell PATH resolves under mise are skipped by the updater; mise's own upgrade cadence (`minimum_release_age`) governs them.
+Three CLIs: Grok Build (`grok`), Claude Code (`claude`), OpenCode (`opencode`). Config: `~/.grok/config.toml`, `~/.claude/settings.json`, `~/.config/opencode/opencode.jsonc`.
 
-<!-- TOOL_INVENTORY_START -->
-| Tool | Version | Binary | Config |
-|------|---------|--------|--------|
-| Grok Build | 1.0.13 | `~/.local/bin/grok` | `~/.grok/config.toml` |
-| Claude Code | 2.1.251 | `~/.local/bin/claude` | `~/.claude/settings.json` |
-| OpenCode | 1.18.23 | `~/.local/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-29 18:47 by setup -->
-<!-- TOOL_INVENTORY_END -->
+**Live versions are machine-local.** `setup.sh` and the boot updater write `~/.agents/inventory.local.md` (**gitignored**). Do not commit them — Ubuntu and Omarchy will not share patch versions, and pinning them here made `verify.sh` fail after a pull. All probes (updater + `verify.sh`) run through a login shell (`bash -lc`), so the local table records the PATH-resolved binary (mise shims included). Tools whose login-shell PATH resolves under mise are skipped by the updater; mise's own upgrade cadence (`minimum_release_age`) governs them.
 
-Platform: linux. Requires: `python3`, `cron`, `flock`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
+**Platform:** Linux. **Supported: Omarchy (Arch) and Ubuntu (Debian).** Requires: `python3`, `flock`, `git`. Wants: `cron` (Ubuntu) / `cronie` (Omarchy/Arch), `gpg`, `gnome-keyring`. Optional: `texlive-full` (Ubuntu) / `texlive-meta` (Omarchy). No root, no package installs from `setup.sh` (except the optional systemd-sleep shim — see that cron-job’s README). `setup.sh` `[0] platform` detects the family and prints the distro-correct install line.
+
+### Opinionated defaults (this repo — many people will not want them)
+
+Canonical file: `permissions.json`. **`bash_without_prompt` is `true`:** Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`. Ask/deny lists are best-effort. Generic `git push` no longer prompts. Flip to `false` and re-run `setup.sh` to restore the review gate. Full table (signing, caveman, TeX, no AI attribution, no auto-remotes): `README.md`. Why: `docs/DECISIONS.md`.
 
 ### Boot dashboard (graphical login)
 
@@ -75,7 +74,7 @@ enabled = false  # memory lives in shared markdown, not grok's store
 
 - **Grok memory dir removed.** If `~/.grok/memory/` exists, `setup.sh` archives it under `~/.agents/backups/setup-<ts>/grok-memory/` then deletes it. Do not recreate.
 - **Permission rules** — `setup.sh` step `5c` replaces `[permission] allow / ask / deny` from `~/.agents/permissions.json`, filtering out unsupported non-`Bash` rules. Replacement makes revocations effective. Unknown existing keys such as structured `rules` cause setup to stop before writing instead of silently deleting them; move desired policy into canonical first. The transformed TOML is parsed before replacing the live file.
-- **`permission_mode` is brain-managed** — step `5c` maps Bash autonomy to `always-approve`, edit-only autonomy to `acceptEdits`, and both flags off to `ask`. Current mode is `acceptEdits`, so edits are silent while unmatched Bash and explicit `git push` ask rules prompt.
+- **`permission_mode` is brain-managed** — step `5c` maps Bash autonomy to `always-approve`, edit-only autonomy to `acceptEdits`, and both flags off to `ask`. **Current `permissions.json`: `bash_without_prompt` true → Grok `always-approve`.** Many people will not want that; flip the flag.
 
 ### Claude Code
 
@@ -97,9 +96,9 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
   - `bash_without_prompt: true` → `"bypassPermissions"` (**wins**; only mode that kills hard-coded Claude safety prompts such as *cd with write operation* and *cd before git / untrusted hooks*)
   - else `edit_without_prompt: true` → `"acceptEdits"` (file writes only; Bash still uses allow list)
   - else → `"default"`
-  Current policy keeps Bash autonomy off so generic pushes retain a last-look prompt; edit autonomy remains on.
+  **Current `permissions.json`: `bash_without_prompt` true → Claude `bypassPermissions`.** Flip the flag to restore the generic-push review gate.
 - **Compound-command matching** (relevant only when not in `bypassPermissions`) — Claude approves a pipeline / `;` / `&&` chain only when **every** segment matches a rule. Allowlist still carries the read-only sysinfo set, read-only git verbs, `sed`/`awk`, etc., so flipping `bash_without_prompt` off does not immediately re-prompt day-to-day probes.
-- **Prompts the allowlist can't remove** — obfuscation/parse verdicts, exec wrappers, env runners, and hard-coded compound safety (`cd`+write path-bypass, `cd`+git untrusted-hooks). Full Bash autonomy removes them but also removes the generic-push review gate, so it remains off. Heredoc f-strings are separately rewritten by the PreToolUse hook below.
+- **Prompts the allowlist can't remove** — obfuscation/parse verdicts, exec wrappers, env runners, and hard-coded compound safety (`cd`+write path-bypass, `cd`+git untrusted-hooks). Full Bash autonomy removes them **and** the generic-push review gate. This repo currently has autonomy **on**; set `bash_without_prompt` false to restore the gate. Heredoc f-strings are separately rewritten by the PreToolUse hook below.
 - **Quoted-heredoc parse-verdict class — auto-rewritten via PreToolUse hook** (added 2026-08-07, prompted by 21 heredoc prompts in one Claude session). `setup.sh` step `5e` wires `~/.agents/hooks/heredoc-rewrite.sh` (bash wrapper → `heredoc-rewrite.py`) into `~/.claude/settings.json` `hooks.PreToolUse` with `matcher: Bash`. The hook rewrites quoted-delimiter `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs to scratchpad files under `~/.cache/agents-heredoc/` (7-day sweep) and answers `decision: allow` for the rewritten form, which is allowlist-shaped (`python3 <file>`). Unquoted heredocs and heredocs under `bash`/`sh`/`sudo`/anything else produce **no decision** and still prompt. **Claude-only, recorded per the parity rule:** Grok and OpenCode do not have Claude's parse-verdict prompt class or a matching PreToolUse rewrite mechanism; the behavioral rule in `AGENTS.md` (prefer script files over heredocs) applies everywhere. Verified by `verify.sh` `[claude heredoc-rewrite hook]` section, including five smoke tests.
 - **TeX** — `texlive-full` (TeX Live 2025) is installed machine-wide, plus `tectonic` in `~/.local/bin`. All engines/build tools are allowlisted; `tlmgr install` is not, and is unnecessary under the full scheme.
 
@@ -118,6 +117,7 @@ Reads `AGENTS.md` natively at global and project level — no rules wiring neede
 - `hooks/gpg-store-passphrase.sh` — one-time store into the dedicated collection (prompts once). Re-run after a passphrase change.
 - **gnome-keyring 50.x API quirk (verified 2026-08):** `CreateItem` lives on the **Collection** interface (not Service), `GetSecret` on the **Item** interface, and the Secret struct signature is `(oayays)` with a single `ay` parameters field. The plain-session handle marshals correctly only via the **vendored `jeepney`** (`~/.agents/vendor/jeepney`, MIT, pure python — dbus-python/GLib validate object paths and fail). No system packages needed.
 - `~/.gnupg/gpg-agent.conf` already: `allow-loopback-pinentry`, `default-cache-ttl 31536000`, `max-cache-ttl 31536000` (1-year cache after first unlock).
+- Signing key id: `$GPG_SIGNING_KEY` or `git config --global user.signingkey`. Never a hardcoded key from another machine.
 - Fallback: re-run the store script, or manual unlock in a real terminal (see canonical `AGENTS.md`).
 
 ### §4b `hooks/checkpoint.sh` — the git half of `checkpoint_project`
@@ -288,7 +288,7 @@ docs/session-flushes/
 
 ## 5b. `continue_project <path>`
 
-Trigger: user says **`continue_project <path>`** (example: `continue_project /home/brwsk/projects/some_dummy_project`).
+Trigger: user says **`continue_project <path>`** (example: `continue_project $HOME/projects/some_dummy_project`).
 
 Before other work, the AI must (must match canonical `AGENTS.md` — that file wins if they ever diverge):
 
@@ -375,8 +375,8 @@ Claude can re-create topic files under `~/.claude/projects/*/memory/` despite th
 - **Schedule:**
 
 ```
-@daily  /home/brwsk/cron-jobs/claude-memory-guard/check-memory.sh
-@reboot /home/brwsk/cron-jobs/claude-memory-guard/check-memory.sh
+@daily  $HOME/cron-jobs/claude-memory-guard/check-memory.sh
+@reboot $HOME/cron-jobs/claude-memory-guard/check-memory.sh
 ```
 
 - **Behavior:**
@@ -422,13 +422,14 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 - **Installed by** `setup.sh` → `~/cron-jobs/ai-terminal-tools-update-on-boot/` (user scripts only, byte-identical; `update-apps.log` + `.update.lock` stay in the installed dir). `verify.sh` byte-compares.
 - **Crontab:** `@reboot .../boot-check.sh` (managed by setup.sh). **Resume:** root-installed systemd hook `/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`; install or refresh with `sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`.
 - The root hook discovers logged-in users through `loginctl`/`getent`, then asks the system manager to start a delayed transient service with explicit `--uid`, `HOME`, `USER`, and `LOGNAME`. It never executes a user-owned script as root, never relies on root's `$HOME`, and does not detach a child into the sleep hook's cgroup.
-- `update-apps.sh` and `setup.sh` refresh the SETUP.md inventory only when version rows change; the timestamp records which path made a real change.
+- `update-apps.sh` and `setup.sh` refresh **gitignored** `inventory.local.md` only when version rows change. They must not write live versions into this spec.
 - mise-managed tools are skipped by `update-apps.sh`: the login-resolved (`env -i bash -lc`) binary is under `~/.local/share/mise/` or is a wrapper delegating to `mise x` (those wrappers set `MISE_MINIMUM_RELEASE_AGE=0`, so mise cadence = every invocation). Direct CDN/`update` calls for them only hit shadowed bins or interactive "managed by a package manager" prompts. The updater still refreshes the inventory.
 - Updater, standalone setup, and normal sync share `.update.lock`; sync holds it through verification, commit, and push so inventory cannot change after the gate.
 
 ## 8. Manual recreation (or just `bash ~/.agents/setup.sh`)
 
-1. Copy/write `~/.agents/` (canonical `AGENTS.md` + `project-template/` + `hooks/` + `updater/`).
+0. Distro packages if missing (setup.sh `[0]` prints the line). Ubuntu: `sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full`. Omarchy: `omarchy pkg add python util-linux cronie git gnupg gnome-keyring texlive-meta`. Enable the cron daemon (`cron` on Ubuntu, `cronie` on Omarchy/Arch).
+1. Clone or copy `~/.agents/` (this repo). Same tree on Omarchy and Ubuntu.
 2. Symlinks (§3).
 3. Grok config keys (§4) + delete `~/.grok/memory/` if present (after archive).
 4. Claude memory wipe-to-stub for every `~/.claude/projects/*/memory/` (§4).
@@ -437,10 +438,10 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 7. Install/refresh claude-memory-guard (§6b/§7b) — copied from `hooks/check-claude-memory.sh`.
 8. Install/refresh tool updater (§7c) — user scripts copied from `updater/`; install the root resume shim with the `sudo install` command above and repeat after shim changes.
 9. Crontab entries for guards + updater (§7) — preserves other crontab lines.
-10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py`; run the store script once (see §4 GPG). Dedicated `gpg-signing` collection, not default.
+10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py hooks/gpg-signing-key.sh`. Set `git config --global user.signingkey` to **this** machine's key, then run the store script once (see §4 GPG). Dedicated `gpg-signing` collection, not default.
 11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
 12. `watch-stale.sh` — `chmod +x hooks/watch-stale.sh` + `bash -n` syntax gate (§4c).
-13. Verify (+ optional inventory refresh of §1 version table).
+13. Verify (+ refresh of gitignored `inventory.local.md`).
 
 `setup.sh` does all of the above: idempotent, backs up anything it replaces to `~/.agents/backups/setup-<ts>/`, self-verifies. `SKIP_CRON=1` skips the crontab step.
 
@@ -451,12 +452,12 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 `~/.agents/` is the source tree. Installed copies live elsewhere (`~/cron-jobs/*`, tool symlinks, Claude settings). **Any edit under `~/.agents/` must be followed by:**
 
 ```bash
-bash ~/.agents/setup.sh    # sync installs + inventory + verify
+bash ~/.agents/setup.sh    # sync installs + local inventory + verify
 # check-only later:
 bash ~/.agents/verify.sh
 ```
 
-`verify.sh` fails if: brain root/branch/push URL is wrong; sync can bypass verification; symlinks or XDG autostart drift; guards, updater scripts, or root resume shim differ from source; resume scheduling loses user/home or masks failure; inventory refresh is non-idempotent; permission policy or modes differ across tools; hooks, cron, templates, checkpoint behavior, or staleness-watch behavior regress. It also rejects bibliography machinery in the paper template and untracked project-template files. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
+`verify.sh` fails if: brain root/branch/push URL is wrong; sync can bypass verification; symlinks or XDG autostart drift; guards, updater scripts, or root resume shim differ from source; resume scheduling loses user/home or masks failure; inventory refresh is non-idempotent; live CLI versions leak into SETUP.md; permission policy or modes differ across tools; hooks, cron, templates, checkpoint behavior, or staleness-watch behavior regress; README/DECISIONS omit the Omarchy+Ubuntu or `bash_without_prompt` warnings. It also rejects bibliography machinery in the paper template and untracked project-template files. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
 
 ## 9. Verification
 

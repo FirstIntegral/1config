@@ -20,16 +20,43 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 AGENTS_HOME = os.environ.get("AGENTS_HOME", os.path.expanduser("~/.agents"))
-KEY = os.environ.get("GPG_SIGNING_KEY", "95FBA6E0AA245342")
 ATTRIB_APP = "gpg-signing"
 COLLECTION_LABEL = "gpg-signing"
 KEYRING_DIR = Path(os.environ.get("GPG_KEYRING_DIR", os.path.expanduser("~/.local/share/keyrings")))
-ITEM_LABEL = f"GPG signing key {KEY}"
+# Fixture key used only by self-test; live code never falls back to another machine's id.
+FIXTURE_KEY = "95FBA6E0AA245342"
+
+
+def _norm_key(k: str) -> str:
+    k = (k or "").strip()
+    if k.lower().startswith("0x"):
+        k = k[2:]
+    return k
+
+
+def signing_key() -> str:
+    """GPG_SIGNING_KEY env, else git config --global user.signingkey. Empty if unset."""
+    env = _norm_key(os.environ.get("GPG_SIGNING_KEY", ""))
+    if env:
+        return env
+    try:
+        r = subprocess.run(
+            ["git", "config", "--global", "--get", "user.signingkey"],
+            capture_output=True, text=True, timeout=5, check=False,
+        )
+        return _norm_key(r.stdout)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def item_label(key: str) -> str:
+    return f"GPG signing key {key}"
 
 _ITEM_RE = re.compile(r"^\[(\d+)\]\s*$")
 _ATTR_RE = re.compile(r"^\[(\d+):attribute\d+\]\s*$")
@@ -48,13 +75,15 @@ def _ay_to_bytes(val) -> bytes:
     return bytes(val)
 
 
-def scan_keyring_files(directory: Path, key_id: str = KEY) -> bytes | None:
+def scan_keyring_files(directory: Path, key_id: str | None = None) -> bytes | None:
     """Best-effort parse of gnome2 textual .keyring files, including bricked ones.
 
     GLib KeyFile cannot load a file whose secret= value contains a raw newline.
     We scan line-oriented instead and only return the gpg-signing item.
     """
-    if not directory.is_dir():
+    if key_id is None:
+        key_id = signing_key()
+    if not key_id or not directory.is_dir():
         return None
     found: list[tuple[float, bytes]] = []
     for path in sorted(directory.glob("*.keyring")):
@@ -161,8 +190,11 @@ def fetch_live() -> bytes | None:
     )
     r = conn.send_and_get_reply(new_method_call(svc, "OpenSession", "sv", ("plain", ("s", ""))))
     handle = r.body[1]
+    key = signing_key()
+    if not key:
+        return None
     r = conn.send_and_get_reply(
-        new_method_call(svc, "SearchItems", "a{ss}", ({"app": ATTRIB_APP, "key-id": KEY},))
+        new_method_call(svc, "SearchItems", "a{ss}", ({"app": ATTRIB_APP, "key-id": key},))
     )
     # SearchItems → (unlocked, locked). Older code only looked at body[0].
     unlocked, locked = (r.body + ([], []))[:2]
@@ -245,6 +277,10 @@ def ensure_collection(conn, DBusAddress, new_method_call, handle) -> str:
 def store(passphrase: bytes) -> None:
     if not passphrase:
         raise SystemExit(1)
+    key = signing_key()
+    if not key:
+        _log("no GPG signing key — set git config --global user.signingkey or GPG_SIGNING_KEY")
+        raise SystemExit(3)
     DBusAddress, new_method_call, open_dbus_connection = _dbus()
     conn = open_dbus_connection(bus="SESSION")
     svc = DBusAddress(
@@ -257,8 +293,8 @@ def store(passphrase: bytes) -> None:
     col_path = ensure_collection(conn, DBusAddress, new_method_call, handle)
     col = DBusAddress(col_path, bus_name="org.freedesktop.secrets", interface="org.freedesktop.Secret.Collection")
     props = {
-        "org.freedesktop.Secret.Item.Label": ("s", ITEM_LABEL),
-        "org.freedesktop.Secret.Item.Attributes": ("a{ss}", {"app": ATTRIB_APP, "key-id": KEY}),
+        "org.freedesktop.Secret.Item.Label": ("s", item_label(key)),
+        "org.freedesktop.Secret.Item.Attributes": ("a{ss}", {"app": ATTRIB_APP, "key-id": key}),
     }
     conn.send_and_get_reply(
         new_method_call(
@@ -271,6 +307,9 @@ def store(passphrase: bytes) -> None:
 
 
 def fetch() -> bytes:
+    if not signing_key():
+        _log("no GPG signing key — set git config --global user.signingkey or GPG_SIGNING_KEY")
+        raise SystemExit(3)
     dbus_err: Exception | None = None
     try:
         pw = fetch_live()
@@ -336,15 +375,16 @@ name=key-id
 type=string
 value=95FBA6E0AA245342
 """
-    assert _scan_keyring_text(bricked, KEY) == b"test-passphrase-not-real"
+    assert _scan_keyring_text(bricked, FIXTURE_KEY) == b"test-passphrase-not-real"
     assert _scan_keyring_text(bricked, "DEADBEEF") is None
-    assert _scan_keyring_text("[keyring]\n", KEY) is None
+    assert _scan_keyring_text("[keyring]\n", FIXTURE_KEY) is None
+    assert signing_key.__doc__
 
     with tempfile.TemporaryDirectory() as tmp:
         d = Path(tmp)
         (d / "Default.keyring").write_text(bricked)
         (d / "empty.keyring").write_text("[keyring]\ndisplay-name=x\n")
-        assert scan_keyring_files(d, KEY) == b"test-passphrase-not-real"
+        assert scan_keyring_files(d, FIXTURE_KEY) == b"test-passphrase-not-real"
         assert scan_keyring_files(d, "nope") is None
     _log("self-test ok")
 

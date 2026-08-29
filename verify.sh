@@ -122,7 +122,9 @@ if [ -d "$PAPER_TPL" ]; then
 else
   bad "paper-template/ missing (writepaper_project has no scaffold)"
 fi
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh; do
+[ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
+[ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -409,7 +411,7 @@ fi
 
 # --- gpg unlock hooks --------------------------------------------------------
 echo "[gpg hooks]"
-if [ -x "$HOOKS/gpg-agent-unlock.sh" ] && [ -x "$HOOKS/gpg-store-passphrase.sh" ]; then
+if [ -x "$HOOKS/gpg-agent-unlock.sh" ] && [ -x "$HOOKS/gpg-store-passphrase.sh" ] && [ -x "$HOOKS/gpg-signing-key.sh" ]; then
   ok "gpg hooks present + executable"
 else
   bad "gpg unlock hooks missing (run setup.sh)"
@@ -489,28 +491,32 @@ for f in "$HOOKS/check-links.sh" "$HOOKS/check-claude-memory.sh"; do
   fi
 done
 
-# --- SETUP inventory markers -----------------------------------------------
+# --- machine-local inventory (must not live in SETUP.md) -------------------
 echo "[SETUP inventory]"
-if grep -q 'TOOL_INVENTORY_START' "$SETUP" && grep -q 'TOOL_INVENTORY_END' "$SETUP"; then
-  ok "TOOL_INVENTORY markers present"
+if grep -q 'TOOL_INVENTORY_START' "$SETUP"; then
+  bad "SETUP.md still pins live CLI versions (belongs in gitignored inventory.local.md)"
 else
-  bad "SETUP.md missing TOOL_INVENTORY_START/END markers"
+  ok "SETUP.md does not pin live CLI versions"
+fi
+if grep -q '^inventory.local.md$' "$AGENTS_HOME/.gitignore"; then
+  ok "inventory.local.md is gitignored"
+else
+  bad "inventory.local.md missing from .gitignore"
 fi
 INV_REFRESH="$UPD_SRC/refresh-inventory.py"
 if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=os.environ["INV_REFRESH"]; compile(open(p, encoding="utf-8").read(), p, "exec")' 2>/dev/null; then
   _invtmp="$(mktemp)"
-  cp "$SETUP" "$_invtmp"
   _inv_rc=0
-  SETUP_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+  INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
   if [ "$_inv_rc" -eq 0 ]; then
     _inv_before="$(sha256sum "$_invtmp" | cut -d' ' -f1)"
-    SETUP_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+    INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
     _inv_after="$(sha256sum "$_invtmp" | cut -d' ' -f1)"
     [ "$_inv_rc" -eq 0 ] && [ "$_inv_before" = "$_inv_after" ] \
       && ok "inventory refresh is byte-idempotent when versions are unchanged" \
-      || bad "inventory refresh failed or dirtied SETUP.md on a no-op run"
+      || bad "inventory refresh failed or dirtied inventory.local.md on a no-op run"
     INV_FILE="$_invtmp" python3 -c 'import os, pathlib; p=pathlib.Path(os.environ["INV_FILE"]); s=p.read_text(); p.write_text(s.replace("<!-- last refreshed:", "| Bogus Tool | 0.0.0 | x | x |\n<!-- last refreshed:", 1))'
-    SETUP_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+    INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
     if [ "$_inv_rc" -eq 0 ] && ! grep -q 'Bogus Tool' "$_invtmp"; then
       ok "inventory refresh replaces stale or extra rows exactly"
     else
@@ -905,17 +911,17 @@ PY
   fi
 fi
 
-# --- SETUP inventory vs installed binaries -----------------------------------
+# --- local inventory vs installed binaries (INFO if a CLI is not installed) --
 echo "[inventory vs installed]"
 if command -v python3 >/dev/null; then
-  if SETUP_MD="$SETUP" python3 - <<'PY'
+  if INV_MD="$AGENTS_HOME/inventory.local.md" python3 - <<'PY'
 import os, re, subprocess, pathlib, sys
-text = pathlib.Path(os.environ["SETUP_MD"]).read_text()
-m = re.search(r"<!-- TOOL_INVENTORY_START -->(.*?)<!-- TOOL_INVENTORY_END -->", text, re.S)
-if not m:
-    print("inventory markers missing"); sys.exit(1)
+p = pathlib.Path(os.environ["INV_MD"])
+if not p.is_file():
+    print("inventory.local.md missing (run setup.sh)"); sys.exit(1)
+text = p.read_text()
 rows = {}
-for line in m.group(1).splitlines():
+for line in text.splitlines():
     mm = re.match(r"\|\s*([A-Za-z][A-Za-z ]*?)\s*\|\s*([^\|]+?)\s*\|", line)
     if mm:
         rows[mm.group(1).strip()] = mm.group(2).strip()
@@ -936,24 +942,83 @@ expect = {
     "OpenCode": ver("opencode --version 2>/dev/null || true"),
 }
 bad = []
+missing = []
 for k, want in expect.items():
     got = rows.get(k, "")
+    if want in ("unknown", "missing") or got in ("unknown", "missing"):
+        missing.append(k)
+        continue
     if want != got:
-        bad.append(f"{k}: SETUP.md={got} installed={want}")
+        bad.append(f"{k}: inventory.local.md={got} installed={want}")
 if bad:
     print(" | ".join(bad)); sys.exit(1)
+if missing:
+    print("not-installed: " + ", ".join(missing)); sys.exit(2)
 sys.exit(0)
 PY
   then
-    ok "SETUP.md inventory matches installed binaries"
+    ok "inventory.local.md matches installed binaries"
   else
-    bad "SETUP.md inventory ≠ installed binaries (run setup.sh)"
+    _inv_rc=$?
+    if [ "$_inv_rc" -eq 2 ]; then
+      info "one or more CLIs not installed yet (fresh machine is fine — inventory.local.md records missing)"
+    else
+      bad "inventory.local.md ≠ installed binaries (run setup.sh)"
+    fi
   fi
-  if [ -f "$AGENTS_HOME/setup-infographic.svg" ] && grep -q 'setup-infographic.svg' "$SETUP"; then
-    ok "setup-infographic.svg present and referenced by SETUP.md"
-  else
-    bad "setup-infographic.svg missing or unreferenced"
-  fi
+fi
+
+echo "[portability]"
+if grep -q 'FAMILY=omarchy' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'ubuntu|debian' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'texlive-full' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'cronie' "$AGENTS_HOME/setup.sh"; then
+  ok "setup.sh detects Omarchy/Arch vs Ubuntu/Debian and prints the install line"
+else
+  bad "setup.sh missing distro detection (Omarchy + Ubuntu)"
+fi
+if grep -q 'user.signingkey' "$HOOKS/gpg-signing-key.sh" \
+   && grep -q 'signing_key' "$HOOKS/gpg-keyring.py" \
+   && ! grep -qE 'GPG_SIGNING_KEY:-95FBA6E0' "$HOOKS/gpg-agent-unlock.sh"; then
+  ok "GPG signing key comes from git config / env, not a hardcoded key id"
+else
+  bad "GPG hooks still hardcode a machine-specific key id"
+fi
+if grep -qi 'omarchy' "$AGENTS_HOME/README.md" \
+   && grep -qi 'ubuntu' "$AGENTS_HOME/README.md" \
+   && grep -q 'bash_without_prompt' "$AGENTS_HOME/README.md"; then
+  ok "README.md covers Omarchy, Ubuntu, and bash_without_prompt"
+else
+  bad "README.md missing distro or permission-default warning"
+fi
+if grep -q 'bash_without_prompt' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -qi 'omarchy' "$AGENTS_HOME/docs/DECISIONS.md"; then
+  ok "docs/DECISIONS.md records autonomy + distro decisions"
+else
+  bad "docs/DECISIONS.md missing autonomy or distro ADR"
+fi
+if grep -q 'bash_without_prompt is \*\*false\*\*' "$CANON"; then
+  bad "AGENTS.md still says bash_without_prompt is false (permissions.json is true)"
+else
+  ok "AGENTS.md does not contradict permissions.json bash_without_prompt"
+fi
+if grep -qi 'omarchy' "$SETUP" && grep -qi 'ubuntu' "$SETUP"; then
+  ok "SETUP.md documents Omarchy + Ubuntu"
+else
+  bad "SETUP.md missing distro portability section"
+fi
+
+echo "[infographic]"
+if [ -f "$AGENTS_HOME/setup-infographic.svg" ] && grep -q 'setup-infographic.svg' "$SETUP"; then
+  ok "setup-infographic.svg present and referenced by SETUP.md"
+else
+  bad "setup-infographic.svg missing or unreferenced"
+fi
+if grep -q 'bash_without_prompt = true' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -qi 'Ubuntu' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "infographic shows full Bash autonomy and Ubuntu+Omarchy"
+else
+  bad "infographic still shows bash_without_prompt=false or omits Ubuntu"
 fi
 
 # --- summary ---------------------------------------------------------------

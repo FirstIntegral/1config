@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # setup.sh — recreate the unified AI-terminal setup on a fresh machine.
 #
-# Migration: copy ~/.agents to the new machine, then:  bash ~/.agents/setup.sh
-# Idempotent — safe to re-run. Backs up anything it replaces to
-# ~/.agents/backups/setup-<timestamp>/.
+# Omarchy (Arch) and Ubuntu (Debian): clone ~/.agents, then:
+#   bash ~/.agents/setup.sh
+# Existing machine (either distro): git pull && bash ~/.agents/setup.sh
+# Idempotent. Backs up anything it replaces to ~/.agents/backups/setup-<timestamp>/.
 #
 # Env: SKIP_CRON=1  skip crontab install (testing / machine without cron)
 set -euo pipefail
@@ -24,11 +25,63 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 
 echo "== unified AI setup — $(date) =="
 
-# --- 0 preflight -----------------------------------------------------------
+# --- 0 platform + preflight (Omarchy/Arch and Ubuntu/Debian) ----------------
+echo "[0] platform"
+FAMILY=unknown
+HINT="install python3, flock (util-linux), git, cron, gnupg, gnome-keyring"
+if [ -f /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+fi
+if command -v omarchy >/dev/null 2>&1 || [ -d /usr/share/omarchy ]; then
+  FAMILY=omarchy
+  HINT="omarchy pkg add python util-linux cronie git gnupg gnome-keyring texlive-meta"
+elif echo "${ID:-} ${ID_LIKE:-}" | grep -qiE 'ubuntu|debian'; then
+  FAMILY=debian
+  HINT="sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full"
+elif echo "${ID:-} ${ID_LIKE:-}" | grep -qi arch; then
+  FAMILY=arch
+  HINT="sudo pacman -S --needed python util-linux cronie git gnupg gnome-keyring texlive-meta"
+fi
+log "family   $FAMILY (${ID:-unknown})"
+
+need_die=0
+for cmd in python3 flock git; do
+  if command -v "$cmd" >/dev/null; then
+    log "ok       $cmd"
+  else
+    log "MISSING  $cmd"
+    need_die=1
+  fi
+done
+if command -v crontab >/dev/null; then
+  log "ok       crontab"
+else
+  log "MISSING  crontab (Ubuntu: apt install cron · Omarchy/Arch: pacman -S cronie)"
+fi
+if command -v gpg >/dev/null; then
+  log "ok       gpg"
+else
+  log "MISSING  gpg — commit signing will fail until gnupg is installed"
+fi
+if command -v gnome-keyring-daemon >/dev/null; then
+  log "ok       gnome-keyring"
+else
+  log "MISSING  gnome-keyring — signing unlock needs Secret Service"
+fi
+if command -v latexmk >/dev/null || command -v pdflatex >/dev/null; then
+  log "ok       tex"
+else
+  log "MISSING  texlive (writepaper_project needs it) — $HINT"
+fi
+if [ "$need_die" -eq 1 ]; then
+  echo "ERROR: required commands missing. Install, then re-run setup.sh:" >&2
+  echo "  $HINT" >&2
+  exit 1
+fi
+
 [ -f "$CANON" ] || die "canonical $CANON not found — copy ~/.agents first"
 [ -d "$AGENTS_HOME/project-template" ] || log "WARNING: $AGENTS_HOME/project-template missing — create_project scaffolding will have no source"
-command -v python3 >/dev/null || die "python3 required (TOML patch + validation)"
-command -v flock >/dev/null || die "flock required (serialize setup with updater)"
 if [ "${AGENTS_UPDATE_LOCK_HELD:-0}" != 1 ]; then
   mkdir -p "$UPD_DIR"
   exec 8>"$UPD_DIR/.update.lock"
@@ -582,7 +635,7 @@ fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------
 echo "[gpg] unlock hooks (dedicated gpg-signing collection, nothing installed elsewhere)"
-for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py; do
+for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py gpg-signing-key.sh; do
   if [ -f "$AGENTS_HOME/hooks/$h" ]; then
     chmod +x "$AGENTS_HOME/hooks/$h"
     log "ready   hooks/$h"
@@ -646,12 +699,13 @@ else
   log "WARNING: boot-dashboard/ missing — skip autostart"
 fi
 
-# --- inventory refresh -------------------------------------------------------
-echo "[inventory] refresh SETUP.md versions when markers present"
+# --- inventory refresh (machine-local, gitignored) --------------------------
+echo "[inventory] refresh inventory.local.md (not committed — versions differ per machine)"
 INV_REFRESH="$UPD_SRC/refresh-inventory.py"
 [ -f "$INV_REFRESH" ] || die "$INV_REFRESH missing"
-SETUP_MD="$AGENTS_HOME/SETUP.md" INVENTORY_SOURCE=setup python3 "$INV_REFRESH" \
-  || die "SETUP.md inventory refresh failed"
+AGENTS_HOME="$AGENTS_HOME" INVENTORY_MD="$AGENTS_HOME/inventory.local.md" \
+  INVENTORY_SOURCE=setup python3 "$INV_REFRESH" \
+  || die "inventory.local.md refresh failed"
 
 # --- verify (full ecosystem check) ------------------------------------------
 echo "[verify] running guards smoke + verify.sh"

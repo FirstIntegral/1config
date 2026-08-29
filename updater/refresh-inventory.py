@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Refresh SETUP.md tool versions only when the exact inventory rows change.
+"""Write machine-local CLI versions to inventory.local.md (gitignored).
+
+Live grok/claude/opencode versions differ across machines and must not be
+committed into SETUP.md — that made a Ubuntu box fail verify after pulling
+Omarchy versions, and the other way around.
 
 All probes run through a login shell (bash -lc) so the inventory always
 reflects the PATH-resolved binary (mise shims included) no matter what
@@ -12,7 +16,6 @@ import pathlib
 import re
 import subprocess
 import sys
-
 
 START = "<!-- TOOL_INVENTORY_START -->"
 END = "<!-- TOOL_INVENTORY_END -->"
@@ -44,43 +47,52 @@ def version(binary: str) -> str:
     return match.group(1) if match else (value[:40] or "unknown")
 
 
-def main() -> int:
-    setup = pathlib.Path(os.environ.get("SETUP_MD", pathlib.Path.home() / ".agents/SETUP.md"))
-    source = re.sub(r"[^A-Za-z0-9._-]", "-", os.environ.get("INVENTORY_SOURCE", "manual"))
-    if not setup.is_file():
-        print(f"missing {setup}", file=sys.stderr)
-        return 1
-
-    rows = (
+def table() -> str:
+    return (
         "| Tool | Version | Binary | Config |\n"
         "|------|---------|--------|--------|\n"
         f"| Grok Build | {version('grok')} | `{resolve('grok')}` | `~/.grok/config.toml` |\n"
         f"| Claude Code | {version('claude')} | `{resolve('claude')}` | `~/.claude/settings.json` |\n"
         f"| OpenCode | {version('opencode')} | `{resolve('opencode')}` | `~/.config/opencode/opencode.jsonc` |"
     )
-    text = setup.read_text()
-    pattern = re.compile(re.escape(START) + r".*?" + re.escape(END), re.S)
-    match = pattern.search(text)
-    if not match:
-        print(f"inventory markers missing in {setup}", file=sys.stderr)
-        return 1
 
-    desired_rows = START + "\n" + rows
-    current_rows = re.sub(
-        r"\n<!-- last refreshed: [^\n]* -->\n" + re.escape(END) + r"$",
-        "",
-        match.group(0),
+
+def render(source: str) -> str:
+    stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    return (
+        f"{START}\n"
+        f"{table()}\n"
+        f"<!-- last refreshed: {stamp} by {source} -->\n"
+        f"{END}\n"
     )
-    if current_rows == desired_rows:
-        print("inventory unchanged")
-        return 0
 
-    stamp = f"<!-- last refreshed: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')} by {source} -->"
-    replacement = desired_rows + "\n" + stamp + "\n" + END
-    updated = pattern.sub(replacement, text)
-    temporary = setup.with_name(f".{setup.name}.tmp.{os.getpid()}")
-    temporary.write_text(updated)
-    temporary.replace(setup)
+
+def rows_only(text: str) -> str:
+    return re.sub(
+        r"\n<!-- last refreshed: [^\n]* -->\n" + re.escape(END) + r"\n?$",
+        "",
+        text,
+    )
+
+
+def main() -> int:
+    dest = pathlib.Path(
+        os.environ.get(
+            "INVENTORY_MD",
+            os.path.join(os.environ.get("AGENTS_HOME", str(pathlib.Path.home() / ".agents")), "inventory.local.md"),
+        )
+    )
+    source = re.sub(r"[^A-Za-z0-9._-]", "-", os.environ.get("INVENTORY_SOURCE", "manual"))
+    new = render(source)
+    if dest.is_file():
+        old = dest.read_text()
+        if rows_only(old) == rows_only(new):
+            print("inventory unchanged")
+            return 0
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    temporary = dest.with_name(f".{dest.name}.tmp.{os.getpid()}")
+    temporary.write_text(new)
+    temporary.replace(dest)
     print("inventory refreshed")
     return 0
 

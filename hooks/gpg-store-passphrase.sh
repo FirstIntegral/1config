@@ -4,14 +4,18 @@
 # autologin-safe). Not the default collection — other apps writing multiline
 # secrets brick unencrypted default keyrings across reboot.
 #
+# Signing key: $GPG_SIGNING_KEY, else git config --global user.signingkey.
+#
 #   bash ~/.agents/hooks/gpg-store-passphrase.sh
 #
 # Re-run after changing the passphrase. Then verify-unlocks via
 # gpg-agent-unlock.sh (all future commits sign silently; agent caches 1 year).
 set -u
 
-KEY="${GPG_SIGNING_KEY:-95FBA6E0AA245342}"
-PY="${AGENTS_HOME:-$HOME/.agents}/hooks/gpg-keyring.py"
+AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
+KEY="$(bash "$AGENTS_HOME/hooks/gpg-signing-key.sh")" || exit $?
+export GPG_SIGNING_KEY="$KEY"
+PY="$AGENTS_HOME/hooks/gpg-keyring.py"
 
 printf 'Enter passphrase for GPG key %s (dedicated gpg-signing collection): ' "$KEY"
 IFS= read -rs pass || { echo; exit 1; }
@@ -22,7 +26,7 @@ if [ -z "$pass" ]; then
   exit 1
 fi
 
-if ! printf '%s' "$pass" | AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}" GPG_SIGNING_KEY="$KEY" python3 "$PY" store; then
+if ! printf '%s' "$pass" | AGENTS_HOME="$AGENTS_HOME" GPG_SIGNING_KEY="$KEY" python3 "$PY" store; then
   unset pass
   echo "store failed — is gnome-keyring running?" >&2
   exit 1
@@ -42,7 +46,7 @@ for line in "allow-loopback-pinentry" \
 done
 gpgconf --kill gpg-agent 2>/dev/null || true
 
-if bash "$HOME/.agents/hooks/gpg-agent-unlock.sh"; then
+if bash "$AGENTS_HOME/hooks/gpg-agent-unlock.sh"; then
   echo "signing key unlocked — commits will sign silently"
 else
   echo "unlock test failed — check keyring / passphrase" >&2

@@ -23,7 +23,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. Runs **before** ecosystem so inventory refresh finishes first. |
 | **ecosystem** | `verify.sh` PASS (after tool updates — avoids false inventory mismatch at boot) |
 | **tool versions** | grok / claude / opencode on PATH |
-| **signing** | Attempts GPG signing-key unlock from the dedicated `gpg-signing` collection (and migrates out of bricked default `.keyring` files). Warn: nothing stored / dbus down / passphrase rejected — not a generic "locked". |
+| **signing** | Attempts GPG signing-key unlock from the dedicated `gpg-signing` collection (key from `git config user.signingkey` / `$GPG_SIGNING_KEY`; migrates out of bricked default `.keyring` files). Warn: nothing stored / dbus down / passphrase rejected — not a generic "locked". |
 
 ## Window size
 

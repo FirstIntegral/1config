@@ -318,8 +318,8 @@ main() {
   check_symlinks
   check_link_guard
   check_mem_guard
-  # Tool updater rewrites SETUP.md inventory — wait for it BEFORE verify so
-  # boot never false-fails on "inventory ≠ installed" while update-apps runs.
+  # Tool updater rewrites gitignored inventory.local.md — wait for it BEFORE
+  # verify so boot never false-fails on a mid-upgrade version probe.
   check_tool_updates
   check_verify
   check_versions

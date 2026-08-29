@@ -420,10 +420,12 @@ else
   echo "[$(ts)] claude not found — skipping update" >> "$LOG"
 fi
 
-# --- refresh SETUP.md inventory only when installed versions changed --------
-if [ -f "$SETUP_MD" ] && command -v python3 >/dev/null 2>&1; then
-  echo "[$(ts)] -> refresh SETUP.md tool inventory" >> "$LOG"
-  if SETUP_MD="$SETUP_MD" INVENTORY_SOURCE=update-apps \
+# --- refresh machine-local inventory (gitignored; do not write SETUP.md) ----
+if command -v python3 >/dev/null 2>&1; then
+  echo "[$(ts)] -> refresh inventory.local.md" >> "$LOG"
+  if AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}" \
+      INVENTORY_MD="${AGENTS_HOME:-$HOME/.agents}/inventory.local.md" \
+      INVENTORY_SOURCE=update-apps \
       python3 "$DIR/refresh-inventory.py" >>"$LOG" 2>&1
   then
     echo "[$(ts)] inventory OK" >> "$LOG"
@@ -431,7 +433,7 @@ if [ -f "$SETUP_MD" ] && command -v python3 >/dev/null 2>&1; then
     echo "[$(ts)] !! inventory refresh FAILED" >> "$LOG"
   fi
 else
-  echo "[$(ts)] inventory skip (no SETUP.md or python3)" >> "$LOG"
+  echo "[$(ts)] inventory skip (no python3)" >> "$LOG"
 fi
 
 echo "[$(ts)] update-apps run END (fail=$fail)" >> "$LOG"

@@ -24,7 +24,7 @@
   <!-- ===== title ===== -->
   <text x="800" y="56" text-anchor="middle" font-size="30" font-weight="bold" fill="url(#acc)" letter-spacing="5">UNIFIED AI TERMINAL SETUP</text>
   <rect x="520" y="70" width="560" height="3" rx="1.5" fill="url(#acc)"/>
-  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">3 AI tools · 1 canonical rules file · linux · updated 2026-08-29 — SETUP.md authoritative; figure regenerated same-turn when the brain changes</text>
+  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">3 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-08-29 — README + SETUP.md; figure same-turn when the brain changes</text>
 
   <!-- ===== converging symlink arrows ===== -->
   <line x1="310" y1="268" x2="700" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
@@ -41,7 +41,7 @@
   <text x="152" y="186" font-size="13" fill="#79c0ff">~/.grok/AGENTS.md</text>
   <text x="152" y="210" font-size="12" fill="#3fb950">native project AGENTS.md ✓</text>
   <text x="152" y="230" font-size="12" fill="#8b949e">claude-compat <tspan fill="#d29922">OFF</tspan> · memory <tspan fill="#d29922">OFF</tspan></text>
-  <text x="152" y="250" font-size="12" fill="#8b949e">[ui] acceptEdits · Bash buckets fanned out</text>
+  <text x="152" y="250" font-size="12" fill="#8b949e">[ui] always-approve · Bash buckets fanned out</text>
 
   <!-- ===== CLAUDE ===== -->
   <rect x="620" y="130" width="360" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
@@ -59,7 +59,7 @@
   <text x="1132" y="186" font-size="13" fill="#79c0ff">~/.config/opencode/AGENTS.md</text>
   <text x="1132" y="210" font-size="12" fill="#3fb950">native AGENTS.md · zero config ✓</text>
   <text x="1132" y="230" font-size="12" fill="#8b949e">opencode.jsonc = permissions fan-out</text>
-  <text x="1132" y="250" font-size="12" fill="#8b949e">edit=allow · bash *=ask (last-match wins)</text>
+  <text x="1132" y="250" font-size="12" fill="#8b949e">edit=allow · bash *=allow (last-match wins)</text>
 
   <!-- ===== HUB ===== -->
   <rect x="580" y="338" width="440" height="196" rx="10" fill="none" stroke="#39d3e0" stroke-width="2.5" opacity="0.55" filter="url(#glow)"/>
@@ -90,7 +90,7 @@
   <!-- ===== SETUP ===== -->
   <rect x="130" y="338" width="360" height="196" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
   <text x="152" y="368" font-size="15" font-weight="bold" fill="#e6edf3">FRESH MACHINE</text>
-  <text x="152" y="392" font-size="13" fill="#3fb950">cp -r ~/.agents → bash setup.sh</text>
+  <text x="152" y="392" font-size="13" fill="#3fb950">git clone → bash setup.sh (either distro)</text>
   <text x="152" y="416" font-size="12" fill="#8b949e">idempotent · backs up replaced files</text>
   <text x="152" y="436" font-size="12" fill="#8b949e">symlinks · grok cfg · mem wipe · hooks</text>
   <text x="152" y="456" font-size="12" fill="#8b949e">guards + updater + cron · gpg hooks</text>
@@ -128,7 +128,7 @@
   <text x="1062" y="640" font-size="12" fill="#8b949e">claude settings · grok toml · opencode jsonc</text>
   <text x="1062" y="660" font-size="12" fill="#8b949e">verify byte-checks all three vs canonical</text>
   <text x="1062" y="680" font-size="12" fill="#3fb950">edit_without_prompt = true ✓</text>
-  <text x="1062" y="700" font-size="12" fill="#d29922">bash_without_prompt = false (review gate)</text>
+  <text x="1062" y="700" font-size="12" fill="#d29922">bash_without_prompt = true (flip in json)</text>
 
   <!-- ===== arrow band -> project ===== -->
   <line x1="800" y1="718" x2="800" y2="748" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>

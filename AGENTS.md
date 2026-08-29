@@ -10,7 +10,7 @@ Edit here (or via any of those paths — same bytes). Applies to Grok, OpenCode,
 
 Project-level: `<repo>/AGENTS.md` is the ONLY project rules file. Grok/OpenCode read it natively; Claude Code gets it via a SessionStart hook (`~/.agents/hooks/load-project-agents.sh`). **Never create a project CLAUDE.md** — stubs were retired 2026-07-26.
 
-Fresh machine: copy `~/.agents/` and run `bash ~/.agents/setup.sh` — recreates symlinks, tool configs, and the cron guards (idempotent). Full spec for AIs: `~/.agents/SETUP.md`. Runtime archives (residue packets, symlink strays, setup replace-backups) land under `~/.agents/backups/` only when needed — do not treat that folder as source of truth.
+Fresh machine (Omarchy or Ubuntu): clone this repo to `~/.agents/` and run `bash ~/.agents/setup.sh` — recreates symlinks, tool configs, and the cron guards (idempotent). Existing box: `git pull && bash ~/.agents/setup.sh`. Human report + opinionated defaults: `README.md`. Full spec: `SETUP.md`. Runtime archives land under `~/.agents/backups/` only when needed — do not treat that folder as source of truth.
 
 ### After any edit under `~/.agents/` (HARD RULE)
 
@@ -48,7 +48,7 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 - If signing fails (locked key, no pinentry), STOP and unlock, then commit. Never work around it.
 - **Unlock is attempted automatically** — passphrase lives in a dedicated gnome-keyring collection labelled `gpg-signing` (empty master so autologin can read it; **not** the default collection). Default unencrypted keyrings get bricked across reboot when another app stores a multiline secret (gnome-keyring then logs `invalid or unrecognized format` and Secret Service is empty). `~/.agents/hooks/gpg-agent-unlock.sh` test-signs; if the agent is empty it fetches over D-Bus (unlocked **and** locked items), and if the live daemon has nothing it scans on-disk `*.keyring` files and restocks the dedicated collection. Then `--pinentry-mode loopback`. Boot dashboard runs this at graphical login.
 - One-time setup on a fresh machine (prompts once): `bash ~/.agents/hooks/gpg-store-passphrase.sh`
-- If automated unlock still fails (nothing stored, passphrase changed): re-run the store script, or manual fallback in a real terminal: `export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u 95FBA6E0AA245342 --clearsign -o /dev/null` (prompts, caches). Then retry the commit.
+- If automated unlock still fails (nothing stored, passphrase changed): re-run the store script, or manual fallback in a real terminal: `export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u "$(git config --global --get user.signingkey)" --clearsign -o /dev/null` (prompts, caches). Then retry the commit. Signing key is `$GPG_SIGNING_KEY` or `git config --global user.signingkey` — never another machine's key id.
 - History rewrites (rebase, filter-repo, amend) must leave commits re-signed before any push.
 
 ---
@@ -66,20 +66,20 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
 - Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; specific canonical rules follow it because OpenCode uses the last match.
-- Grok runs `[ui] permission_mode = "acceptEdits"` under the current policy. File edits need no prompt; Bash still follows allow/ask/deny rules.
-- `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. Generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
+- **Current `permissions.json`: `bash_without_prompt` is true** — Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`. Ask/deny lists are best-effort. Generic `git push` does **not** prompt. Many people will not want this; flip the flag (README + `docs/DECISIONS.md`).
+- `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
 - Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project one-offs remain project-local; global generated permission buckets are replaced from canonical on setup.
 
 ### `defaults.edit_without_prompt` + `defaults.bash_without_prompt`
 
-Same canonical file, `defaults` block. `edit_without_prompt` is **true**; `bash_without_prompt` is **false**. Fanned out by `setup.sh` steps 5b/5c/5d; checked by `verify.sh`.
+Same canonical file, `defaults` block. `edit_without_prompt` is **true**; `bash_without_prompt` is **true** (full autonomy — not a universal default; flip to `false` to restore the Bash review gate). Fanned out by `setup.sh` steps 5b/5c/5d; checked by `verify.sh`. See `README.md`.
 
 | Flag | Claude Code | Grok | OpenCode |
 |------|-------------|------|----------|
 | `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if Bash flag false) | `[ui] permission_mode = "acceptEdits"` | `permission.edit = "allow"` |
 | `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` |
 
-**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. Keep the flag false unless the user explicitly chooses full Bash autonomy.
+**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. This repo has the flag **true** because the user chose full autonomy 2026-08-29. Forks: leave it false unless you want the same.
 
 With `bash_without_prompt` true, Claude's deny and ask lists are **best-effort only** because bypass skips permission checks. User chose full autonomy 2026-08-29: flag true, all three tools run prompt-free (flip back in `permissions.json` + `setup.sh` to restore the review gate).
 
@@ -113,7 +113,7 @@ Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md
 
 ## Machine toolchains (this machine)
 
-- **TeX: `texlive-full` installed** (Debian pkg `texlive-full` 2025.x, TeX Live 2025). Full scheme — every CTAN package, every engine, all fonts. Write scientific papers, posters, TikZ/PGFPlots, beamer, bibliographies directly; **never** ask the user to install a LaTeX package, and never fall back to a Markdown-only deliverable for lack of TeX.
+- **TeX: `texlive-full` / `texlive-meta` installed** (Ubuntu/Debian pkg `texlive-full`; Omarchy/Arch `texlive-meta`). Full scheme — every CTAN package, every engine, all fonts. Write scientific papers, posters, TikZ/PGFPlots, beamer, bibliographies directly; **never** ask the user to install a LaTeX package, and never fall back to a Markdown-only deliverable for lack of TeX.
   - Engines: `pdflatex`, `xelatex`, `lualatex`, `tex` · build: `latexmk` (preferred, handles reruns) · bib: `biber`, `bibtex` · index: `makeindex` · also `texcount`, `latexdiff`.
   - `tectonic` also installed (`~/.local/bin`) — self-contained one-shot builds; use when a project's build script already calls it.
   - All of the above are allowlisted (no prompt). Package installs (`tlmgr install`) are not — and with `texlive-full` should never be needed.
@@ -209,7 +209,7 @@ Rules:
 
 ## `continue_project` trigger
 
-When the user says **`continue_project <path>`** (example: `continue_project /home/brwsk/projects/some_dummy_project`), resume that project from disk. Do this **before** other work:
+When the user says **`continue_project <path>`** (example: `continue_project $HOME/projects/some_dummy_project`), resume that project from disk. Do this **before** other work:
 
 1. Resolve `<path>` (absolute or relative). Must be a directory. If missing/invalid → stop and say so.
 2. **Residue / conflict check (all tools):**

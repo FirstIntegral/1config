@@ -9,6 +9,9 @@
 # load after a multiline secret bricked them) and restocks the dedicated
 # collection.
 #
+# Signing key: $GPG_SIGNING_KEY, else git config --global user.signingkey.
+# Never falls back to another machine's key id.
+#
 # Runs at login from the boot dashboard; invoke anytime:
 #   bash ~/.agents/hooks/gpg-agent-unlock.sh
 #
@@ -16,13 +19,15 @@
 #   bash ~/.agents/hooks/gpg-store-passphrase.sh
 #
 # Manual fallback (nothing stored / passphrase changed), real terminal:
-#   export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u 95FBA6E0AA245342 --clearsign -o /dev/null
+#   export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u "$(git config --global --get user.signingkey)" --clearsign -o /dev/null
 #
-# Exit: 0 cached-or-unlocked · 1 passphrase rejected · 2 dbus error · 3 nothing stored
+# Exit: 0 cached-or-unlocked · 1 passphrase rejected · 2 dbus error · 3 nothing stored / no key
 set -u
 
-KEY="${GPG_SIGNING_KEY:-95FBA6E0AA245342}"
-PY="${AGENTS_HOME:-$HOME/.agents}/hooks/gpg-keyring.py"
+AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
+KEY="$(bash "$AGENTS_HOME/hooks/gpg-signing-key.sh")" || exit $?
+export GPG_SIGNING_KEY="$KEY"
+PY="$AGENTS_HOME/hooks/gpg-keyring.py"
 
 key_cached() {
   printf 'test' | gpg --batch --yes --pinentry-mode loopback \
@@ -33,7 +38,7 @@ if key_cached; then
   exit 0
 fi
 
-pass="$(AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}" GPG_SIGNING_KEY="$KEY" python3 "$PY" fetch)" || exit $?
+pass="$(AGENTS_HOME="$AGENTS_HOME" GPG_SIGNING_KEY="$KEY" python3 "$PY" fetch)" || exit $?
 
 if printf '%s' "$pass" \
    | gpg --batch --yes --pinentry-mode loopback \

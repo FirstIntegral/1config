@@ -7,3 +7,6 @@ __pycache__/
 
 # Machine-local opencode skills (e.g. Omarchy-provided) — not part of the brain
 skills/
+
+# Live grok/claude/opencode versions — differ per machine, rewritten by setup/updater
+inventory.local.md

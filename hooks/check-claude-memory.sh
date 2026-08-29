@@ -60,7 +60,7 @@ is_clean_memory_dir() {
 
 # Resolve Claude's encoded project dir name to a real path when possible.
 # Encoding: absolute path with "/" → "-" and a leading "-".
-# e.g. /home/brwsk/projects/foo → -home-brwsk-projects-foo
+# e.g. /home/USER/projects/foo → -home-USER-projects-foo
 # Strategy: (1) naive slash-restore if that path exists (works when no path
 # component contains "-"); (2) cached resolution (~/.cache/agents-path-map);
 # (3) walk common roots + deep find under ~/projects.
