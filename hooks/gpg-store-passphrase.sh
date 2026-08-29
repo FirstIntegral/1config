@@ -60,6 +60,19 @@ if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
+# The 1-year TTL only applies to agents started AFTER the conf exists; a
+# pre-existing agent keeps its defaults (2h max) and would prompt on expiry.
+# Ensure the conf, then reload the agent; the unlock below re-seeds the cache
+# from the keyring headlessly.
+CONF="$HOME/.gnupg/gpg-agent.conf"
+mkdir -p "$HOME/.gnupg"
+for line in "allow-loopback-pinentry" \
+            "default-cache-ttl 31536000" "max-cache-ttl 31536000" \
+            "default-cache-ttl-ssh 31536000" "max-cache-ttl-ssh 31536000"; do
+  grep -qF "$line" "$CONF" 2>/dev/null || echo "$line" >> "$CONF"
+done
+gpgconf --kill gpg-agent 2>/dev/null || true
+
 if bash "$HOME/.agents/hooks/gpg-agent-unlock.sh"; then
   echo "signing key unlocked — commits will sign silently"
 else
