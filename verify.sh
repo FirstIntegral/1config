@@ -414,6 +414,38 @@ if [ -x "$HOOKS/gpg-agent-unlock.sh" ] && [ -x "$HOOKS/gpg-store-passphrase.sh" 
 else
   bad "gpg unlock hooks missing (run setup.sh)"
 fi
+if [ -f "$HOOKS/gpg-keyring.py" ]; then
+  ok "hooks/gpg-keyring.py present"
+  if python3 -m py_compile "$HOOKS/gpg-keyring.py" 2>/dev/null; then
+    ok "hooks/gpg-keyring.py compiles"
+  else
+    bad "hooks/gpg-keyring.py SYNTAX ERROR"
+  fi
+  if python3 "$HOOKS/gpg-keyring.py" self-test >/dev/null; then
+    ok "gpg-keyring.py self-test (bricked-file scan + SearchItems tuple)"
+  else
+    bad "gpg-keyring.py self-test failed"
+  fi
+else
+  bad "hooks/gpg-keyring.py missing"
+fi
+if grep -q 'SearchItems' "$HOOKS/gpg-keyring.py" && grep -q '_pick_item' "$HOOKS/gpg-keyring.py"; then
+  ok "gpg-keyring.py uses SearchItems (unlocked, locked) tuple"
+else
+  bad "gpg-keyring.py does not handle SearchItems locked items"
+fi
+if grep -q 'COLLECTION_LABEL = "gpg-signing"' "$HOOKS/gpg-keyring.py" \
+   && grep -q 'CreateWithMasterPassword' "$HOOKS/gpg-keyring.py"; then
+  ok "gpg passphrase stored in dedicated gpg-signing collection"
+else
+  bad "gpg-keyring.py does not isolate a dedicated collection"
+fi
+if grep -q 'gpg-keyring.py' "$HOOKS/gpg-agent-unlock.sh" \
+   && grep -q 'gpg-keyring.py' "$HOOKS/gpg-store-passphrase.sh"; then
+  ok "unlock + store scripts call gpg-keyring.py"
+else
+  bad "unlock/store scripts do not call gpg-keyring.py"
+fi
 if [ -d "$AGENTS_HOME/vendor/jeepney" ] && [ -f "$AGENTS_HOME/vendor/jeepney/__init__.py" ]; then
   ok "vendored jeepney present (gpg keyring access)"
 else
@@ -423,6 +455,11 @@ if [ -d "$BD" ] && grep -q 'gpg-agent-unlock' "$BD/dashboard.sh" 2>/dev/null; th
   ok "boot dashboard runs gpg unlock"
 else
   note "boot dashboard does not reference gpg-agent-unlock"
+fi
+if [ -d "$BD" ] && grep -q 'no stored passphrase' "$BD/dashboard.sh" 2>/dev/null; then
+  ok "boot dashboard distinguishes unlock exit 3 (nothing stored)"
+else
+  bad "boot dashboard still lumps all gpg failures as keyring locked/empty"
 fi
 
 # --- flag names (must not reintroduce bare NEEDS-MERGE as the live flag) ---

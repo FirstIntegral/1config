@@ -115,8 +115,8 @@
   <!-- ===== SIGNING CHAIN ===== -->
   <rect x="585" y="568" width="430" height="150" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
   <text x="607" y="596" font-size="15" font-weight="bold" fill="#e6edf3">SIGNING CHAIN</text>
-  <text x="607" y="620" font-size="12" fill="#8b949e">Secret Service keyring (LUKS at rest)</text>
-  <text x="607" y="640" font-size="12" fill="#8b949e">→ gpg-agent-unlock.sh (boot + on demand)</text>
+  <text x="607" y="620" font-size="12" fill="#8b949e">dedicated gpg-signing collection (autologin)</text>
+  <text x="607" y="640" font-size="12" fill="#8b949e">→ gpg-agent-unlock.sh (boot + migrate)</text>
   <text x="607" y="660" font-size="12" fill="#8b949e">→ every commit signed · never bypassed</text>
   <text x="607" y="680" font-size="12" fill="#79c0ff">sync.sh: setup+verify → commit → push</text>
   <text x="607" y="700" font-size="12" fill="#8b949e">→ github:FirstIntegral/1config (main)</text>

@@ -203,16 +203,32 @@ check_versions() {
 }
 
 check_gpg_sign() {
-  # Attempts unlock through Secret Service; locked autologin keyrings can fail.
+  # Attempts unlock through Secret Service + bricked-file migrate.
+  # Exit 3 = nothing stored, 2 = dbus, 1 = passphrase rejected — not all "locked".
   if [ ! -x "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" ]; then
     row warn "signing" "unlock hook missing"
     return 1
   fi
-  if "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1; then
-    row ok "signing" "gpg key unlocked (commits silent)"
-    return 0
-  fi
-  row warn "signing" "not unlocked — keyring locked/empty; see AGENTS.md fallback"
+  "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1
+  local rc=$?
+  case "$rc" in
+    0)
+      row ok "signing" "gpg key unlocked (commits silent)"
+      return 0
+      ;;
+    3)
+      row warn "signing" "no stored passphrase — bash ~/.agents/hooks/gpg-store-passphrase.sh"
+      ;;
+    2)
+      row warn "signing" "keyring dbus failed (gnome-keyring running?)"
+      ;;
+    1)
+      row warn "signing" "passphrase rejected — re-run gpg-store-passphrase.sh"
+      ;;
+    *)
+      row warn "signing" "unlock failed (exit $rc)"
+      ;;
+  esac
   return 1
 }
 

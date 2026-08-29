@@ -111,12 +111,14 @@ Reads `AGENTS.md` natively at global and project level — no rules wiring neede
 
 ### GPG signing unlock (Secret Service keyring)
 
-- Passphrase lives in the Secret Service keyring, **not on disk**. Password-based desktop login normally unlocks it through PAM; autologin may not.
-- `hooks/gpg-agent-unlock.sh` — test-sign; if the agent has no cached passphrase, fetch from keyring + unlock with `--pinentry-mode loopback`. The boot dashboard attempts this at every graphical login; standalone anytime.
-- `hooks/gpg-store-passphrase.sh` — one-time store (prompts once; nothing on disk). Re-run after a passphrase change.
+- Passphrase lives in a **dedicated** gnome-keyring collection labelled `gpg-signing`, empty master (autologin has no PAM password, so a login-locked collection would never open). Isolated from the default collection on purpose.
+- **Why dedicated (verified 2026-08-29, this machine):** gnome-keyring 50 cannot reload an unencrypted `.keyring` file after any item's `secret=` contains a raw newline (Proton JSON via Python keyring, etc.) — journal: `keyring was in an invalid or unrecognized format`. SearchItems then returns empty even though the GPG item is still in the file. A one-item collection does not pick up those secrets, so it survives reboot. Unlock scans bricked files and restocks the dedicated collection when the live daemon has nothing.
+- `hooks/gpg-keyring.py` — jeepney helper: SearchItems uses **both** `(unlocked, locked)` arrays; never `Service.Unlock` (that GUI-prompts); empty-master via `CreateWithMasterPassword` / `UnlockWithMasterPassword`. `fetch` / `store` / `self-test`.
+- `hooks/gpg-agent-unlock.sh` — test-sign; on miss, `gpg-keyring.py fetch` + `--pinentry-mode loopback`. Boot dashboard runs this at graphical login. Exit `0` cached-or-unlocked · `1` passphrase rejected · `2` dbus · `3` nothing stored.
+- `hooks/gpg-store-passphrase.sh` — one-time store into the dedicated collection (prompts once). Re-run after a passphrase change.
 - **gnome-keyring 50.x API quirk (verified 2026-08):** `CreateItem` lives on the **Collection** interface (not Service), `GetSecret` on the **Item** interface, and the Secret struct signature is `(oayays)` with a single `ay` parameters field. The plain-session handle marshals correctly only via the **vendored `jeepney`** (`~/.agents/vendor/jeepney`, MIT, pure python — dbus-python/GLib validate object paths and fail). No system packages needed.
 - `~/.gnupg/gpg-agent.conf` already: `allow-loopback-pinentry`, `default-cache-ttl 31536000`, `max-cache-ttl 31536000` (1-year cache after first unlock).
-- Fallback (keyring locked/empty): manual unlock in a real terminal (see canonical `AGENTS.md`).
+- Fallback: re-run the store script, or manual unlock in a real terminal (see canonical `AGENTS.md`).
 
 ### §4b `hooks/checkpoint.sh` — the git half of `checkpoint_project`
 
@@ -435,7 +437,7 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 7. Install/refresh claude-memory-guard (§6b/§7b) — copied from `hooks/check-claude-memory.sh`.
 8. Install/refresh tool updater (§7c) — user scripts copied from `updater/`; install the root resume shim with the `sudo install` command above and repeat after shim changes.
 9. Crontab entries for guards + updater (§7) — preserves other crontab lines.
-10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh`; run the store script once (see §4 GPG).
+10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py`; run the store script once (see §4 GPG). Dedicated `gpg-signing` collection, not default.
 11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
 12. `watch-stale.sh` — `chmod +x hooks/watch-stale.sh` + `bash -n` syntax gate (§4c).
 13. Verify (+ optional inventory refresh of §1 version table).

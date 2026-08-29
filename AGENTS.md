@@ -46,9 +46,9 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 
 - Do NOT use `--no-gpg-sign`, `-c commit.gpgsign=false`, or any other bypass.
 - If signing fails (locked key, no pinentry), STOP and unlock, then commit. Never work around it.
-- **Unlock is attempted automatically** — the passphrase lives in the Secret Service keyring, encrypted at rest. `~/.agents/hooks/gpg-agent-unlock.sh` test-signs and, if the agent is empty, fetches the passphrase over D-Bus and unlocks with `--pinentry-mode loopback`. The boot dashboard runs it at graphical login. Password logins normally unlock the keyring through PAM; autologin or a locked/empty keyring needs the fallback below.
-- One-time setup on a fresh machine (prompts once, stores in keyring, nothing on disk): `bash ~/.agents/hooks/gpg-store-passphrase.sh`
-- If the automated unlock fails (keyring locked/empty, passphrase changed): re-store with the command above, or manual fallback in a real terminal: `export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u 95FBA6E0AA245342 --clearsign -o /dev/null` (prompts, caches). Then retry the commit.
+- **Unlock is attempted automatically** — passphrase lives in a dedicated gnome-keyring collection labelled `gpg-signing` (empty master so autologin can read it; **not** the default collection). Default unencrypted keyrings get bricked across reboot when another app stores a multiline secret (gnome-keyring then logs `invalid or unrecognized format` and Secret Service is empty). `~/.agents/hooks/gpg-agent-unlock.sh` test-signs; if the agent is empty it fetches over D-Bus (unlocked **and** locked items), and if the live daemon has nothing it scans on-disk `*.keyring` files and restocks the dedicated collection. Then `--pinentry-mode loopback`. Boot dashboard runs this at graphical login.
+- One-time setup on a fresh machine (prompts once): `bash ~/.agents/hooks/gpg-store-passphrase.sh`
+- If automated unlock still fails (nothing stored, passphrase changed): re-run the store script, or manual fallback in a real terminal: `export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u 95FBA6E0AA245342 --clearsign -o /dev/null` (prompts, caches). Then retry the commit.
 - History rewrites (rebase, filter-repo, amend) must leave commits re-signed before any push.
 
 ---

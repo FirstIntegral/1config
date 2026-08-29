@@ -581,8 +581,8 @@ else
 fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------
-echo "[gpg] unlock hooks (keyring-based, nothing installed elsewhere)"
-for h in gpg-agent-unlock.sh gpg-store-passphrase.sh; do
+echo "[gpg] unlock hooks (dedicated gpg-signing collection, nothing installed elsewhere)"
+for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py; do
   if [ -f "$AGENTS_HOME/hooks/$h" ]; then
     chmod +x "$AGENTS_HOME/hooks/$h"
     log "ready   hooks/$h"

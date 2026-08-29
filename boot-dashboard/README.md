@@ -23,7 +23,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. Runs **before** ecosystem so inventory refresh finishes first. |
 | **ecosystem** | `verify.sh` PASS (after tool updates — avoids false inventory mismatch at boot) |
 | **tool versions** | grok / claude / opencode on PATH |
-| **signing** | Attempts GPG signing-key unlock from Secret Service; warn means keyring is locked/empty or passphrase changed |
+| **signing** | Attempts GPG signing-key unlock from the dedicated `gpg-signing` collection (and migrates out of bricked default `.keyring` files). Warn: nothing stored / dbus down / passphrase rejected — not a generic "locked". |
 
 ## Window size
 
@@ -46,7 +46,7 @@ BOOT_DASHBOARD_COLS=100 BOOT_DASHBOARD_ROWS=36 bash ~/.agents/boot-dashboard/lau
 | `BOOT_DASHBOARD_UPD_WAIT` | `180` | Max seconds to watch tool updater |
 | `BOOT_DASHBOARD_COLS` / `ROWS` | `92` / `32` | Ptyxis size for this window |
 
-## Reading the 2 common warns
+## Reading the common warns
 
 1. **network — online, github slow/unreachable**  
    Ping works; light GitHub probe failed after retries. Often: WiFi just up, DNS slow, or GitHub congested. Fine to work. Re-run later: `bash ~/.agents/boot-dashboard/launch.sh` with `BOOT_DASHBOARD_NO_DELAY=1`.
@@ -55,3 +55,6 @@ BOOT_DASHBOARD_COLS=100 BOOT_DASHBOARD_ROWS=36 bash ~/.agents/boot-dashboard/lau
    `@reboot` `boot-check.sh` → `update-apps.sh` still upgrading (each tool has a 300s timeout). Background is OK — close the window. Log: `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.log`.
 
 Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail — other tools may have updated fine.
+
+3. **signing — no stored passphrase / dbus failed / passphrase rejected**  
+   Dedicated `gpg-signing` collection missing, gnome-keyring down, or the passphrase changed. One-time: `bash ~/.agents/hooks/gpg-store-passphrase.sh`. Unlock also migrates the item out of bricked default `.keyring` files (multiline secrets make gnome-keyring refuse the whole file).
