@@ -38,11 +38,12 @@
       "  grok     -> [ui] permission_mode = \"always-approve\"",
       "  opencode -> permission.bash catch-all \"*\" = \"allow\" (specific rules still written later)",
       "With bash_without_prompt true, Claude ask/deny lists are best-effort only — bypass skips checks.",
-      "Current policy keeps edit_without_prompt=true and bash_without_prompt=false: edits are accepted,",
-      "canonical safe commands run silently, and unmatched Bash (including generic git push) asks."
+      "Current policy (user chose full autonomy 2026-08-29): edit_without_prompt=true AND",
+      "bash_without_prompt=true — no Bash prompts in any tool; Claude ask/deny best-effort only;",
+      "generic git push no longer asks. Flip back to false to restore the Bash review gate."
     ],
     "edit_without_prompt": true,
-    "bash_without_prompt": false
+    "bash_without_prompt": true
   },
   "permissions": {
     "allow": [

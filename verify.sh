@@ -884,7 +884,9 @@ for line in m.group(1).splitlines():
         rows[mm.group(1).strip()] = mm.group(2).strip()
 def ver(cmd):
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
+        r = subprocess.run(["env", "-i", f"HOME={os.environ['HOME']}", "TERM=dumb",
+                            "bash", "-lc", cmd],
+                           capture_output=True, text=True, timeout=60)
         out = (r.stdout or r.stderr or "").splitlines()
         s = out[0] if out else ""
         mm = re.search(r"(\d+\.\d+\.\d+)", s)
@@ -909,6 +911,11 @@ PY
     ok "SETUP.md inventory matches installed binaries"
   else
     bad "SETUP.md inventory ≠ installed binaries (run setup.sh)"
+  fi
+  if [ -f "$AGENTS_HOME/setup-infographic.svg" ] && grep -q 'setup-infographic.svg' "$SETUP"; then
+    ok "setup-infographic.svg present and referenced by SETUP.md"
+  else
+    bad "setup-infographic.svg missing or unreferenced"
   fi
 fi
 

@@ -1,20 +1,20 @@
 # Unified AI Terminal Setup — Full Spec
 
-Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.svg` is the visual summary; THIS file is the authoritative version. An AI given this file + the `~/.agents/` folder can recreate everything exactly.
+Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.svg` is the visual summary; THIS file is the authoritative version. An AI given this file + the `~/.agents/` folder can recreate everything exactly. If a brain change alters what the figure depicts (components, flows, toolchain), regenerate `setup-infographic.svg` in the same turn.
 
 **TL;DR migration:** copy `~/.agents/` to the new machine → `bash ~/.agents/setup.sh` → done. Manual path: §8.
 
 ## 1. Inventory
 
-**Versions are auto-maintained** by `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh` (boot + resume). It rewrites the table only when installed version rows change, so no-op updater runs do not dirty the repo. Do not hand-edit versions.
+**Versions are auto-maintained** by `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh` (boot + resume). It rewrites the table only when installed version rows change, so no-op updater runs do not dirty the repo. Do not hand-edit versions. All probes (updater + `verify.sh`) run through a login shell (`bash -lc`), so the table always records the PATH-resolved binary — mise shims included — regardless of caller environment. Tools whose login-shell PATH resolves under mise are skipped by the updater; mise's own upgrade cadence (`minimum_release_age`) governs them.
 
 <!-- TOOL_INVENTORY_START -->
 | Tool | Version | Binary | Config |
 |------|---------|--------|--------|
-| Grok Build | 1.0.5 | `~/.grok/bin/grok` | `~/.grok/config.toml` |
-| Claude Code | 2.1.250 | `~/.local/bin/claude` | `~/.claude/settings.json` |
-| OpenCode | 1.18.23 | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
-<!-- last refreshed: 2026-08-29 01:39 by update-apps -->
+| Grok Build | 1.0.13 | `~/.local/bin/grok` | `~/.grok/config.toml` |
+| Claude Code | 2.1.251 | `~/.local/bin/claude` | `~/.claude/settings.json` |
+| OpenCode | 1.18.23 | `~/.local/bin/opencode` | `~/.config/opencode/opencode.jsonc` |
+<!-- last refreshed: 2026-08-29 18:47 by setup -->
 <!-- TOOL_INVENTORY_END -->
 
 Platform: linux. Requires: `python3`, `cron`, `flock`. No root, no package installs (except optional systemd-sleep shim for resume updates — see that cron-job’s README).
@@ -421,6 +421,7 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 - **Crontab:** `@reboot .../boot-check.sh` (managed by setup.sh). **Resume:** root-installed systemd hook `/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`; install or refresh with `sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`.
 - The root hook discovers logged-in users through `loginctl`/`getent`, then asks the system manager to start a delayed transient service with explicit `--uid`, `HOME`, `USER`, and `LOGNAME`. It never executes a user-owned script as root, never relies on root's `$HOME`, and does not detach a child into the sleep hook's cgroup.
 - `update-apps.sh` and `setup.sh` refresh the SETUP.md inventory only when version rows change; the timestamp records which path made a real change.
+- mise-managed tools are skipped by `update-apps.sh`: the login-resolved (`env -i bash -lc`) binary is under `~/.local/share/mise/` or is a wrapper delegating to `mise x` (those wrappers set `MISE_MINIMUM_RELEASE_AGE=0`, so mise cadence = every invocation). Direct CDN/`update` calls for them only hit shadowed bins or interactive "managed by a package manager" prompts. The updater still refreshes the inventory.
 - Updater, standalone setup, and normal sync share `.update.lock`; sync holds it through verification, commit, and push so inventory cannot change after the gate.
 
 ## 8. Manual recreation (or just `bash ~/.agents/setup.sh`)

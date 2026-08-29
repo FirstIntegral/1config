@@ -81,7 +81,7 @@ Same canonical file, `defaults` block. `edit_without_prompt` is **true**; `bash_
 
 **Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. Keep the flag false unless the user explicitly chooses full Bash autonomy.
 
-With `bash_without_prompt` true, Claude's deny and ask lists are **best-effort only** because bypass skips permission checks. Current false setting keeps all three tools in edit-accepting, Bash-reviewing modes.
+With `bash_without_prompt` true, Claude's deny and ask lists are **best-effort only** because bypass skips permission checks. User chose full autonomy 2026-08-29: flag true, all three tools run prompt-free (flip back in `permissions.json` + `setup.sh` to restore the review gate).
 
 ### Compound commands (when bash_without_prompt is false)
 
@@ -362,6 +362,7 @@ When the user says **`global_brain_update <what to change>`**, the target is **t
 
 1. **Read before writing.** `AGENTS.md` (canonical rules) and `SETUP.md` (spec), plus whatever the request touches: `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`. Never patch the brain blind — half of it installs the other half.
 2. **Put the change in its canonical home**, never in a tool-local path: rules & triggers → `AGENTS.md` · spec / how it installs → `SETUP.md` · install logic → `setup.sh` · checks → `verify.sh` · permissions → `permissions.json` · scripts → `hooks/` (or `updater/`) · scaffolds → `project-template/` / `paper-template/`.
+2b. **If the change alters what `setup-infographic.svg` depicts** (components, flows, toolchain), regenerate the figure in the same turn — it is part of the spec surface (verify checks it exists and stays referenced).
 3. **Tri-tool parity applies** (see that HARD RULE): land it for Claude Code + Grok + OpenCode, install it in `setup.sh`, check it in `verify.sh`. A brain change with no verify check is not done.
 4. `bash ~/.agents/setup.sh` → must end `== PASS ==` with `warnings=0`. Fix anything it reports before moving on.
 5. `bash ~/.agents/sync.sh -m "<commit subject>"` → re-runs setup+verify, signed commit, push to `github:FirstIntegral/1config` (`main`).

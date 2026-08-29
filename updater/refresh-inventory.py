@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Refresh SETUP.md tool versions only when the exact inventory rows change."""
+"""Refresh SETUP.md tool versions only when the exact inventory rows change.
+
+All probes run through a login shell (bash -lc) so the inventory always
+reflects the PATH-resolved binary (mise shims included) no matter what
+environment the caller (boot cron, resume hook, interactive shell) has.
+"""
 
 import datetime
 import os
@@ -13,15 +18,28 @@ START = "<!-- TOOL_INVENTORY_START -->"
 END = "<!-- TOOL_INVENTORY_END -->"
 
 
-def version(binary: str) -> str:
+def login_shell(cmd: str) -> str:
+    # env -i: canonical login resolution, independent of the caller's PATH
+    # (boot cron, updater's exported PATH, and AI harnesses all differ).
     try:
         result = subprocess.run(
-            [binary, "--version"], capture_output=True, text=True, timeout=15, check=False
+            ["env", "-i", f"HOME={pathlib.Path.home()}", "TERM=dumb", "bash", "-lc", cmd],
+            capture_output=True, text=True, timeout=60, check=False,
         )
-        lines = (result.stdout or result.stderr or "").strip().splitlines()
-        value = lines[0] if lines else "unknown"
+        return (result.stdout or result.stderr or "").strip()
     except (OSError, subprocess.SubprocessError):
-        value = "unknown"
+        return ""
+
+
+def resolve(binary: str) -> str:
+    out = login_shell(f"command -v {binary}")
+    path = os.path.normpath(out.splitlines()[0]) if out else ""
+    return path.replace(str(pathlib.Path.home()), "~", 1) if path else "missing"
+
+
+def version(binary: str) -> str:
+    out = login_shell(f"{binary} --version")
+    value = out.splitlines()[0] if out else "unknown"
     match = re.search(r"(\d+\.\d+\.\d+)", value)
     return match.group(1) if match else (value[:40] or "unknown")
 
@@ -36,9 +54,9 @@ def main() -> int:
     rows = (
         "| Tool | Version | Binary | Config |\n"
         "|------|---------|--------|--------|\n"
-        f"| Grok Build | {version('grok')} | `~/.grok/bin/grok` | `~/.grok/config.toml` |\n"
-        f"| Claude Code | {version('claude')} | `~/.local/bin/claude` | `~/.claude/settings.json` |\n"
-        f"| OpenCode | {version('opencode')} | `~/.opencode/bin/opencode` | `~/.config/opencode/opencode.jsonc` |"
+        f"| Grok Build | {version('grok')} | `{resolve('grok')}` | `~/.grok/config.toml` |\n"
+        f"| Claude Code | {version('claude')} | `{resolve('claude')}` | `~/.claude/settings.json` |\n"
+        f"| OpenCode | {version('opencode')} | `{resolve('opencode')}` | `~/.config/opencode/opencode.jsonc` |"
     )
     text = setup.read_text()
     pattern = re.compile(re.escape(START) + r".*?" + re.escape(END), re.S)

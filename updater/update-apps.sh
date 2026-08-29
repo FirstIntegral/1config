@@ -22,6 +22,22 @@ CLAUDE_CDN="${CLAUDE_CDN:-https://downloads.claude.ai/claude-code-releases}"
 CLAUDE_MIN_BYTES=50000000
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 
+# True when the login-resolved binary IS mise-managed: realpath under mise, or
+# a wrapper that delegates to `mise x` (those wrappers also bypass
+# minimum_release_age, so mise cadence = every invocation). Probed with env -i
+# so the answer is the user's true login resolution, not the caller's PATH
+# (this script exports a non-mise PATH above; harnesses may export a mise one).
+# Direct CDN/`update` calls for such tools only hit shadowed bins or
+# interactive "managed by a package manager" prompts.
+mise_managed() {
+  local p
+  p="$(env -i HOME="$HOME" TERM=dumb bash -lc "command -v $1" 2>/dev/null | head -1)"
+  [ -n "$p" ] || return 1
+  case "$p" in */mise/*) return 0 ;; esac
+  [ -f "$p" ] && head -c 400 "$p" 2>/dev/null | grep -q 'mise' && return 0
+  return 1
+}
+
 # Refuse to run if another update is already in progress (boot-check or resume)
 exec 9>"$LOCK"
 if ! flock -n 9; then
@@ -299,7 +315,9 @@ fail=0
 clean_incomplete_claude
 
 # --- opencode ---
-if command -v opencode >/dev/null 2>&1; then
+if mise_managed opencode; then
+  echo "[$(ts)] opencode mise-managed — skip direct upgrade (mise cadence applies)" >> "$LOG"
+elif command -v opencode >/dev/null 2>&1; then
   echo "[$(ts)] -> opencode upgrade" >> "$LOG"
   load_github_token || true
   remaining="$(gh_rate_remaining || true)"
@@ -343,7 +361,9 @@ else
 fi
 
 # --- grok ---
-if command -v grok >/dev/null 2>&1; then
+if mise_managed grok; then
+  echo "[$(ts)] grok mise-managed — skip direct update (mise cadence applies)" >> "$LOG"
+elif command -v grok >/dev/null 2>&1; then
   echo "[$(ts)] -> grok update" >> "$LOG"
   if timeout "$TIMEOUT_DEFAULT" grok update >>"$LOG" 2>&1; then
     echo "[$(ts)] grok OK -> $(grok --version 2>&1)" >> "$LOG"
@@ -361,7 +381,9 @@ else
 fi
 
 # --- claude (CDN resume path; NOT `claude update` which restarts every kill) ---
-if command -v claude >/dev/null 2>&1 || [ -d "$CLAUDE_VERSIONS_DIR" ]; then
+if mise_managed claude; then
+  echo "[$(ts)] claude mise-managed — skip CDN update (mise cadence applies)" >> "$LOG"
+elif command -v claude >/dev/null 2>&1 || [ -d "$CLAUDE_VERSIONS_DIR" ]; then
   echo "[$(ts)] -> claude update (CDN resume)" >> "$LOG"
   clean_incomplete_claude
   crc=0
