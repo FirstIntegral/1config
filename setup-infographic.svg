@@ -108,9 +108,9 @@
   <text x="152" y="596" font-size="15" font-weight="bold" fill="#e6edf3">BINARY LAYER — mise</text>
   <text x="152" y="620" font-size="12" fill="#8b949e">tools = latest + 24h minimum_release_age</text>
   <text x="152" y="640" font-size="12" fill="#8b949e">updater skips mise-managed (shims shadow)</text>
-  <text x="152" y="660" font-size="12" fill="#3fb950">inventory + verify probe bash -lc ✓</text>
-  <text x="152" y="680" font-size="12" fill="#8b949e">one resolution ⇒ no caller-env drift</text>
-  <text x="152" y="700" font-size="12" fill="#8b949e">versions table lives in SETUP.md only</text>
+  <text x="152" y="660" font-size="12" fill="#3fb950">inventory: login PATH, then vendor dirs</text>
+  <text x="152" y="680" font-size="12" fill="#8b949e">mise skip stays login-PATH-only</text>
+  <text x="152" y="700" font-size="12" fill="#8b949e">versions → gitignored inventory.local.md</text>
 
   <!-- ===== SIGNING CHAIN ===== -->
   <rect x="585" y="568" width="430" height="150" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>

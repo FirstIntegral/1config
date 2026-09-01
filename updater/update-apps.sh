@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Updates opencode, grok, and claude CLI apps; refreshes ~/.agents/SETUP.md inventory.
+# Updates opencode, grok, and claude CLI apps; refreshes gitignored inventory.local.md.
 # Invoked on boot (@reboot cron) and resume from suspend.
 # SOURCE: ~/.agents/updater/ — setup.sh copies to ~/cron-jobs/ai-terminal-tools-update-on-boot/
 # (logs/lock stay in the installed dir). Keep installed copy byte-identical.

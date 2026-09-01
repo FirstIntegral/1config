@@ -8,7 +8,7 @@ Boot + resume auto-updater for opencode / grok / claude.
 | `boot-check.sh` | `@reboot` gate: waits for network (0/1/3/5/10/15 min backoff), then runs `update-apps.sh`. |
 | `on-resume.sh` | User helper: runs `boot-check.sh` inside a supervised transient service after resume. |
 | `system-sleep-shim.sh` | Root systemd hook: detects logged-in users and schedules delayed helpers outside the sleep-hook cgroup. |
-| `refresh-inventory.py` | Shared exact/idempotent writer for gitignored `inventory.local.md` (never SETUP.md). |
+| `refresh-inventory.py` | Shared exact/idempotent writer for gitignored `inventory.local.md` (never SETUP.md). Login `command -v`, then vendor dirs; `--self-test` covers PATH-wins / fallback / no stderr versions. |
 
 **Install model:** `setup.sh` copies the 4 user scripts (byte-identical) to
 `~/cron-jobs/ai-terminal-tools-update-on-boot/`; `verify.sh` checks byte-identity.

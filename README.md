@@ -57,7 +57,7 @@ git pull origin main
 bash ~/.agents/setup.sh
 ```
 
-`setup.sh` is idempotent: re-copies hooks, refreshes cron jobs, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight.
+`setup.sh` is idempotent: re-copies hooks, refreshes cron jobs, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. 1config does not edit your `.profile` and does not symlink into `~/.local/bin`.
 
 ## Opinionated defaults — read before you fork
 
@@ -97,5 +97,5 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `hooks/` | GPG unlock, checkpoint, guards, heredoc rewrite. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). |
 | `docs/DECISIONS.md` | ADRs for this repo. |
-| `inventory.local.md` | Live CLI versions. Gitignored. |
+| `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |
 | `skills/` | Machine-local (Omarchy skill lives here). Gitignored. |

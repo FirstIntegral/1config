@@ -30,6 +30,14 @@ ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisio
 
 **Rejected:** Auto-installing packages from setup.sh; keeping the version table in the spec; a default fallback key id.
 
+## 2026-09-01 — Inventory: login PATH, then vendor-dir fallback
+
+**Decision:** `inventory.local.md` resolves each CLI with (1) login shell `command -v`, then (2) executable files in `~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`. `mise_managed()` in the updater stays (1) only. No `~/.local/bin` symlink, no `.bashrc`/`.profile` edits. A missing command is `unknown`/`missing`; stderr is never a version string.
+
+**Why:** Official OpenCode (and Grok) installers put the binary in a vendor dir and prepend that dir in `.bashrc`. Ubuntu `.bashrc` returns immediately for non-interactive shells (`case $-` interactive-guard), and inventory probes with `env -i bash -lc`, so Ubuntu reported OpenCode missing and stuffed `command not found` into the version cell even though `~/.opencode/bin/opencode` existed and the updater already had that dir on its own PATH. Omarchy may install the same tools via mise; those shims show up in step (1) and must keep winning, or the updater would CDN-upgrade a shadowed leftover vendor binary.
+
+**Rejected:** Unconditional `~/.local/bin/opencode` symlink (shadows mise on Omarchy). Teaching `setup.sh` to edit the user's `.profile` (1config does not own dotfiles; public forks would inherit that). Putting vendor dirs into `mise_managed()` (would treat a leftover vendor copy as "the" tool and skip or fight mise).
+
 ## Standing — No AI attribution; never bypass signing
 
 Commits and PRs are the user's. `Co-Authored-By: Claude` and "Generated with …" are forbidden. `--no-gpg-sign` is forbidden. Recorded in `AGENTS.md` as HARD RULEs.

@@ -505,6 +505,11 @@ else
 fi
 INV_REFRESH="$UPD_SRC/refresh-inventory.py"
 if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=os.environ["INV_REFRESH"]; compile(open(p, encoding="utf-8").read(), p, "exec")' 2>/dev/null; then
+  if python3 "$INV_REFRESH" --self-test >/dev/null; then
+    ok "inventory resolver: login PATH wins, vendor-dir fallback, no stderr versions"
+  else
+    bad "refresh-inventory.py --self-test failed"
+  fi
   _invtmp="$(mktemp)"
   _inv_rc=0
   INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
@@ -528,6 +533,19 @@ if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=
   rm -f "$_invtmp"
 else
   bad "updater/refresh-inventory.py missing or invalid"
+fi
+if grep -q 'vendor-dir fallback' "$SETUP" \
+   && grep -q '\.opencode/bin' "$SETUP" \
+   && grep -q 'interactive-guard' "$SETUP"; then
+  ok "SETUP.md documents login PATH then vendor-dir fallback"
+else
+  bad "SETUP.md missing inventory vendor-dir fallback (Ubuntu .bashrc PATH vs Omarchy mise)"
+fi
+if grep -q 'vendor-dir fallback' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -q 'interactive-guard' "$AGENTS_HOME/docs/DECISIONS.md"; then
+  ok "docs/DECISIONS.md records inventory vendor-dir fallback ADR"
+else
+  bad "docs/DECISIONS.md missing inventory vendor-dir fallback ADR"
 fi
 if grep -q '\.update\.lock' "$AGENTS_HOME/setup.sh" && grep -q 'flock 8' "$AGENTS_HOME/setup.sh" \
     && grep -q '\.update\.lock' "$AGENTS_HOME/sync.sh" && grep -q 'AGENTS_UPDATE_LOCK_HELD=1' "$AGENTS_HOME/sync.sh" \
@@ -914,42 +932,33 @@ fi
 # --- local inventory vs installed binaries (INFO if a CLI is not installed) --
 echo "[inventory vs installed]"
 if command -v python3 >/dev/null; then
-  if INV_MD="$AGENTS_HOME/inventory.local.md" python3 - <<'PY'
-import os, re, subprocess, pathlib, sys
+  if INV_MD="$AGENTS_HOME/inventory.local.md" INV_REFRESH="$INV_REFRESH" python3 - <<'PY'
+import importlib.util, os, pathlib, re, sys
 p = pathlib.Path(os.environ["INV_MD"])
 if not p.is_file():
     print("inventory.local.md missing (run setup.sh)"); sys.exit(1)
+spec = importlib.util.spec_from_file_location("refresh_inventory", os.environ["INV_REFRESH"])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
 text = p.read_text()
 rows = {}
 for line in text.splitlines():
     mm = re.match(r"\|\s*([A-Za-z][A-Za-z ]*?)\s*\|\s*([^\|]+?)\s*\|", line)
     if mm:
         rows[mm.group(1).strip()] = mm.group(2).strip()
-def ver(cmd):
-    try:
-        r = subprocess.run(["env", "-i", f"HOME={os.environ['HOME']}", "TERM=dumb",
-                            "bash", "-lc", cmd],
-                           capture_output=True, text=True, timeout=60)
-        out = (r.stdout or r.stderr or "").splitlines()
-        s = out[0] if out else ""
-        mm = re.search(r"(\d+\.\d+\.\d+)", s)
-        return mm.group(1) if mm else (s[:40] or "unknown")
-    except Exception:
-        return "unknown"
-expect = {
-    "Grok Build": ver("grok --version 2>/dev/null || true"),
-    "Claude Code": ver("claude --version 2>/dev/null || true"),
-    "OpenCode": ver("opencode --version 2>/dev/null || true"),
-}
+if "command not" in text.lower():
+    print("inventory.local.md contains shell stderr"); sys.exit(1)
 bad = []
 missing = []
-for k, want in expect.items():
-    got = rows.get(k, "")
-    if want in ("unknown", "missing") or got in ("unknown", "missing"):
-        missing.append(k)
+for label, binary, _config in mod.TOOLS:
+    path = mod.resolve(binary)
+    want = mod.version(binary, path)
+    got = rows.get(label, "")
+    if not path or want == "unknown" or got in ("unknown", "missing", ""):
+        missing.append(label)
         continue
     if want != got:
-        bad.append(f"{k}: inventory.local.md={got} installed={want}")
+        bad.append(f"{label}: inventory.local.md={got} installed={want}")
 if bad:
     print(" | ".join(bad)); sys.exit(1)
 if missing:
@@ -1019,6 +1028,12 @@ if grep -q 'bash_without_prompt = true' "$AGENTS_HOME/setup-infographic.svg" \
   ok "infographic shows full Bash autonomy and Ubuntu+Omarchy"
 else
   bad "infographic still shows bash_without_prompt=false or omits Ubuntu"
+fi
+if grep -q 'vendor dirs' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'inventory.local.md' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "infographic shows inventory vendor-dir fallback (not SETUP.md versions)"
+else
+  bad "infographic still pins versions in SETUP.md or omits vendor-dir fallback"
 fi
 
 # --- summary ---------------------------------------------------------------
