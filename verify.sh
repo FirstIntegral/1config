@@ -124,7 +124,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -462,6 +462,28 @@ if [ -d "$BD" ] && grep -q 'no stored passphrase' "$BD/dashboard.sh" 2>/dev/null
   ok "boot dashboard distinguishes unlock exit 3 (nothing stored)"
 else
   bad "boot dashboard still lumps all gpg failures as keyring locked/empty"
+fi
+if [ -x "$HOOKS/gpg-git.sh" ] \
+   && grep -q 'pinentry-mode loopback' "$HOOKS/gpg-git.sh" \
+   && grep -q 'gpg-agent-unlock.sh' "$HOOKS/gpg-git.sh"; then
+  ok "hooks/gpg-git.sh loopback + unlock-retry (no pinentry GUI)"
+else
+  bad "hooks/gpg-git.sh missing loopback unlock wrapper"
+fi
+_gp="$(git config --global --get gpg.program 2>/dev/null || true)"
+if [ "$_gp" = "$HOOKS/gpg-git.sh" ]; then
+  ok "git gpg.program → hooks/gpg-git.sh"
+else
+  bad "git gpg.program is '${_gp:-unset}' (run setup.sh)"
+fi
+if [ -d "$BD" ]; then
+  _gpg_call="$(awk '/^main\(\)/{m=1} m && /check_gpg_sign/{print NR; exit}' "$BD/dashboard.sh")"
+  _upd_call="$(awk '/^main\(\)/{m=1} m && /check_tool_updates/{print NR; exit}' "$BD/dashboard.sh")"
+  if [ -n "$_gpg_call" ] && [ -n "$_upd_call" ] && [ "$_gpg_call" -lt "$_upd_call" ]; then
+    ok "boot dashboard unlocks gpg before slow tool-update wait"
+  else
+    bad "boot dashboard still runs gpg unlock after tool updates (pinentry race)"
+  fi
 fi
 
 # --- flag names (must not reintroduce bare NEEDS-MERGE as the live flag) ---

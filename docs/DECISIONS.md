@@ -14,6 +14,14 @@ ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisio
 
 **Rejected:** Leaving Claude on `acceptEdits` and expanding the allowlist. Empirically insufficient.
 
+## 2026-09-02 — Git signs via `gpg-git.sh`, never pinentry GUI
+
+**Decision:** `setup.sh` sets `git config --global gpg.program` to `hooks/gpg-git.sh`. The wrapper calls `gpg --batch --pinentry-mode loopback`, and on cache miss runs `gpg-agent-unlock.sh` then retries. Boot dashboard unlocks GPG **before** tool-update / verify.
+
+**Why:** Keyring unlock already worked, but git still invoked `pinentry-gnome3` when the agent cache was cold (first commit of a session, or a test `git commit` inheriting global `commit.gpgsign`). That is the "enter the GPG password" dialog. Dashboard used to unlock last, after minutes of updater wait.
+
+**Rejected:** `pinentry-mode loopback` in `gpg.conf` (would also strip GUI from encrypt/decrypt). Leaving git on stock gpg and hoping the dashboard races win.
+
 ## 2026-08-29 — Dedicated `gpg-signing` keyring collection
 
 **Decision:** Store the GPG passphrase in a gnome-keyring collection labelled `gpg-signing` (empty master, autologin-safe), not in the default collection. Unlock scans bricked on-disk `.keyring` files and restocks.

@@ -85,6 +85,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 - No GPG key generation and no passphrase prompt (that's `gpg-store-passphrase.sh`).
 - No `gh auth login`.
 - No rewrite of *your* git `user.signingkey`.
+- **Does** set `git config --global gpg.program` to `hooks/gpg-git.sh` (loopback, no pinentry GUI).
 
 ## Layout
 

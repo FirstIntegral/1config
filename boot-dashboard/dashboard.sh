@@ -314,6 +314,9 @@ main() {
   header
   printf "  ${DIM}running checks…${R}\n\n"
 
+  # Seed the gpg-agent cache before anything slow. Tool updates and verify
+  # can take minutes; a git commit in that window used to pop pinentry.
+  check_gpg_sign
   check_network
   check_symlinks
   check_link_guard
@@ -323,7 +326,6 @@ main() {
   check_tool_updates
   check_verify
   check_versions
-  check_gpg_sign
 
   line
   printf "\n"

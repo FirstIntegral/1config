@@ -635,7 +635,7 @@ fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------
 echo "[gpg] unlock hooks (dedicated gpg-signing collection, nothing installed elsewhere)"
-for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py gpg-signing-key.sh; do
+for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py gpg-signing-key.sh gpg-git.sh; do
   if [ -f "$AGENTS_HOME/hooks/$h" ]; then
     chmod +x "$AGENTS_HOME/hooks/$h"
     log "ready   hooks/$h"
@@ -643,6 +643,10 @@ for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py gpg-signing-
     log "WARNING: hooks/$h missing"
   fi
 done
+if command -v git >/dev/null && [ -x "$AGENTS_HOME/hooks/gpg-git.sh" ]; then
+  git config --global gpg.program "$AGENTS_HOME/hooks/gpg-git.sh"
+  log "git     gpg.program → hooks/gpg-git.sh (loopback, no pinentry GUI)"
+fi
 
 # --- checkpoint script (direct-reference, called by the checkpoint_project trigger) --
 echo "[checkpoint] checkpoint.sh (git half of checkpoint_project)"
