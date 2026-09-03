@@ -24,7 +24,7 @@
   <!-- ===== title ===== -->
   <text x="800" y="56" text-anchor="middle" font-size="30" font-weight="bold" fill="url(#acc)" letter-spacing="5">UNIFIED AI TERMINAL SETUP</text>
   <rect x="520" y="70" width="560" height="3" rx="1.5" fill="url(#acc)"/>
-  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">3 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-08-29 — README + SETUP.md; figure same-turn when the brain changes</text>
+  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">3 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-09-04 — README + SETUP.md; figure same-turn when the brain changes</text>
 
   <!-- ===== converging symlink arrows ===== -->
   <line x1="310" y1="268" x2="700" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
@@ -118,8 +118,8 @@
   <text x="607" y="620" font-size="12" fill="#8b949e">dedicated gpg-signing collection (autologin)</text>
   <text x="607" y="640" font-size="12" fill="#8b949e">→ gpg-agent-unlock.sh (boot + migrate)</text>
   <text x="607" y="660" font-size="12" fill="#8b949e">→ every commit signed · never bypassed</text>
-  <text x="607" y="680" font-size="12" fill="#79c0ff">sync.sh: setup+verify → commit → push</text>
-  <text x="607" y="700" font-size="12" fill="#8b949e">→ github:FirstIntegral/1config (main)</text>
+  <text x="607" y="680" font-size="12" fill="#79c0ff">sync.sh: verify → commit → push · brain-sync.sh: pull</text>
+  <text x="607" y="700" font-size="12" fill="#8b949e">⇄ github:FirstIntegral/1config (main) · boot ff-only</text>
 
   <!-- ===== PERMISSIONS ===== -->
   <rect x="1040" y="568" width="430" height="150" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
