@@ -302,6 +302,27 @@ check_tool_updates() {
   return 1
 }
 
+check_brain_sync() {
+  # Fetch origin/main and, if the local checkout is behind github:FirstIntegral/1config,
+  # fast-forward to match. Safe: ff-only, validated remote, never over local edits.
+  local hook="$AGENTS_HOME/hooks/brain-sync.sh"
+  if [ ! -x "$hook" ]; then
+    row warn "brain sync" "hook missing — run setup.sh"
+    return 1
+  fi
+  local out rc
+  out="$("$hook" 2>&1)" || true
+  rc=$?
+  case "$rc" in
+    0) row ok "brain sync" "$out" ;;
+    1) row warn "brain sync" "fetch failed — offline or key not loaded" ;;
+    2) row warn "brain sync" "local ahead — unpushed commits" ;;
+    3) row warn "brain sync" "behind + local edits — manual merge" ;;
+    4) row fail "brain sync" "$out" ;;
+    *) row warn "brain sync" "$out" ;;
+  esac
+}
+
 # ── main ───────────────────────────────────────────────────────────────────
 main() {
   # Prefer compact size if the terminal honors CSI 8 (rows;cols). launch.sh
@@ -318,6 +339,7 @@ main() {
   # can take minutes; a git commit in that window used to pop pinentry.
   check_gpg_sign
   check_network
+  check_brain_sync
   check_symlinks
   check_link_guard
   check_mem_guard

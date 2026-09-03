@@ -157,7 +157,8 @@
       "Bash(bash ~/.agents/setup.sh)",
       "Bash(bash ~/.agents/verify.sh)",
       "Bash(bash ~/.agents/sync.sh)",
-      "Bash(bash ~/.agents/sync.sh *)"
+      "Bash(bash ~/.agents/sync.sh *)",
+      "Bash(bash ~/.agents/hooks/brain-sync.sh)"
     ],
     "ask": [
       "Bash(git push)",

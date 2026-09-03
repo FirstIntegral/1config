@@ -124,7 +124,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -483,6 +483,34 @@ if [ -d "$BD" ]; then
     ok "boot dashboard unlocks gpg before slow tool-update wait"
   else
     bad "boot dashboard still runs gpg unlock after tool updates (pinentry race)"
+  fi
+fi
+
+# --- brain self-sync (boot dashboard pulls ~/.agents to match 1config) ------
+echo "[brain sync]"
+if [ -x "$HOOKS/brain-sync.sh" ]; then
+  grep -q -- '--ff-only' "$HOOKS/brain-sync.sh" \
+    && ok "brain-sync pulls fast-forward only" \
+    || bad "brain-sync lacks --ff-only guard (must never rewrite local commits)"
+  grep -q 'FirstIntegral/1config' "$HOOKS/brain-sync.sh" \
+    && ok "brain-sync validates the 1config remote" \
+    || bad "brain-sync does not validate the 1config remote (could pull a fork)"
+  grep -q 'BatchMode=yes' "$HOOKS/brain-sync.sh" \
+    && ok "brain-sync never prompts (ssh BatchMode)" \
+    || bad "brain-sync can hang on an ssh passphrase prompt at boot"
+else
+  bad "hooks/brain-sync.sh missing"
+fi
+if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
+  grep -q 'check_brain_sync' "$BD/dashboard.sh" \
+    && ok "boot dashboard checks brain sync" \
+    || bad "boot dashboard does not check brain sync (local can drift behind 1config)"
+  _bs_call="$(awk '/^main\(\)/{m=1} m && /check_brain_sync/{print NR; exit}' "$BD/dashboard.sh")"
+  _vr_call="$(awk '/^main\(\)/{m=1} m && /check_verify/{print NR; exit}' "$BD/dashboard.sh")"
+  if [ -n "$_bs_call" ] && [ -n "$_vr_call" ] && [ "$_bs_call" -lt "$_vr_call" ]; then
+    ok "boot dashboard syncs brain before verify"
+  else
+    bad "boot dashboard does not sync brain before verify"
   fi
 fi
 

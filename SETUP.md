@@ -26,6 +26,8 @@ Canonical file: `permissions.json`. **`bash_without_prompt` is `true`:** Claude 
 
 On any XDG graphical login, a terminal opens with a one-screen summary of boot health (symlinks, guards, `verify.sh`, tool versions, tool-updater log). The desktop entry has no `OnlyShowIn` filter, so both Wayland sessions such as Hyprland and X11 desktops run it. Lives in `~/.agents/boot-dashboard/`. Installed by `setup.sh` → `~/.config/autostart/agents-boot-status.desktop`. Manual: `bash ~/.agents/boot-dashboard/launch.sh`.
 
+The dashboard also runs **brain self-sync** (`hooks/brain-sync.sh`) right after the network check: it fetches `origin/main` and, when the local `~/.agents` checkout is **behind** `github:FirstIntegral/1config`, fast-forwards to match the repo. Fast-forward only, against the validated 1config remote only, never over uncommitted local edits or unpushed commits, and never prompting (ssh `BatchMode`, time-bounded fetch). Exit codes: `0` up-to-date/ff'd · `1` fetch failed · `2` local ahead · `3` behind + dirty tree · `4` divergence / not-a-repo / wrong remote. A stale, diverged, or dirty brain is a warn (or fail for `4`) on screen, never silently rewritten.
+
 ## 2. Canonical rules file
 
 `~/.agents/AGENTS.md` — the ONE global rules file. All three tools read it every session via the symlinks in §3. Loaded once per session start. **Keep it LEAN** (cross-project rules only; project facts go in project files) — every extra paragraph costs context on every session of every tool.

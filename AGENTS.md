@@ -25,7 +25,7 @@ bash ~/.agents/sync.sh -m "<subject>"   # setup + verify + signed commit + push 
 
 Do not end a turn that edited `~/.agents/**` without running **both**. `verify.sh` alone is check-only (does not install); `sync.sh` re-runs `setup.sh` itself and refuses to commit if verify fails. The brain is a git repo — a local-only edit is an unfinished edit (see `global_brain_update`).
 
-**Boot dashboard:** `~/.agents/boot-dashboard/` — on graphical login opens a status terminal through cross-desktop XDG autostart (Wayland or X11). Not project code; machine health only.
+**Boot dashboard:** `~/.agents/boot-dashboard/` — on graphical login opens a status terminal through cross-desktop XDG autostart (Wayland or X11). Not project code; machine health only. At login it also runs **brain self-sync** (`hooks/brain-sync.sh`): fetch `origin/main` and, whenever the local `~/.agents` checkout is **behind** `github:FirstIntegral/1config`, fast-forward it to match the repo. The pull is fast-forward only, against the validated 1config remote only, and never runs over local edits or unpushed commits — local always follows the repo; a divergence or dirty tree is surfaced as a warn, never silently resolved.
 
 ---
 

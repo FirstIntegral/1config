@@ -2,6 +2,16 @@
 
 ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-04 — Boot dashboard self-syncs the brain from 1config
+
+**Decision:** New hook `hooks/brain-sync.sh`, run by the boot dashboard right after the network check. It fetches `origin/main` and, when local `~/.agents` is behind `github:FirstIntegral/1config`, fast-forwards to match the repo. The dashboard surfaces the result as a row (`ok` up-to-date/ff'd, `warn` fetch-failed/ahead/dirty, `fail` divergence).
+
+**Why:** A box that has been off for a while boots with a stale brain and no way to know it; previously `git pull && bash setup.sh` was a manual step that only happened when the user remembered. Local should follow the repo by default.
+
+**Safety constraints (hard):** fast-forward only (`git merge --ff-only`); remote must validate to `FirstIntegral/1config` (never a fork / stale URL); never pulls over uncommitted edits or unpushed commits; ssh `BatchMode=yes` + time-bounded fetch so boot never hangs on a passphrase prompt. Divergence/dirty/behind-with-edits are surfaced, never silently rewritten.
+
+**Rejected:** A `git pull` (non-ff merge could rewrite local commits). `git reset --hard origin/main` (destroys local work). A `@reboot` cron job instead of the dashboard (no human-visible row; dashboard already runs at login). Running it before the network check (would false-warn offline every cold boot).
+
 ## 2026-09-03 — Omit ask fan-out while `bash_without_prompt` is true
 
 **Decision:** When `bash_without_prompt` is true, `setup.sh` writes empty ask buckets to Claude and Grok, and skips ask patterns in OpenCode `permission.bash`. Deny still fans out. Canonical `permissions.json` still lists the ask rules (restore-gate when the flag flips).

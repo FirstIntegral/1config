@@ -17,6 +17,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | Row | Meaning |
 |-----|---------|
 | **network** | GitHub reachable (HEAD / api). Retries ~6×3s so early-boot DHCP/WiFi catch up. Warn = online but GitHub slow; fail = offline. |
+| **brain sync** | `hooks/brain-sync.sh` fetches `origin/main` and, when local `~/.agents` is behind `github:FirstIntegral/1config`, fast-forwards to match the repo. Fast-forward only, validated 1config remote only, never over local edits or unpushed commits. |
 | **symlinks** | 3 AGENTS paths → `~/.agents/AGENTS.md` |
 | **link guard** | `agents-symlink-guard` healthy |
 | **memory guard** | Claude/Grok residue clean |
@@ -58,3 +59,6 @@ Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail —
 
 3. **signing — no stored passphrase / dbus failed / passphrase rejected**  
    Dedicated `gpg-signing` collection missing, gnome-keyring down, or the passphrase changed. One-time: `bash ~/.agents/hooks/gpg-store-passphrase.sh`. Unlock also migrates the item out of bricked default `.keyring` files (multiline secrets make gnome-keyring refuse the whole file).
+
+4. **brain sync — fetch failed / local ahead / behind + local edits**  
+   `brain-sync.sh` only fast-forwards. Fetch failed = offline or the SSH key isn't in the agent yet. Local ahead = you have unpushed commits (run `bash ~/.agents/sync.sh -m "…"`). Behind + local edits = pull the repo manually (`git -C ~/.agents pull --ff-only`) once the edits are committed or stashed. Divergence is a hard fail — resolve by hand.
