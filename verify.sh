@@ -707,8 +707,16 @@ def load_jsonc(path):
 
 canon = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
 src = canon.get("permissions", {})
+defaults = canon.get("defaults", {})
+edit_on = bool(defaults.get("edit_without_prompt"))
+bash_on = bool(defaults.get("bash_without_prompt"))
 home = pathlib.Path.home()
 want = {b: list(src.get(b, [])) for b in ("allow", "ask", "deny")}
+# Live ask buckets are empty while autonomy is on (OpenCode last-match /
+# Grok shell-ask would otherwise still prompt git push). Canonical json
+# still lists the restore-gate rules.
+if bash_on:
+    want["ask"] = []
 grok_want = {b: [r for r in want[b] if re.fullmatch(r"Bash\(.*\)", r)] for b in want}
 
 def report(tool, problems, total):
@@ -746,21 +754,21 @@ if p.is_file():
     oc_cfg = load_jsonc(p)
     got = oc_cfg.get("permission", {}).get("bash", {})
     got = got if isinstance(got, dict) else {}
-    expected = {"*": "allow" if canon.get("defaults", {}).get("bash_without_prompt") else "ask"}
+    expected = {"*": "allow" if bash_on else "ask"}
     for bucket, action in (("allow", "allow"), ("ask", "ask"), ("deny", "deny")):
+        if bucket == "ask" and bash_on:
+            continue
         for pattern in pats(bucket):
             expected.pop(pattern, None)
             expected[pattern] = action
     problems = [] if list(got.items()) == list(expected.items()) else ["permission.bash content/order"]
+    if bash_on and any(v == "ask" for v in got.values()):
+        problems = problems or ["ask rules present under bash_without_prompt (last-match re-prompts git push)"]
     report("opencode", problems, len(expected))
 else:
     print("SKIP\topencode\t-\tno opencode.jsonc")
 
 # defaults.edit_without_prompt / bash_without_prompt — canonical switches, native spellings
-defaults = canon.get("defaults", {})
-edit_on = bool(defaults.get("edit_without_prompt"))
-bash_on = bool(defaults.get("bash_without_prompt"))
-
 def mode(tool, path, got, expect):
     if not path.is_file():
         print(f"SKIP\t{tool}\t-\tno {path.name}")
@@ -1032,6 +1040,19 @@ if grep -q 'bash_without_prompt is \*\*false\*\*' "$CANON"; then
   bad "AGENTS.md still says bash_without_prompt is false (permissions.json is true)"
 else
   ok "AGENTS.md does not contradict permissions.json bash_without_prompt"
+fi
+if grep -q 'git push is not allowlisted and will prompt' "$CANON"; then
+  bad "AGENTS.md still claims git push always prompts (OpenCode last-match / autonomy omit-ask)"
+else
+  ok "AGENTS.md does not claim git push always prompts"
+fi
+if grep -q 'if not bash_on:' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'bash_patterns("ask")' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'bucket == "ask" and defaults.get("bash_without_prompt")' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'bucket == "ask" and src.get("defaults"' "$AGENTS_HOME/setup.sh"; then
+  ok "setup.sh omits ask fan-out under autonomy (Claude + Grok + OpenCode last-match)"
+else
+  bad "setup.sh missing omit-ask under bash_without_prompt (OpenCode last-match re-prompts git push)"
 fi
 if grep -qi 'omarchy' "$SETUP" && grep -qi 'ubuntu' "$SETUP"; then
   ok "SETUP.md documents Omarchy + Ubuntu"

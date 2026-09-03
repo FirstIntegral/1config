@@ -65,7 +65,7 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 
 | Default | Value here | Why | Flip |
 |---------|------------|-----|------|
-| **`bash_without_prompt`** | **`true`** | Claude's allowlist cannot kill some hard-coded prompts (`cd`+write, `cd`+git). Full autonomy sets Claude `bypassPermissions`, Grok `always-approve`, OpenCode `permission.bash["*"]="allow"`. **Ask/deny lists become best-effort.** Generic `git push` no longer prompts. | `permissions.json` → `"bash_without_prompt": false` then `bash ~/.agents/setup.sh`. Restores the Bash review gate. |
+| **`bash_without_prompt`** | **`true`** | Claude's allowlist cannot kill some hard-coded prompts (`cd`+write, `cd`+git). Full autonomy sets Claude `bypassPermissions`, Grok `always-approve`, OpenCode `permission.bash["*"]="allow"`, **and omits ask fan-out** (OpenCode last-match and Grok shell-ask would otherwise still prompt `git push`). Deny still fans out. Generic `git push` no longer prompts. | `permissions.json` → `"bash_without_prompt": false` then `bash ~/.agents/setup.sh`. Restores the Bash review gate. |
 | **`edit_without_prompt`** | `true` | File writes should not stop a session. | Same file, `"edit_without_prompt": false`. |
 | GPG commit signing | Required, never `--no-gpg-sign` | Attribution is cryptographic. | Don't. If you must unsigned history, this is the wrong brain. |
 | No AI co-author lines | Hard rule | Commits/PRs attributed to the user only. | Don't. |

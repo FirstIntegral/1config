@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-03 — Omit ask fan-out while `bash_without_prompt` is true
+
+**Decision:** When `bash_without_prompt` is true, `setup.sh` writes empty ask buckets to Claude and Grok, and skips ask patterns in OpenCode `permission.bash`. Deny still fans out. Canonical `permissions.json` still lists the ask rules (restore-gate when the flag flips).
+
+**Why:** OpenCode last-match: `"git push": "ask"` after `"*": "allow"` re-prompted `git push 2>&1 | tail -5; git status; git rev-parse HEAD` (screenshot 2026-09-03, OpenCode 1.10/1.18). Grok always-approve still honors shell `ask` rules (Grok permissions docs). Claude `bypassPermissions` already skipped them. Policy since 2026-08-29 is no generic git-push prompt; live configs did not match.
+
+**Rejected:** Moving `"*": "allow"` after the ask keys (works, but leaves dead ask rules that look like they still prompt). Converting ask → allow (would keep `git push` silent even after a TUI mode flip). Leaving ask in OpenCode as "best-effort" (they are not best-effort — last-match makes them win).
+
 ## 2026-08-29 — Full Bash autonomy (`bash_without_prompt: true`)
 
 **Decision:** All three tools run without Bash permission prompts. Claude `bypassPermissions`, Grok `always-approve`, OpenCode `permission.bash["*"] = allow`.
@@ -13,6 +21,8 @@ ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisio
 **Flip:** `permissions.json` → `"bash_without_prompt": false`, then `bash ~/.agents/setup.sh`. Documented in `README.md` on purpose so forks see it.
 
 **Rejected:** Leaving Claude on `acceptEdits` and expanding the allowlist. Empirically insufficient.
+
+**Follow-up 2026-09-03:** ask rules were still fanned out; OpenCode last-match re-prompted `git push`. See the omit-ask ADR above.
 
 ## 2026-09-02 — Git signs via `gpg-git.sh`, never pinentry GUI
 

@@ -20,7 +20,7 @@ Tools whose login-shell PATH resolves under mise are skipped by the updater; mis
 
 ### Opinionated defaults (this repo — many people will not want them)
 
-Canonical file: `permissions.json`. **`bash_without_prompt` is `true`:** Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`. Ask/deny lists are best-effort. Generic `git push` no longer prompts. Flip to `false` and re-run `setup.sh` to restore the review gate. Full table (signing, caveman, TeX, no AI attribution, no auto-remotes): `README.md`. Why: `docs/DECISIONS.md`.
+Canonical file: `permissions.json`. **`bash_without_prompt` is `true`:** Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`. Setup **omits ask fan-out** (OpenCode last-match and Grok shell-ask would otherwise still prompt `git push`). Deny still copies. Generic `git push` no longer prompts. Flip to `false` and re-run `setup.sh` to restore the review gate. Full table (signing, caveman, TeX, no AI attribution, no auto-remotes): `README.md`. Why: `docs/DECISIONS.md`.
 
 ### Boot dashboard (graphical login)
 
@@ -77,7 +77,7 @@ enabled = false  # memory lives in shared markdown, not grok's store
 (`skills`/`mcps`/`hooks` compat intentionally left enabled.)
 
 - **Grok memory dir removed.** If `~/.grok/memory/` exists, `setup.sh` archives it under `~/.agents/backups/setup-<ts>/grok-memory/` then deletes it. Do not recreate.
-- **Permission rules** — `setup.sh` step `5c` replaces `[permission] allow / ask / deny` from `~/.agents/permissions.json`, filtering out unsupported non-`Bash` rules. Replacement makes revocations effective. Unknown existing keys such as structured `rules` cause setup to stop before writing instead of silently deleting them; move desired policy into canonical first. The transformed TOML is parsed before replacing the live file.
+- **Permission rules** — `setup.sh` step `5c` replaces `[permission] allow / ask / deny` from `~/.agents/permissions.json`, filtering out unsupported non-`Bash` rules. Replacement makes revocations effective. **While `bash_without_prompt` is true, the ask bucket is written empty:** Grok always-approve still honors shell `ask` rules, so leaving `Bash(git push)` in ask would re-prompt. Unknown existing keys such as structured `rules` cause setup to stop before writing instead of silently deleting them; move desired policy into canonical first. The transformed TOML is parsed before replacing the live file.
 - **`permission_mode` is brain-managed** — step `5c` maps Bash autonomy to `always-approve`, edit-only autonomy to `acceptEdits`, and both flags off to `ask`. **Current `permissions.json`: `bash_without_prompt` true → Grok `always-approve`.** Many people will not want that; flip the flag.
 
 ### Claude Code
@@ -95,7 +95,7 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 ```
 
 - Claude `#` memory shortcut is NOT used (creates project CLAUDE.md / feeds auto-memory — both forbidden).
-- **Global permission policy** — canonical source `~/.agents/permissions.json`. `setup.sh` step `5b` replaces `permissions.allow / ask / deny` so removing a canonical rule removes it from the live policy. Other Claude settings survive. Matched allow calls run silently; explicit ask calls prompt; denies block. Never hand-edit generated global permission buckets. The same file drives Grok and OpenCode; `verify.sh` checks exact content, including stale grants.
+- **Global permission policy** — canonical source `~/.agents/permissions.json`. `setup.sh` step `5b` replaces `permissions.allow / ask / deny` so removing a canonical rule removes it from the live policy. Other Claude settings survive. Matched allow calls run silently; explicit ask calls prompt; denies block. **While `bash_without_prompt` is true, the ask bucket is written empty** (parity with Grok/OpenCode; Claude bypass already skips ask). Never hand-edit generated global permission buckets. The same file drives Grok and OpenCode; `verify.sh` checks exact content, including stale grants.
 - **`permissions.defaultMode`** (added 2026-08-07 as `acceptEdits`; extended 2026-08-07 for full bash auto-approve) — written by step `5b` from the canonical defaults:
   - `bash_without_prompt: true` → `"bypassPermissions"` (**wins**; only mode that kills hard-coded Claude safety prompts such as *cd with write operation* and *cd before git / untrusted hooks*)
   - else `edit_without_prompt: true` → `"acceptEdits"` (file writes only; Bash still uses allow list)
@@ -110,7 +110,7 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 
 Reads `AGENTS.md` natively at global and project level — no rules wiring needed.
 
-- **Permission rules** — `setup.sh` step `5d` replaces OpenCode's `permission.bash` map from canonical `Bash(X)` rules, making removals effective. It writes a managed catch-all first (`"*": "ask"` normally, `"allow"` under full Bash autonomy), then allow, ask, and deny patterns; OpenCode takes the last match. Non-`Bash` rules are skipped. Other OpenCode config survives. Valid JSONC comments and trailing commas are accepted; output becomes plain JSON after a backup.
+- **Permission rules** — `setup.sh` step `5d` replaces OpenCode's `permission.bash` map from canonical `Bash(X)` rules, making removals effective. Order: managed catch-all first (`"*": "ask"` normally, `"allow"` under full Bash autonomy), then allow, then ask (**omitted when `bash_without_prompt` is true** — last-match would re-prompt `git push` over `"*": allow`), then deny. OpenCode takes the last match, so deny still wins over the catch-all. Non-`Bash` rules are skipped. Other OpenCode config survives. Valid JSONC comments and trailing commas are accepted; output becomes plain JSON after a backup.
 
 ### GPG signing unlock (Secret Service keyring)
 
@@ -362,7 +362,7 @@ bash ~/.agents/sync.sh --no-setup -m "msg"    # skip installation, still run ver
 bash ~/.agents/sync.sh --dry-run              # show what would be committed, change nothing
 ```
 
-It requires repository root + branch `main`, validates every origin fetch and push URL against `FirstIntegral/1config`, and requires `== PASS (warnings=0) ==` before any commit, including with `--no-setup`. Normal sync fetches first; `--dry-run` skips both install and fetch so it changes nothing. New commits use explicit `git commit -S`, and every outgoing commit must have a good signature before push. It is allowlisted because it is the narrow verified push path; generic `git push` has explicit ask rules. `verify.sh` reports dirty/ahead brain state as `INFO`, because that state is expected before sync.
+It requires repository root + branch `main`, validates every origin fetch and push URL against `FirstIntegral/1config`, and requires `== PASS (warnings=0) ==` before any commit, including with `--no-setup`. Normal sync fetches first; `--dry-run` skips both install and fetch so it changes nothing. New commits use explicit `git commit -S`, and every outgoing commit must have a good signature before push. It is allowlisted because it is the narrow verified push path; canonical `permissions.json` still lists generic `git push` as ask (restore-gate), but live tools omit that ask while `bash_without_prompt` is true. `verify.sh` reports dirty/ahead brain state as `INFO`, because that state is expected before sync.
 
 ## 6. Memory policy
 

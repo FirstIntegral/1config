@@ -253,9 +253,14 @@ p = pathlib.Path(os.environ["CLAUDE_SETTINGS"])
 cfg = json.loads(p.read_text()) if p.exists() else {}
 
 perms = cfg.setdefault("permissions", {})
+defaults = src.get("defaults", {})
 changed = []
 for bucket in ("allow", "ask", "deny"):
     wanted = list(src.get("permissions", {}).get(bucket, []))
+    # Autonomy on: omit ask so live configs match "no prompts". Claude
+    # bypassPermissions already skips ask; empty list keeps the copy honest.
+    if bucket == "ask" and defaults.get("bash_without_prompt"):
+        wanted = []
     if perms.get(bucket) != wanted:
         perms[bucket] = wanted
         changed.append(bucket)
@@ -264,7 +269,6 @@ for bucket in ("allow", "ask", "deny"):
 # bypassPermissions is the ONLY Claude mode that kills hard-coded safety prompts
 # (cd+write path-bypass, cd+git untrusted-hooks, some parse verdicts). acceptEdits
 # only skips file-write prompts; Bash still goes through the allow list.
-defaults = src.get("defaults", {})
 if defaults.get("bash_without_prompt"):
     mode = "bypassPermissions"
 elif defaults.get("edit_without_prompt"):
@@ -314,6 +318,10 @@ for bucket in ("allow", "ask", "deny"):
     existing = [r for r in cur.get(bucket, []) if isinstance(r, str)]
     # Grok skips Skill(...) and other unknown prefixes; only install rules it enforces.
     wanted = [r for r in src.get("permissions", {}).get(bucket, []) if re.fullmatch(r"Bash\(.*\)", r)]
+    # Grok always-approve still honors shell ask rules (docs: "some shell ask
+    # rules still apply"). Omit ask while autonomy is on or git push prompts.
+    if bucket == "ask" and src.get("defaults", {}).get("bash_without_prompt"):
+        wanted = []
     merged[bucket] = wanted
     if existing != wanted:
         changed.append(bucket)
@@ -473,14 +481,18 @@ before = json.dumps(bash)
 
 # Order matters: OpenCode takes the LAST matching rule. Start with the managed catch-all,
 # then write canonical allow/ask/deny actions; the whole bash map is brain-managed.
+# Autonomy on: skip ask. A later "git push": "ask" would last-match over "*": allow
+# and re-prompt (screenshot 2026-09-03: git push | tail; git status; git rev-parse).
 defaults = src.get("defaults", {})
-bash = {"*": "allow" if defaults.get("bash_without_prompt") else "ask"}
+bash_on = bool(defaults.get("bash_without_prompt"))
+bash = {"*": "allow" if bash_on else "ask"}
 for pat in bash_patterns("allow"):
     bash.pop(pat, None)
     bash[pat] = "allow"
-for pat in bash_patterns("ask"):
-    bash.pop(pat, None)
-    bash[pat] = "ask"
+if not bash_on:
+    for pat in bash_patterns("ask"):
+        bash.pop(pat, None)
+        bash[pat] = "ask"
 for pat in bash_patterns("deny"):
     bash.pop(pat, None)
     bash[pat] = "deny"

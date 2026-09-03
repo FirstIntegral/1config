@@ -6,7 +6,8 @@
 #   bash ~/.agents/sync.sh --dry-run               # show what would be committed, change nothing
 #
 # Scope is deliberately narrow: this script only ever touches ~/.agents, which is why it can be
-# allowlisted while a generic `git push` still prompts everywhere else.
+# allowlisted as the verified push path. Canonical permissions.json still lists generic
+# `git push` as ask (restore-gate); live tools omit that ask while bash_without_prompt is true.
 # Signing is NEVER bypassed — a locked key is an error to fix, not to work around.
 set -euo pipefail
 

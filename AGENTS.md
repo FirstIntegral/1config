@@ -66,8 +66,8 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
-- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; specific canonical rules follow it because OpenCode uses the last match.
-- **Current `permissions.json`: `bash_without_prompt` is true** — Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`. Ask/deny lists are best-effort. Generic `git push` does **not** prompt. Many people will not want this; flip the flag (README + `docs/DECISIONS.md`).
+- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude bypass already skips). Deny still fans out after `*` so last-match deny holds.
+- **Current `permissions.json`: `bash_without_prompt` is true** — Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow` and no ask rules. Deny still applies. Generic `git push` does **not** prompt. Many people will not want this; flip the flag (README + `docs/DECISIONS.md`).
 - `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
 - Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project one-offs remain project-local; global generated permission buckets are replaced from canonical on setup.
 
@@ -78,11 +78,11 @@ Same canonical file, `defaults` block. `edit_without_prompt` is **true**; `bash_
 | Flag | Claude Code | Grok | OpenCode |
 |------|-------------|------|----------|
 | `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if Bash flag false) | `[ui] permission_mode = "acceptEdits"` | `permission.edit = "allow"` |
-| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` |
+| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` (ask omitted) |
 
 **Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. This repo has the flag **true** because the user chose full autonomy 2026-08-29. Forks: leave it false unless you want the same.
 
-With `bash_without_prompt` true, Claude's deny and ask lists are **best-effort only** because bypass skips permission checks. User chose full autonomy 2026-08-29: flag true, all three tools run prompt-free (flip back in `permissions.json` + `setup.sh` to restore the review gate).
+With `bash_without_prompt` true, setup does **not** copy ask rules into any tool — that is what makes generic `git push` prompt-free (Claude bypass would skip them anyway; Grok always-approve would not; OpenCode last-match would not). Deny still copies. Claude deny is still best-effort (bypass skips checks). User chose full autonomy 2026-08-29. Flip the flag + `setup.sh` to restore the review gate.
 
 ### Compound commands (when bash_without_prompt is false)
 
@@ -306,7 +306,7 @@ git push                        # -u origin <branch> if the branch has no upstre
 
 - **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → `bash ~/.agents/hooks/gpg-agent-unlock.sh`, retry. Never bypass.
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
-- **`git push` is not allowlisted and will prompt.** That is deliberate and stays that way: the prompt is the last look before work leaves the machine. Answer it; do not route around it.
+- **`git push` prompts only when `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the flag is **true** (current), setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
 - **Clean with nothing locally unpushed** → exit `3`. Clean with commits absent from local remote-tracking refs → skip the commit but still push.
 - **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
 
