@@ -47,6 +47,17 @@ Install the three CLIs (grok, claude, opencode) however you usually do. `setup.s
 
 `verify.sh` ending `== PASS (warnings=0) ==` means the brain is installed. A signing warn on the boot dashboard is normal until step 4.
 
+### Omarchy machines: also clone the desktop config pack
+
+The **desktop** config (Hyprland bindings, shell layout, theme, Vigil plugin, OpenTabletDriver/Huion) is a separate repo, private: `github:FirstIntegral/omarchy-dots`. On an Omarchy box, after this brain is installed:
+
+```bash
+gh repo clone FirstIntegral/omarchy-dots ~/projects/omarchy-dots
+cd ~/projects/omarchy-dots && ./apply.sh --dry-run && ./apply.sh
+```
+
+From then on the boot dashboard keeps it in sync automatically: `~/projects/omarchy-dots/sync.sh` runs at every login (fetch → ff-only pull → drift-check `~/.config` vs pack → auto-apply). Non-Omarchy boxes show a gray `–` skip row and never touch it. Playbook: that repo's `README.md`.
+
 ## Existing machine — pull latest
 
 Works on Omarchy **and** Ubuntu. Same commands:
