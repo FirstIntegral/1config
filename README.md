@@ -49,7 +49,7 @@ Install the three CLIs (grok, claude, opencode) however you usually do. `setup.s
 
 ### Omarchy machines: also clone the desktop config pack
 
-The **desktop** config (Hyprland bindings, shell layout, theme, Vigil plugin, OpenTabletDriver/Huion) is a separate public repo: `github:FirstIntegral/omarchy-dots`. On an Omarchy box, after this brain is installed:
+The **desktop** config (Hyprland bindings, shell layout, theme, Vigil plugin, OpenTabletDriver/Huion) is a separate public repo: `github:FirstIntegral/omarchy-dots`. The Vigil plugin is its own public repo, `github:FirstIntegral/Vigil` — the pack's `apply.sh` clones and enables it; never vendored. On an Omarchy box, after this brain is installed:
 
 ```bash
 gh repo clone FirstIntegral/omarchy-dots ~/Projects/omarchy-dots
