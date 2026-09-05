@@ -255,7 +255,7 @@ check_tool_updates() {
       sleep 2
       waited=$((waited + 2))
     done
-    printf "\r\033[K"
+    printf "\r\033[2K"
   fi
 
   if updater_running; then
@@ -391,10 +391,10 @@ main() {
   printf "\n"
   printf "  ${GRAY}%s ok · %s warn · %s fail${R}\n" "$pass" "$warn" "$fail"
   printf "\n"
-  printf "  ${DIM}enter to close${R}\n"
-  # non-interactive (tests): skip wait
+  printf "  ${DIM}press ENTER to close…${R}\n"
+  # Block for ENTER when interactive (autostart window); skip in tests.
   if [ -t 0 ]; then
-    read -r _ || true
+    read -r _ 2>/dev/null || true
   fi
 }
 
