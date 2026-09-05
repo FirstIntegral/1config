@@ -323,6 +323,35 @@ check_brain_sync() {
   esac
 }
 
+check_dots_sync() {
+  # Omarchy config pack (github:FirstIntegral/omarchy-dots) — fetch, ff-only pull,
+  # drift-check ~/.config, auto-apply on drift. Skips cleanly on non-Omarchy boxes
+  # or when the pack is not cloned here.
+  local dots="$HOME/projects/omarchy-dots"
+  local script="$dots/sync.sh"
+  if ! command -v omarchy >/dev/null 2>&1; then
+    row skip "omarchy dots" "not an Omarchy machine"
+    return 0
+  fi
+  if [ ! -x "$script" ]; then
+    row warn "omarchy dots" "no sync.sh — clone omarchy-dots to ~/projects/omarchy-dots"
+    return 1
+  fi
+  local out rc last
+  out="$(bash "$script" 2>&1)" || true
+  rc=$?
+  last="$(echo "$out" | grep -E '^dots-sync:' | tail -1 | sed 's/^dots-sync: //')"
+  [ -n "$last" ] || last="$(echo "$out" | tail -1)"
+  case "$rc" in
+    0) row ok "omarchy dots" "$last" ;;
+    1) row warn "omarchy dots" "fetch failed — offline or key not loaded" ;;
+    2) row warn "omarchy dots" "$last" ;;
+    3) row warn "omarchy dots" "$last" ;;
+    5) row warn "omarchy dots" "opentabletdriver needs manual: omarchy pkg aur add opentabletdriver" ;;
+    *) row fail "omarchy dots" "$last" ;;
+  esac
+}
+
 # ── main ───────────────────────────────────────────────────────────────────
 main() {
   # Prefer compact size if the terminal honors CSI 8 (rows;cols). launch.sh
@@ -340,6 +369,7 @@ main() {
   check_gpg_sign
   check_network
   check_brain_sync
+  check_dots_sync
   check_symlinks
   check_link_guard
   check_mem_guard
