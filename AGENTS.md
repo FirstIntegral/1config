@@ -62,11 +62,11 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 |------|------|----------|------|
 | `5b` | Claude Code | `~/.claude/settings.json` → `permissions.allow` / `.ask` / `.deny` | rules verbatim |
 | `5c` | Grok | `~/.grok/config.toml` → `[permission] allow` / `ask` / `deny` | rules verbatim (Grok speaks the same `Bash(...)` syntax) |
-| `5d` | OpenCode | `~/.config/opencode/opencode.jsonc` → `permission.bash` | `Bash(X)` → `"X": "allow"` / `"ask"` / `"deny"` |
+| `5d` | OpenCode | `~/.config/opencode/opencode.jsonc` → `permission.bash` + `permission.external_directory` | `Bash(X)` → `"X": "allow"` / `"ask"` / `"deny"`; `external_directory` follows `bash_without_prompt` |
 
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
-- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude bypass already skips). Deny still fans out after `*` so last-match deny holds.
+- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; `permission.external_directory` (any file access outside the project cwd, e.g. `/tmp` scratch work) follows the same switch — OpenCode-only, the other two tools cover out-of-tree access with their autonomy modes. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude bypass already skips). Deny still fans out after `*` so last-match deny holds.
 - **Current `permissions.json`: `bash_without_prompt` is true** — Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow` and no ask rules. Deny still applies. Generic `git push` does **not** prompt. Many people will not want this; flip the flag (README + `docs/DECISIONS.md`).
 - `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
 - Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project one-offs remain project-local; global generated permission buckets are replaced from canonical on setup.
@@ -78,7 +78,7 @@ Same canonical file, `defaults` block. `edit_without_prompt` is **true**; `bash_
 | Flag | Claude Code | Grok | OpenCode |
 |------|-------------|------|----------|
 | `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if Bash flag false) | `[ui] permission_mode = "acceptEdits"` | `permission.edit = "allow"` |
-| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` (ask omitted) |
+| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` (ask omitted) + `permission.external_directory = "allow"` |
 
 **Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. This repo has the flag **true** because the user chose full autonomy 2026-08-29. Forks: leave it false unless you want the same.
 

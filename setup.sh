@@ -504,12 +504,19 @@ edit_before = perm.get("edit")
 perm["edit"] = "allow" if defaults.get("edit_without_prompt") else "ask"
 edit_changed = perm["edit"] != edit_before
 
-if json.dumps(bash) != before or edit_changed:
+# permission.external_directory gates ANY file access outside the project cwd (e.g. /tmp
+# scratch scripts, screenshots). OpenCode-only: Claude bypassPermissions and Grok
+# always-approve already cover out-of-tree access. Follows bash_without_prompt.
+ext_before = perm.get("external_directory")
+perm["external_directory"] = "allow" if bash_on else "ask"
+ext_changed = perm["external_directory"] != ext_before
+
+if json.dumps(bash) != before or edit_changed or ext_changed:
     p.parent.mkdir(parents=True, exist_ok=True)
     if had_comments:
         print("  note     comments in opencode.jsonc dropped by rewrite (pre-copy is in the backup dir)")
     p.write_text(json.dumps(cfg, indent=2) + "\n")
-    print(f'  merged   permission.bash now pins {len(bash)} rule(s), edit="{perm["edit"]}"')
+    print(f'  merged   permission.bash now pins {len(bash)} rule(s), edit="{perm["edit"]}", external_directory="{perm["external_directory"]}"')
 else:
     print("  ok       opencode permission.bash already in sync")
 PYEOF

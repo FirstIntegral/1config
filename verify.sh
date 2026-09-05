@@ -837,6 +837,8 @@ else:
     got_edit = None
     got_bash = {}
 mode("opencode", p, got_edit, "allow" if edit_on else "ask")
+got_ext = oc.get("external_directory") if p.is_file() else None
+mode("opencode-external_directory", p, got_ext, "allow" if bash_on else "ask")
 oc_bash_expect = "allow" if bash_on else "ask"
 if not p.is_file():
     print(f"SKIP\topencode-bash\t-\tno opencode.jsonc")
