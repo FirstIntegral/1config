@@ -60,10 +60,10 @@ is_clean_memory_dir() {
 
 # Resolve Claude's encoded project dir name to a real path when possible.
 # Encoding: absolute path with "/" → "-" and a leading "-".
-# e.g. /home/USER/projects/foo → -home-USER-projects-foo
+# e.g. /home/USER/Projects/foo → -home-USER-Projects-foo
 # Strategy: (1) naive slash-restore if that path exists (works when no path
 # component contains "-"); (2) cached resolution (~/.cache/agents-path-map);
-# (3) walk common roots + deep find under ~/projects.
+# (3) walk common roots + deep find under ~/Projects.
 resolve_encoded_project() {
   local enc="$1"
   RESOLVED_PATH=""
@@ -104,8 +104,8 @@ if enc.startswith("-"):
 candidates = []
 roots = [
     home,
-    home / "projects",
-    home / "projects" / "sites",
+    home / "Projects",
+    home / "Projects" / "sites",
     Path("/media") / home.name,
     Path("/tmp"),
 ]

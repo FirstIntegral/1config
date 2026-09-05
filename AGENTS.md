@@ -191,11 +191,11 @@ When the user says **`create_project`** (starting a new project), always set up 
 
 | File | Audience | Maintenance |
 |------|----------|-------------|
-| `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code loads it via SessionStart hook — never create a project CLAUDE.md). Committed by default — **except** `~/projects/sites/*` (see Sites rule). |
+| `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code loads it via SessionStart hook — never create a project CLAUDE.md). Committed by default — **except** `~/Projects/sites/*` (see Sites rule). |
 | `session_transcript.md` | **human ONLY** | Append-only narrative log of each work session, newest at bottom. Written for the user to read back. AI agents NEVER read it (Transcript privacy HARD RULE). |
 | `session_compact.md` | **AI handoff** | Concise state: current status, where we left off, next steps, key decisions, open issues. Always records the active **model + effort**. **Rewrite** (not append) at end of session / major milestone / before context compaction. |
 | `docs/DECISIONS.md` | all AI tools | ADR log: decision + why + rejected alternatives, appended in the same turn a choice is made. Versioned (committed in repos). |
-| `.gitignore` | git | Must ignore session files (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md` + legacy session paths). Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
+| `.gitignore` | git | Must ignore session files (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md` + legacy session paths). Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/Projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
 
 Rules:
 
@@ -210,7 +210,7 @@ Rules:
 
 ## `continue_project` trigger
 
-When the user says **`continue_project <path>`** (example: `continue_project $HOME/projects/some_dummy_project`), resume that project from disk. Do this **before** other work:
+When the user says **`continue_project <path>`** (example: `continue_project $HOME/Projects/some_dummy_project`), resume that project from disk. Do this **before** other work:
 
 1. Resolve `<path>` (absolute or relative). Must be a directory. If missing/invalid → stop and say so.
 2. **Residue / conflict check (all tools):**
@@ -308,7 +308,7 @@ git push                        # -u origin <branch> if the branch has no upstre
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
 - **`git push` prompts only when `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the flag is **true** (current), setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
 - **Clean with nothing locally unpushed** → exit `3`. Clean with commits absent from local remote-tracking refs → skip the commit but still push.
-- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
+- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
 
 Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.
 
@@ -353,7 +353,7 @@ Scientifically relevant = anything the paper asserts: the method or algorithm, a
 
 Each such update: patch the affected sections (and the abstract/contributions if the claim moved), rebuild with `bash docs/paper/build.sh`, and say in one line what the paper now says differently. Numbers that went stale but have not been re-measured become `\TODO{measure: …}` — never left silently wrong. Mention the paper update in `session_transcript.md` at the next milestone.
 
-`docs/paper/` **is committed** (it is product, not session state) — for `~/projects/sites/*` the Sites rule still applies to `AGENTS.md` only.
+`docs/paper/` **is committed** (it is product, not session state) — for `~/Projects/sites/*` the Sites rule still applies to `AGENTS.md` only.
 
 ---
 
@@ -384,16 +384,16 @@ These rules apply to **every project**, all tools. Per-project `AGENTS.md` and `
 | **Tracked project knowledge** | `docs/DECISIONS.md`; usually also `AGENTS.md` | Yes | Durable decisions, conventions — shareable |
 | **Local session files** | `session_compact.md`, `session_transcript.md`, `claude_memory_import.md` (+ legacy `docs/session-archive/`, `docs/session-flushes/`) | No (gitignored) | Session state + full log + residue staging. Never committed unless the user explicitly says otherwise |
 
-### Sites repos — `AGENTS.md` local-only (HARD RULE for `~/projects/sites/*`)
+### Sites repos — `AGENTS.md` local-only (HARD RULE for `~/Projects/sites/*`)
 
-Applies only under **`~/projects/sites/<site>/`** (public site repos). Not other projects.
+Applies only under **`~/Projects/sites/<site>/`** (public site repos). Not other projects.
 
 - `AGENTS.md` must be in that site's **`.gitignore`** (with `CLAUDE.md` if present). **Never commit** site agent rules to GitHub.
 - `docs/DECISIONS.md` **is** committed (shareable product/architecture rationale).
 - Session files stay gitignored like everywhere else.
 - Non-site projects: **do** commit `AGENTS.md` by default (team/shareable conventions).
 
-When `create_project` lands under `~/projects/sites/`, merge the usual session ignore lines **and** add `AGENTS.md` + `CLAUDE.md` to `.gitignore`.
+When `create_project` lands under `~/Projects/sites/`, merge the usual session ignore lines **and** add `AGENTS.md` + `CLAUDE.md` to `.gitignore`.
 
 ### Transcript privacy — HARD RULE
 

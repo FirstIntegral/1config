@@ -327,14 +327,14 @@ check_dots_sync() {
   # Omarchy config pack (github:FirstIntegral/omarchy-dots) — fetch, ff-only pull,
   # drift-check ~/.config, auto-apply on drift. Skips cleanly on non-Omarchy boxes
   # or when the pack is not cloned here.
-  local dots="$HOME/projects/omarchy-dots"
+  local dots="$HOME/Projects/omarchy-dots"
   local script="$dots/sync.sh"
   if ! command -v omarchy >/dev/null 2>&1; then
     row skip "omarchy dots" "not an Omarchy machine"
     return 0
   fi
   if [ ! -x "$script" ]; then
-    row warn "omarchy dots" "no sync.sh — clone omarchy-dots to ~/projects/omarchy-dots"
+    row warn "omarchy dots" "no sync.sh — clone omarchy-dots to ~/Projects/omarchy-dots"
     return 1
   fi
   local out rc last

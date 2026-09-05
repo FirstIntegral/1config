@@ -8,6 +8,6 @@ docs/SESSION.md
 docs/session-archive/
 docs/session-flushes/
 
-# Sites repos only (~/projects/sites/*): also ignore agent rules — uncomment or add when creating a site:
+# Sites repos only (~/Projects/sites/*): also ignore agent rules — uncomment or add when creating a site:
 # AGENTS.md
 # CLAUDE.md

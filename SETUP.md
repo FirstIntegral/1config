@@ -211,7 +211,7 @@ Documentation, not authorisation: `checkpoint.sh` cross-checks this against `git
 - `session_compact.md` — AI handoff state. Read FIRST at session start; rewrite at end of session / milestone. Local-only (gitignored): never commit unless the user says otherwise.
 - `session_transcript.md` — human-ONLY narrative log. Append at milestones; AI NEVER reads it unless the user explicitly asks. Local-only (gitignored): never commit unless the user says otherwise.
 - `docs/DECISIONS.md` — ADR log; append decision + why in the same turn it is made. Versioned (committed in repos).
-- `.gitignore` — ignores the session files above, `claude_memory_import.md`, and legacy session paths. Sites under `~/projects/sites/` also ignore `AGENTS.md` / `CLAUDE.md`.
+- `.gitignore` — ignores the session files above, `claude_memory_import.md`, and legacy session paths. Sites under `~/Projects/sites/` also ignore `AGENTS.md` / `CLAUDE.md`.
 ```
 
 ### `session_compact.md`
@@ -278,12 +278,12 @@ docs/SESSION.md
 docs/session-archive/
 docs/session-flushes/
 
-# Sites repos only (~/projects/sites/*): also ignore agent rules — uncomment or add when creating a site:
+# Sites repos only (~/Projects/sites/*): also ignore agent rules — uncomment or add when creating a site:
 # AGENTS.md
 # CLAUDE.md
 ```
 
-(Does **not** ignore `AGENTS.md` by default — only `~/projects/sites/*` do; uncomment those two lines or add them when the project is a site.)
+(Does **not** ignore `AGENTS.md` by default — only `~/Projects/sites/*` do; uncomment those two lines or add them when the project is a site.)
 
 ### Rules (enforced via the canonical file, all tools)
 
@@ -295,7 +295,7 @@ docs/session-flushes/
 
 ## 5b. `continue_project <path>`
 
-Trigger: user says **`continue_project <path>`** (example: `continue_project $HOME/projects/some_dummy_project`).
+Trigger: user says **`continue_project <path>`** (example: `continue_project $HOME/Projects/some_dummy_project`).
 
 Before other work, the AI must (must match canonical `AGENTS.md` — that file wins if they ever diverge):
 
@@ -393,7 +393,7 @@ Claude can re-create topic files under `~/.claude/projects/*/memory/` despite th
 - **AI merge duty** (cron has no LLM): on session start / `continue_project`, if `NEEDS-MEMORY-MERGE` or `PENDING.md` or `claude_memory_import.md` exists → merge durable facts into standard files; if the project has `session_transcript.md`, append a one-line import note (write-only); then clear flag/pending/import. Full procedure in canonical `AGENTS.md`.
 - Log: `~/cron-jobs/claude-memory-guard/check-memory.log`.
 
-### 6c. Sites exception (`~/projects/sites/*`)
+### 6c. Sites exception (`~/Projects/sites/*`)
 
 Public site repos: gitignore `AGENTS.md` (+ `CLAUDE.md`). Commit `docs/DECISIONS.md`. Non-site projects commit `AGENTS.md`. Enforced via global `AGENTS.md` (HARD RULE for that path prefix).
 

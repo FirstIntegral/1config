@@ -52,11 +52,11 @@ Install the three CLIs (grok, claude, opencode) however you usually do. `setup.s
 The **desktop** config (Hyprland bindings, shell layout, theme, Vigil plugin, OpenTabletDriver/Huion) is a separate public repo: `github:FirstIntegral/omarchy-dots`. On an Omarchy box, after this brain is installed:
 
 ```bash
-gh repo clone FirstIntegral/omarchy-dots ~/projects/omarchy-dots
-cd ~/projects/omarchy-dots && ./apply.sh --dry-run && ./apply.sh
+gh repo clone FirstIntegral/omarchy-dots ~/Projects/omarchy-dots
+cd ~/Projects/omarchy-dots && ./apply.sh --dry-run && ./apply.sh
 ```
 
-From then on the boot dashboard keeps it in sync automatically: `~/projects/omarchy-dots/sync.sh` runs at every login (fetch → ff-only pull → drift-check `~/.config` vs pack → auto-apply). Non-Omarchy boxes show a gray `–` skip row and never touch it. Playbook: that repo's `README.md`.
+From then on the boot dashboard keeps it in sync automatically: `~/Projects/omarchy-dots/sync.sh` runs at every login (fetch → ff-only pull → drift-check `~/.config` vs pack → auto-apply). Non-Omarchy boxes show a gray `–` skip row and never touch it. Playbook: that repo's `README.md`.
 
 ## Existing machine — pull latest
 

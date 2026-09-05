@@ -18,7 +18,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 |-----|---------|
 | **network** | GitHub reachable (HEAD / api). Retries ~6×3s so early-boot DHCP/WiFi catch up. Warn = online but GitHub slow; fail = offline. |
 | **brain sync** | `hooks/brain-sync.sh` fetches `origin/main` and, when local `~/.agents` is behind `github:FirstIntegral/1config`, fast-forwards to match the repo. Fast-forward only, validated 1config remote only, never over local edits or unpushed commits. |
-| **omarchy dots** | Omarchy machines only — runs `~/projects/omarchy-dots/sync.sh` (fetch → ff-only pull → drift-check `~/.config` vs pack → auto-`apply.sh --no-pkg` on drift). Skipped visibly (`–`) on non-Omarchy boxes. Warn rows: fetch failed / repo ahead / repo dirty / opentabletdriver package missing (sudo — run `omarchy pkg aur add opentabletdriver` once by hand). |
+| **omarchy dots** | Omarchy machines only — runs `~/Projects/omarchy-dots/sync.sh` (fetch → ff-only pull → drift-check `~/.config` vs pack → auto-`apply.sh --no-pkg` on drift). Skipped visibly (`–`) on non-Omarchy boxes. Warn rows: fetch failed / repo ahead / repo dirty / opentabletdriver package missing (sudo — run `omarchy pkg aur add opentabletdriver` once by hand). |
 | **symlinks** | 3 AGENTS paths → `~/.agents/AGENTS.md` |
 | **link guard** | `agents-symlink-guard` healthy |
 | **memory guard** | Claude/Grok residue clean |
