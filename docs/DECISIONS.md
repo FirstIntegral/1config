@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-05 Deny `rm -rf` is exact `/` `~` `$HOME`, not a glob under them
+
+**Decision:** Drop `Bash(rm -rf /*)`, `Bash(rm -rf ~/*)`, `Bash(rm -rf $HOME/*)` from canonical `permissions.json`. Keep exact `Bash(rm -rf /)`, `Bash(rm -rf ~)`, `Bash(rm -rf $HOME)`.
+
+**Why:** All three matchers treat `*` as a glob. OpenCode last-match then denies `rm -rf ~/.config/protonmail` and `rm -rf /home/brwsk/.config/protonmail` even after Vigil **Y allow once** (screenshot 2026-09-05). The rules were meant to block wiping `/` or `$HOME`, not every recursive delete under them. Vigil's rm-root classifier (0.6.1) owns `rm -rf /*` / `~/*` / `$HOME/*` as exact-root wipes.
+
+**Rejected:** Escaping the star (`/\*`) — Grok/Claude/OpenCode glob syntax is not the same, and a missed escape would re-break every `rm -rf /…`. Leaving the globs and telling the human to use `mv` (that was the workaround, not the fix).
+
 ## 2026-09-04 — Boot dashboard self-syncs the brain from 1config
 
 **Decision:** New hook `hooks/brain-sync.sh`, run by the boot dashboard right after the network check. It fetches `origin/main` and, when local `~/.agents` is behind `github:FirstIntegral/1config`, fast-forwards to match the repo. The dashboard surfaces the result as a row (`ok` up-to-date/ff'd, `warn` fetch-failed/ahead/dirty, `fail` divergence).

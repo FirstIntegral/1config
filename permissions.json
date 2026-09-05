@@ -20,6 +20,10 @@
     "can only push signed main commits from the ~/.agents repo root after strict PASS with zero warnings.",
     "Generic `git push` stays in the canonical ask list (restore-gate). Live tools omit that ask while",
     "bash_without_prompt is true — otherwise OpenCode last-match and Grok shell-ask re-prompt it.",
+    "Deny `rm -rf` is exact `/`, `~`, `$HOME` only. Do NOT add `rm -rf /*` / `~/*` / `$HOME/*`:",
+    "all three matchers treat `*` as a glob, so those rules deny every `rm -rf /…` and `rm -rf ~/…`",
+    "(OpenCode last-match, 2026-09-05: Vigil Y-allow then harness still blocked wiping ~/.config/protonmail).",
+    "Literal `rm -rf /*` / `~/*` / `$HOME/*` is Vigil rm-root (classifier), not a harness glob.",
     "Matching notes: wrappers timeout/time/nice/nohup/stdbuf/command/builtin/bare-xargs are stripped before",
     "matching, so 'Bash(pytest *)' already covers 'timeout 900 pytest -q'. Interpreter PATHS are not",
     "normalized, hence the explicit .venv/venv entries below. Heredocs whose body mixes braces with quotes",
@@ -169,11 +173,8 @@
     ],
     "deny": [
       "Bash(rm -rf /)",
-      "Bash(rm -rf /*)",
       "Bash(rm -rf ~)",
-      "Bash(rm -rf ~/*)",
       "Bash(rm -rf $HOME)",
-      "Bash(rm -rf $HOME/*)",
       "Bash(sudo rm *)",
       "Bash(mkfs*)",
       "Bash(dd if=* of=/dev/*)"
