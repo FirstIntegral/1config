@@ -1,6 +1,6 @@
 # 1config
 
-Canonical AI-terminal brain for **Claude Code**, **Grok**, and **OpenCode**. One rules file, one permission policy, one setup script. Lives at `~/.agents/` and is the git repo `github:FirstIntegral/1config`.
+Canonical AI-terminal brain for **Claude Code**, **Grok**, and **OpenCode**. One rules file, one permission policy, one setup script. Lives at `~/.agents/`.
 
 This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runtime rules the three tools load every session are [`AGENTS.md`](AGENTS.md). Opinionated choices and *why* are [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
