@@ -185,7 +185,7 @@ Invariants, covered by `verify.sh`:
 
 ## 5. Per-project standard — `create_project`
 
-Trigger: user says **`create_project`**. Copy `~/.agents/project-template/` into the project root, fill in names. Five artifacts: `AGENTS.md`, `session_compact.md`, `session_transcript.md`, `docs/DECISIONS.md`, `.gitignore` (no CLAUDE.md — see §4 Claude hook). If the project already has a `.gitignore`, merge the session-file lines instead of overwriting. Verbatim templates:
+Trigger: user says **`create_project`**. Resolve the target before copying: a simple `create_project <name>` means `~/Projects/<name>`; an explicit absolute or relative path containing `/` is used after resolution; a missing name requires a question. Never default a simple name to the current working directory. Copy `~/.agents/project-template/` into the project root, fill in names. Five artifacts: `AGENTS.md`, `session_compact.md`, `session_transcript.md`, `docs/DECISIONS.md`, `.gitignore` (no CLAUDE.md — see §4 Claude hook). If the project already has a `.gitignore`, merge the session-file lines instead of overwriting. Verbatim templates:
 
 ### `AGENTS.md`
 

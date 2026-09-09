@@ -89,3 +89,7 @@ Claude project `memory/` dirs are DISABLED stubs. Grok `[memory] enabled = false
 ## Standing — Papers are LaTeX, no bibliography
 
 `writepaper_project` assumes `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). No `\cite`, no `refs.bib`. Author block is this user's unless a fork changes it.
+
+## 2026-09-09 — Default `create_project` root
+
+Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit paths remain supported. This prevents project placement from depending on whichever directory a tool happened to start in. The previous behavior was ambiguous and placed `infomarchy_design` directly under `$HOME`; that project was moved to `~/Projects/infomarchy_design`. No git repository or remote is created.

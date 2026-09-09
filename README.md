@@ -82,7 +82,7 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 | No AI co-author lines | Hard rule | Commits/PRs attributed to the user only. | Don't. |
 | Caveman mode | Always on | Terse AI prose. `/caveman lite\|full\|ultra` or `stop caveman`. | Say `normal mode` in that session. |
 | Tool memory stores | Disabled | Facts live in markdown (`AGENTS.md`, `session_compact.md`, `docs/DECISIONS.md`). | Don't recreate `~/.grok/memory/` or Claude topic files. |
-| `create_project` / `checkpoint_project` | Never `git init`, never add a remote | Publishing is a human decision. | Ask explicitly. |
+| `create_project` / `checkpoint_project` | New simple names land in `~/Projects/<name>`; never `git init`, never add a remote | Project location and publishing are deliberate choices. | Give an explicit path when needed; ask before publishing. |
 | TeX | Assumed installed | Papers are LaTeX, never a Markdown fallback. | Install `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). |
 | Paper author block | Brusk Kawa Abdalla | This user's papers. | Edit `AGENTS.md` `writepaper_project` if you fork. |
 | Remote check | `FirstIntegral/1config` only | `sync.sh` / `verify.sh` refuse a different origin. | Forks: change the two URL constants. |

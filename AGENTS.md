@@ -190,7 +190,7 @@ Talk terse like smart caveman. Keep all technical accuracy. Drop articles, fille
 
 ## `create_project` trigger
 
-When the user says **`create_project`** (starting a new project), always set up the standard layout. Fast path: `cp -r ~/.agents/project-template/. <project-dir>/` then fill in names; or create the files manually:
+When the user says **`create_project`** (starting a new project), always set up the standard layout. Resolve the target before editing: `create_project <name>` with a simple name means `~/Projects/<name>`; an explicit absolute or relative path containing `/` is used after resolution; a missing name requires a question. Never use the current working directory as the default for a simple name. Fast path: `cp -r ~/.agents/project-template/. <project-dir>/` then fill in names; or create the files manually:
 
 | File | Audience | Maintenance |
 |------|----------|-------------|
