@@ -84,7 +84,7 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 | Tool memory stores | Disabled | Facts live in markdown (`AGENTS.md`, `session_compact.md`, `docs/DECISIONS.md`). | Don't recreate `~/.grok/memory/` or Claude topic files. |
 | `create_project` / `checkpoint_project` | New simple names land in `~/Projects/<name>`; never `git init`, never add a remote | Project location and publishing are deliberate choices. | Give an explicit path when needed; ask before publishing. |
 | TeX | Assumed installed | Papers are LaTeX, never a Markdown fallback. | Install `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). |
-| Lean 4 | Optional; elan user-space | Kernel-check Lean encodings of paper theorems when `docs/paper/lean/` exists. Not a tax on every paper. `setup.sh` does not install it. | `bash ~/.agents/hooks/install-elan.sh` |
+| Lean 4 | Default on new `writepaper_project` scaffolds | First paper copies `docs/paper/lean/`. Existing papers not backfilled. `setup.sh` does not install elan. | `bash ~/.agents/hooks/install-elan.sh` |
 | Paper author block | Brusk Kawa Abdalla | This user's papers. | Edit `AGENTS.md` `writepaper_project` if you fork. |
 | Remote check | `FirstIntegral/1config` only | `sync.sh` / `verify.sh` refuse a different origin. | Forks: change the two URL constants. |
 

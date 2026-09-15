@@ -1140,12 +1140,17 @@ else
 fi
 if grep -q 'lean/' "$AGENTS_HOME/setup-infographic.svg" \
    && grep -q 'lake' "$AGENTS_HOME/setup-infographic.svg"; then
-  ok "infographic shows opt-in lean/ lake build"
+  ok "infographic shows default lean/ lake build"
 else
   bad "infographic missing Lean paper toolchain"
 fi
 
 echo "[lean toolchain]"
+if grep -q 'figures/`, `lean/`' "$CANON" && grep -q 'figures/`, `lean/`' "$SETUP"; then
+  ok "writepaper first scaffold copies lean/ by default"
+else
+  bad "AGENTS.md/SETUP.md first scaffold list missing lean/"
+fi
 if grep -q 'ok       elan' "$AGENTS_HOME/setup.sh" \
    && grep -q 'MISSING  elan' "$AGENTS_HOME/setup.sh"; then
   ok "setup.sh probes elan non-fatally"

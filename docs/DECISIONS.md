@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-16 — Lean `docs/paper/lean/` is default on new writepaper scaffolds
+
+**Decision:** First `writepaper_project` copies `paper-template/lean/` with `main.tex` / `build.sh` / `figures/`. New papers get a Lean project by default. Existing `docs/paper/` trees without `lean/` stay grandfathered (not backfilled). Do not overwrite a paper's existing Lean files.
+
+**Why:** User wants Lean present the moment a new paper is scaffolded, not as a later copy step. The kernel-check still only runs because `build.sh` sees `lean/`. Fidelity caveat unchanged: `lake` green is not a proof the LaTeX sentence matches.
+
+**Rejected:** Silent backfill of Darboux / other in-flight papers. Making Mathlib the template default. Treating `template_sanity` as a paper theorem.
+
 ## 2026-09-16 — Lean 4 opt-in kernel-check for papers (P0)
 
 **Decision:** Add Lean 4 as an opt-in paper kernel-check. Template `paper-template/lean/` is core Lean only (pinned `leanprover/lean4:v4.34.0`, no Mathlib). `writepaper_project` copies `lean/` only when a theorem is being formalized. Existing papers are grandfathered. `setup.sh` probes `elan` non-fatally like TeX and never installs it. Install path is `hooks/install-elan.sh` (official tarball, then run the binary — never `curl | sh`). `build.sh` runs `lake build` when `lean/` exists; missing lake skips; type errors fail. Verified count is `n/m kernel-checked Lean statements`. `lake` green is not fidelity to the LaTeX sentence — Gaps must say `statement-fidelity unmeasured` until a mechanical xwalk exists.

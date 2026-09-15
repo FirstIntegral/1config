@@ -184,7 +184,7 @@
 
   <!-- ===== footer ===== -->
   <text x="800" y="1372" text-anchor="middle" font-size="13" fill="#8b949e">memory: shared markdown only · tool-internal stores disabled · residue staged by cron, merged by AI</text>
-  <text x="800" y="1396" text-anchor="middle" font-size="13" fill="#8b949e">papers: writepaper_project → docs/paper/ (LaTeX, no citations) · opt-in lean/ · lake build · sorry → Gaps · lake green ≠ paper sentence</text>
+  <text x="800" y="1396" text-anchor="middle" font-size="13" fill="#8b949e">papers: writepaper_project → docs/paper/ (LaTeX, no citations) · new papers include lean/ · lake build · sorry → Gaps · lake green ≠ paper sentence</text>
   <text x="800" y="1428" text-anchor="middle" font-size="14" fill="#39d3e0">migrate: cp -r ~/.agents/ → bash ~/.agents/setup.sh → bash ~/.agents/sync.sh -m "…" → done</text>
   <text x="800" y="1456" text-anchor="middle" font-size="11" fill="#8b949e">figure = visual summary only · SETUP.md is the authoritative spec · regenerate figure same-turn when the brain's shape changes</text>
 </svg>
