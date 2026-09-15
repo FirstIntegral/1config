@@ -11,3 +11,6 @@ docs/session-flushes/
 # Sites repos only (~/Projects/sites/*): also ignore agent rules — uncomment or add when creating a site:
 # AGENTS.md
 # CLAUDE.md
+
+# Lean paper artifacts (opt-in docs/paper/lean/)
+docs/paper/lean/.lake/

@@ -74,6 +74,11 @@ if command -v latexmk >/dev/null || command -v pdflatex >/dev/null; then
 else
   log "MISSING  texlive (writepaper_project needs it) — $HINT"
 fi
+if command -v elan >/dev/null 2>&1 || [ -x "${HOME}/.elan/bin/elan" ]; then
+  log "ok       elan"
+else
+  log "MISSING  elan (writepaper Lean kernel-check) — bash ~/.agents/hooks/install-elan.sh"
+fi
 if [ "$need_die" -eq 1 ]; then
   echo "ERROR: required commands missing. Install, then re-run setup.sh:" >&2
   echo "  $HINT" >&2
@@ -693,6 +698,20 @@ if [ -f "$WS_SRC" ]; then
   fi
 else
   log "WARNING: hooks/watch-stale.sh missing"
+fi
+
+# --- elan installer (direct-reference; setup never downloads Lean) ------------
+echo "[elan] install-elan.sh (official elan, download-then-run; probe-only here)"
+ELAN_SRC="$AGENTS_HOME/hooks/install-elan.sh"
+if [ -f "$ELAN_SRC" ]; then
+  chmod +x "$ELAN_SRC"
+  if bash -n "$ELAN_SRC" 2>/dev/null; then
+    log "ready   hooks/install-elan.sh"
+  else
+    log "WARNING: hooks/install-elan.sh has a syntax error"
+  fi
+else
+  log "WARNING: hooks/install-elan.sh missing"
 fi
 
 # --- boot dashboard autostart -----------------------------------------------

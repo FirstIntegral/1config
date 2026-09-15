@@ -16,7 +16,7 @@ Inventory resolution, in order: (1) login shell `env -i bash -lc command -v` —
 
 Tools whose login-shell PATH resolves under mise are skipped by the updater; mise's own upgrade cadence (`minimum_release_age`) governs them. The updater still refreshes inventory (which may show the mise path from step 1).
 
-**Platform:** Linux. **Supported: Omarchy (Arch) and Ubuntu (Debian).** Requires: `python3`, `flock`, `git`. Wants: `cron` (Ubuntu) / `cronie` (Omarchy/Arch), `gpg`, `gnome-keyring`. Optional: `texlive-full` (Ubuntu) / `texlive-meta` (Omarchy). No root, no package installs from `setup.sh` (except the optional systemd-sleep shim — see that cron-job’s README). `setup.sh` `[0] platform` detects the family and prints the distro-correct install line.
+**Platform:** Linux. **Supported: Omarchy (Arch) and Ubuntu (Debian).** Requires: `python3`, `flock`, `git`. Wants: `cron` (Ubuntu) / `cronie` (Omarchy/Arch), `gpg`, `gnome-keyring`. Optional: `texlive-full` (Ubuntu) / `texlive-meta` (Omarchy); Lean 4 via user-space `elan` (`bash ~/.agents/hooks/install-elan.sh` — not a distro package, not `setup.sh`). No root, no package installs from `setup.sh` (except the optional systemd-sleep shim — see that cron-job’s README). `setup.sh` `[0] platform` detects the family and prints the distro-correct install line.
 
 ### Opinionated defaults (this repo — many people will not want them)
 
@@ -38,7 +38,7 @@ Sections, in order:
 3. Git commit signing — HARD RULE (never bypass signing; keyring auto-unlock; manual fallback)
 4. Permission policy — canonical `~/.agents/permissions.json`, fanned out to all three tools by `setup.sh` steps 5b/5c/5d (§4); includes the "prompts an allowlist cannot remove" subsection
 5. Tri-tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode, installed by `setup.sh`, checked by `verify.sh`
-6. Machine toolchains — `texlive-full` + `tectonic` installed; write LaTeX directly, never ask for installs
+6. Machine toolchains — `texlive-full` + `tectonic` installed; Lean 4 via `elan` (user-space hook, not a distro pkg); write LaTeX directly, never ask for TeX/Lean installs
 7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
 8. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
 9. `create_project` trigger (§5)
@@ -107,6 +107,7 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 - **Prompts the allowlist can't remove** — obfuscation/parse verdicts, exec wrappers, env runners, and hard-coded compound safety (`cd`+write path-bypass, `cd`+git untrusted-hooks). Full Bash autonomy removes them **and** the generic-push review gate. This repo currently has autonomy **on**; set `bash_without_prompt` false to restore the gate. Heredoc f-strings are separately rewritten by the PreToolUse hook below.
 - **Quoted-heredoc parse-verdict class — auto-rewritten via PreToolUse hook** (added 2026-08-07, prompted by 21 heredoc prompts in one Claude session). `setup.sh` step `5e` wires `~/.agents/hooks/heredoc-rewrite.sh` (bash wrapper → `heredoc-rewrite.py`) into `~/.claude/settings.json` `hooks.PreToolUse` with `matcher: Bash`. The hook rewrites quoted-delimiter `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs to scratchpad files under `~/.cache/agents-heredoc/` (7-day sweep) and answers `decision: allow` for the rewritten form, which is allowlist-shaped (`python3 <file>`). Unquoted heredocs and heredocs under `bash`/`sh`/`sudo`/anything else produce **no decision** and still prompt. **Claude-only, recorded per the parity rule:** Grok and OpenCode do not have Claude's parse-verdict prompt class or a matching PreToolUse rewrite mechanism; the behavioral rule in `AGENTS.md` (prefer script files over heredocs) applies everywhere. Verified by `verify.sh` `[claude heredoc-rewrite hook]` section, including five smoke tests.
 - **TeX** — `texlive-full` (TeX Live 2025) is installed machine-wide, plus `tectonic` in `~/.local/bin`. All engines/build tools are allowlisted; `tlmgr install` is not, and is unnecessary under the full scheme.
+- **Lean 4** — `elan` → `lean` + `lake`, user-space under `~/.elan`. Not a distro package. `setup.sh` probes non-fatally (`ok elan` / `MISSING` + the hook command), same shape as TeX, and **never downloads**. Install path is `bash ~/.agents/hooks/install-elan.sh` (official GitHub tarball, then run the binary — never `curl | sh`; `--default-toolchain none`; does not edit `.bashrc`/`.profile`). Paper `build.sh` prepends `~/.elan/bin`. Allowlisted: `elan`/`lean`/`lake` + the hook. Not allowlisted: `curl`, AUR `elan-lean`, distro `lean4`. Pin lives in `paper-template/lean/lean-toolchain` as exact `leanprover/lean4:vX.Y.Z`. Mathlib is opt-in per paper, never in the template. `leanlab` (PyPI) is unrelated.
 
 ### OpenCode
 
@@ -282,6 +283,9 @@ docs/session-flushes/
 # Sites repos only (~/Projects/sites/*): also ignore agent rules — uncomment or add when creating a site:
 # AGENTS.md
 # CLAUDE.md
+
+# Lean paper artifacts (opt-in docs/paper/lean/)
+docs/paper/lean/.lake/
 ```
 
 (Does **not** ignore `AGENTS.md` by default — only `~/Projects/sites/*` do; uncomment those two lines or add them when the project is a site.)
@@ -333,14 +337,16 @@ Same for all three tools. Formalizes the "End of session / milestone" rule as an
 
 Trigger: user says **`writepaper_project`** (optionally with a path or topic/venue hint). Writes a complete, publication-grade LaTeX research paper about the project. Full spec lives in canonical `AGENTS.md` — that file wins if they ever diverge.
 
-- **Scaffold source:** `~/.agents/paper-template/` → copied to `<project>/docs/paper/` on first run (`main.tex`, `build.sh`, `figures/`). Later runs extend the existing paper; they never restart it.
+- **Scaffold source:** `~/.agents/paper-template/` → copied to `<project>/docs/paper/` on first run (`main.tex`, `build.sh`, `figures/`). Later runs extend the existing paper; they never restart it. Copy `lean/` **only** when a theorem is being formalized (opt-in). Existing papers are not backfilled. Template dummy `amsthm` stubs do not trigger Lean.
 - **Author block is fixed:** `Brusk Kawa Abdalla`, contact `math@brwsk.xyz`.
-- **Template contents:** `article` + `amsthm` theorem environments (theorem/lemma/proposition/corollary/conjecture/definition/assumption/example/remark), `mathtools`, `siunitx`, `booktabs`, `pgfplots`/TikZ, `algorithm2e`, `cleveref`, and a red `\TODO{}` macro so every gap is visible instead of guessed.
+- **Template contents:** `article` + `amsthm` theorem environments (theorem/lemma/proposition/corollary/conjecture/definition/assumption/example/remark), `mathtools`, `siunitx`, `booktabs`, `pgfplots`/TikZ, `algorithm2e`, `cleveref`, and a red `\TODO{}` macro so every gap is visible instead of guessed. Optional `lean/` stub: pinned `lean-toolchain`, core-only `lakefile.toml` (no Mathlib), `Paper.lean` with a real tiny proof (`template_sanity`), `.lake/` gitignored.
 - **No references, by design.** AI-written papers are self-contained: no bibliography, no `refs.bib`, no `\cite`, no reference list. Prior art is described in prose. `verify.sh` fails if bibliography machinery reappears in the template.
-- **Build:** `bash docs/paper/build.sh` → `latexmk -pdf` → `main.pdf`, prints the page count and every open `\TODO`. `clean` argument runs `latexmk -C`. Verified to compile against the installed `texlive-full`.
-- **Content hard rules** (in `AGENTS.md`): no invented numbers, no references, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps.
-- **The paper stays current.** Once `docs/paper/` exists, any scientifically relevant change (method, theorem, assumption, experimental setup, measured number, limitation) updates the paper and rebuilds it in the **same turn** — the trigger does not have to be re-typed. Refactors/tooling changes do not count unless a reported number or stated claim moves.
-- `docs/paper/` is **committed** (product, not session state).
+- **Build:** `bash docs/paper/build.sh` → `latexmk -pdf` → `main.pdf`, prints the page count and every open `\TODO`. If `lean/` exists and `lake` is on PATH (build.sh prepends `~/.elan/bin`), also `lake build` and a sorry count. Type errors fail the script. Missing `lake` prints `LEAN SKIPPED` and the PDF still ships. `clean` runs `latexmk -C` and `lake clean` when present. Never `lake exe cache get` from `build.sh`. No tool has a Lean plugin — all three run `lake` via `build.sh`.
+- **Content hard rules** (in `AGENTS.md`): no invented numbers, no references, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps. Kernel-checked = `lake build` green **and** that declaration has no `sorryAx`. Report `n/m kernel-checked Lean statements`. `lake` green is **not** a proof that the Lean statement matches the LaTeX theorem.
+- **Lean conversion (fidelity).** The kernel checks the declared Lean type, not the paper sentence. When formalizing: (1) write the statement in Lean first and quote the pretty-printed type in LaTeX, **or** (2) decompose the LaTeX theorem into a committed parts list (objects, hypotheses, conclusion, quantifier order, boundary flags) bound to `\label{thm:…}` not line numbers, emit pedantic Lean from those rows, and script-diff the compiled signature against the rows. Do not freely restate then `lake build`. Until a mechanical xwalk hook exists, Gaps must include `statement-fidelity unmeasured` for every formalized theorem. Dual-formalizer / mutation probes / `xwalk.lock` / litex are **not** installed (P2). `leanlab` is unrelated.
+- **Mathlib** is opt-in in that paper's `lakefile.toml` when statements need ℝ / polynomials / ODEs. Template stays core Lean so `verify.sh` never downloads a cache.
+- **The paper stays current.** Once `docs/paper/` exists, any scientifically relevant change (method, theorem, assumption, experimental setup, measured number, limitation) updates the paper and rebuilds it in the **same turn** — the trigger does not have to be re-typed. Refactors/tooling changes do not count unless a reported number or stated claim moves. Theory-statement changes update the Lean mirror **if** `lean/` already exists; non-theory edits do not start a proof hunt.
+- `docs/paper/` is **committed** (product, not session state). `.lake/` is gitignored.
 
 ## 5e. `global_brain_update`
 
@@ -348,6 +354,7 @@ Trigger: user says **`global_brain_update <what to change>`**. Target is `~/.age
 
 1. Read the brain first (`AGENTS.md`, `SETUP.md`, plus whatever the request touches — `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`).
 2. Change the **canonical** home of the thing, never a tool-local copy.
+2b. If the change alters what `setup-infographic.svg` depicts (components, flows, toolchain), regenerate the figure in this turn, **before** setup/sync.
 3. Tri-tool parity: all three tools, installed by `setup.sh`, checked by `verify.sh`.
 4. `bash ~/.agents/setup.sh` → must end `== PASS ==`, `warnings=0`.
 5. `bash ~/.agents/sync.sh -m "<subject>"` → signed commit + push.
@@ -449,9 +456,10 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py hooks/gpg-signing-key.sh hooks/gpg-git.sh`. Point `git config --global gpg.program` at `hooks/gpg-git.sh`. Set `git config --global user.signingkey` to **this** machine's key, then run the store script once (see §4 GPG). Dedicated `gpg-signing` collection, not default.
 11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
 12. `watch-stale.sh` — `chmod +x hooks/watch-stale.sh` + `bash -n` syntax gate (§4c).
-13. Verify (+ refresh of gitignored `inventory.local.md`).
+13. Optional Lean: `bash ~/.agents/hooks/install-elan.sh` if the setup probe said `MISSING elan`. Not in the distro pkg line. `setup.sh` never downloads it.
+14. Verify (+ refresh of gitignored `inventory.local.md`).
 
-`setup.sh` does all of the above: idempotent, backs up anything it replaces to `~/.agents/backups/setup-<ts>/`, self-verifies. `SKIP_CRON=1` skips the crontab step.
+`setup.sh` does the above except the optional elan install (step 13 is the hook; setup only probes). Idempotent, backs up anything it replaces to `~/.agents/backups/setup-<ts>/`, self-verifies. `SKIP_CRON=1` skips the crontab step.
 
 **Authority chain:** `SETUP.md` = machine wiring spec. `setup.sh` implements it. `AGENTS.md` = AI runtime rules (session workflow, memory policy). Keep them in sync when changing behavior.
 
@@ -465,7 +473,7 @@ bash ~/.agents/setup.sh    # sync installs + local inventory + verify
 bash ~/.agents/verify.sh
 ```
 
-`verify.sh` fails if: brain root/branch/push URL is wrong; sync can bypass verification; symlinks or XDG autostart drift; guards, updater scripts, or root resume shim differ from source; resume scheduling loses user/home or masks failure; inventory refresh is non-idempotent; inventory resolver fails `--self-test` (login PATH must win, vendor-dir fallback, no stderr versions); live CLI versions leak into SETUP.md; permission policy or modes differ across tools; hooks, cron, templates, checkpoint behavior, or staleness-watch behavior regress; README/DECISIONS omit the Omarchy+Ubuntu or `bash_without_prompt` warnings. It also rejects bibliography machinery in the paper template and untracked project-template files. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
+`verify.sh` fails if: brain root/branch/push URL is wrong; sync can bypass verification; symlinks or XDG autostart drift; guards, updater scripts, or root resume shim differ from source; resume scheduling loses user/home or masks failure; inventory refresh is non-idempotent; inventory resolver fails `--self-test` (login PATH must win, vendor-dir fallback, no stderr versions); live CLI versions leak into SETUP.md; permission policy or modes differ across tools; hooks, cron, templates, checkpoint behavior, or staleness-watch behavior regress; README/DECISIONS omit the Omarchy+Ubuntu or `bash_without_prompt` warnings. It also rejects bibliography machinery in the paper template, Mathlib in the template lakefile, unpinned `lean-toolchain`, `sorry` in template `Paper.lean`, missing `install-elan.sh`, and untracked project-template / paper-template Lean files. Missing `elan`/`lake` on PATH is INFO, not FAIL. (The Grok `project-session` skill is a checklist overlay, not installed from this repo — `AGENTS.md` is the source of truth; verify does not police it.)
 
 ## 9. Verification
 

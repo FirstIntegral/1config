@@ -121,6 +121,11 @@ Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md
   - Engines: `pdflatex`, `xelatex`, `lualatex`, `tex` · build: `latexmk` (preferred, handles reruns) · bib: `biber`, `bibtex` · index: `makeindex` · also `texcount`, `latexdiff`.
   - `tectonic` also installed (`~/.local/bin`) — self-contained one-shot builds; use when a project's build script already calls it.
   - All of the above are allowlisted (no prompt). Package installs (`tlmgr install`) are not — and with `texlive-full` should never be needed.
+- **Lean 4: `elan` → `lean` + `lake`** (user-space, `~/.elan`). Not a distro package. Per-project pin via `docs/paper/lean/lean-toolchain`. Kernel-checks Lean encodings of paper theorems; **never** ask the user to install Lean by hand — if `elan` is missing, run `bash ~/.agents/hooks/install-elan.sh` (download-then-run, no root, does not edit shell rc). Never AUR `elan-lean`, never distro `lean4`, never `curl | sh`.
+  - Manager: `elan` · compiler: `lean` · build: `lake` (`lake build`). Mathlib is **opt-in per paper**, never in the brain template. `lake exe cache get` only when that paper's lakefile requires Mathlib; cache miss → fail closed, never compile Mathlib from source in a paper turn.
+  - Pin: exact `leanprover/lean4:vX.Y.Z`. Never `stable`/`nightly`.
+  - PATH: `~/.elan/bin`. Paper `build.sh` prepends it. Do not symlink into `~/.local/bin`.
+  - Allowlisted. The install hook is the only install path. `leanlab` (PyPI) is unrelated — do not install it.
 
 ---
 
@@ -330,8 +335,8 @@ When the user says **`writepaper_project`** (optionally `writepaper_project <pat
 ### Procedure
 
 1. Resolve the project root (given path, else cwd walk-up stopping before `$HOME`). Read `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`, then the actual **code, tests, benchmarks, logs, and result files**. Never read `session_transcript.md` (Transcript privacy).
-2. Scaffold `docs/paper/` from `~/.agents/paper-template/` (`main.tex`, `build.sh`, `figures/`) if not already there; otherwise extend what exists — never silently overwrite a paper in progress.
-3. Write the paper. Then **build it**: `bash docs/paper/build.sh` (latexmk → `main.pdf`). Fix every LaTeX error and every undefined reference/citation; a paper that does not compile is not delivered. `texlive-full` is installed — no package is missing, never stub one out.
+2. Scaffold `docs/paper/` from `~/.agents/paper-template/` (`main.tex`, `build.sh`, `figures/`) if not already there; otherwise extend what exists — never silently overwrite a paper in progress. Copy `lean/` only when a theorem is being formalized (opt-in; see HARD RULES).
+3. Write the paper. Then **build it**: `bash docs/paper/build.sh` (latexmk → `main.pdf`; `lake build` if `lean/` exists). Fix every LaTeX error and every undefined reference/citation; a paper that does not compile is not delivered. `texlive-full` is installed — no package is missing, never stub one out.
 4. Report: page count, section list, and an explicit **Gaps** list (what is `\TODO` and why).
 5. Same turn: append the milestone to `session_transcript.md`, log paper-level choices (scope, claims, framing) in `docs/DECISIONS.md`, rewrite `session_compact.md`.
 
@@ -347,6 +352,13 @@ Use the science the project actually needs and do not water it down: formal stat
 - **NO REFERENCES AT ALL.** The paper is AI-written and self-contained: no bibliography, no `refs.bib`, no `\cite`, no numbered reference list, no "[1]"-style markers, no DOIs or arXiv IDs. If prior art must be mentioned, describe the idea in plain prose ("the standard fixed-point argument", "classical Runge–Kutta") without a citation key. A citation is never the reason to skip a derivation — derive it in the paper or state it as an assumption.
 - **No overclaiming.** Theorems get proofs or they become conjectures. Empirical claims get the statistic that supports them. Scope conditions and failure cases go in Limitations, not omitted.
 - Keep the paper a **living artifact**: re-running `writepaper_project` updates and extends it (new results, new sections), it does not restart from scratch.
+- **Lean mirror — opt-in kernel check of Lean encodings, not a tax on every `amsthm` paper.** Copy `~/.agents/paper-template/lean/` into `docs/paper/lean/` only when the user asked or a theorem is being formalized. Never backfill existing papers. Template dummy theorems do not trigger this. `leanlab` (PyPI) is unrelated.
+  1. When `docs/paper/lean/` exists, `build.sh` runs `lake build` after latexmk (PATH prepends `~/.elan/bin`). Type errors fail the build. Missing `lake` → Gap, PDF still ships. Never `lake exe cache get` from `build.sh`; never compile Mathlib from source.
+  2. Kernel-checked means that Lean declaration's axiom audit has no `sorryAx`. Unproved statements stay `sorry` and go on Gaps. Report `n/m kernel-checked Lean statements`. **Do not** claim the paper sentence was checked — `lake` green is not fidelity to LaTeX.
+  3. 1:1 names: `\label{thm:foo}` ↔ `thm_foo` (or a listed rename). Delete `template_sanity` once real theorems exist.
+  4. Conversion (so Lean does not prove a different claim): write the statement in Lean first and quote it in LaTeX, **or** decompose the LaTeX into a committed parts list and emit pedantic Lean from those rows, then script-diff the compiled signature. Do not freely restate then `lake build`. Until a mechanical xwalk exists, Gaps must include `statement-fidelity unmeasured` for every formalized theorem. Details: SETUP.md §5d.
+  5. Mathlib only in that paper's `lakefile.toml` when statements need it (ℝ, polynomials, ODEs). Template stays core Lean.
+  6. Same-turn "keep current" on non-theory edits does not require a Lean proof hunt. Theory-statement changes update the Lean mirror if `lean/` already exists.
 
 ### Keeping the paper current — HARD RULE once `docs/paper/` exists
 

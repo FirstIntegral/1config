@@ -24,7 +24,7 @@
   <!-- ===== title ===== -->
   <text x="800" y="56" text-anchor="middle" font-size="30" font-weight="bold" fill="url(#acc)" letter-spacing="5">UNIFIED AI TERMINAL SETUP</text>
   <rect x="520" y="70" width="560" height="3" rx="1.5" fill="url(#acc)"/>
-  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">3 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-09-05 — README + SETUP.md; figure same-turn when the brain changes</text>
+  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">3 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-09-16 — README + SETUP.md; figure same-turn when the brain changes</text>
 
   <!-- ===== converging symlink arrows ===== -->
   <line x1="310" y1="268" x2="700" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
@@ -184,7 +184,7 @@
 
   <!-- ===== footer ===== -->
   <text x="800" y="1372" text-anchor="middle" font-size="13" fill="#8b949e">memory: shared markdown only · tool-internal stores disabled · residue staged by cron, merged by AI</text>
-  <text x="800" y="1396" text-anchor="middle" font-size="13" fill="#8b949e">papers: writepaper_project → docs/paper/ (LaTeX, no citations, no invented numbers) · kept current same-turn</text>
+  <text x="800" y="1396" text-anchor="middle" font-size="13" fill="#8b949e">papers: writepaper_project → docs/paper/ (LaTeX, no citations) · opt-in lean/ · lake build · sorry → Gaps · lake green ≠ paper sentence</text>
   <text x="800" y="1428" text-anchor="middle" font-size="14" fill="#39d3e0">migrate: cp -r ~/.agents/ → bash ~/.agents/setup.sh → bash ~/.agents/sync.sh -m "…" → done</text>
   <text x="800" y="1456" text-anchor="middle" font-size="11" fill="#8b949e">figure = visual summary only · SETUP.md is the authoritative spec · regenerate figure same-turn when the brain's shape changes</text>
 </svg>

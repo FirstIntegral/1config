@@ -1,0 +1,11 @@
+name = "paper"
+version = "0.1.0"
+defaultTargets = ["Paper"]
+
+# Core Lean only. Mathlib is opt-in per paper — add a pinned
+#   [[require]] name = "mathlib" scope = "leanprover-community" rev = "vX.Y.Z"
+# in the *paper's* copy when statements need ℝ / polynomials / ODEs.
+# Never add mathlib to this template (verify.sh fails if you do).
+
+[[lean_lib]]
+name = "Paper"

@@ -109,7 +109,7 @@ fi
 [ -f "$AGENTS_HOME/permissions.json" ] && ok "permissions.json (canonical, all 3 tools)" || bad "permissions.json missing"
 PAPER_TPL="$AGENTS_HOME/paper-template"
 if [ -d "$PAPER_TPL" ]; then
-  for f in main.tex build.sh; do
+  for f in main.tex build.sh lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore; do
     [ -e "$PAPER_TPL/$f" ] && ok "paper-template $f" || bad "paper-template missing $f"
   done
   [ -x "$PAPER_TPL/build.sh" ] || note "paper-template/build.sh not executable"
@@ -119,12 +119,42 @@ if [ -d "$PAPER_TPL" ]; then
   else
     ok "paper-template reference-free"
   fi
+  if grep -qE '^[[:space:]]*\[\[require\]\]' "$PAPER_TPL/lean/lakefile.toml" 2>/dev/null \
+     || grep -qiE '^[[:space:]]*name[[:space:]]*=[[:space:]]*"mathlib"' "$PAPER_TPL/lean/lakefile.toml" 2>/dev/null; then
+    bad "paper-template lakefile has a require / mathlib (template is core-Lean only)"
+  else
+    ok "paper-template lakefile has no mathlib"
+  fi
+  if grep -qE '^leanprover/lean4:v[0-9]+\.[0-9]+\.[0-9]+$' "$PAPER_TPL/lean/lean-toolchain" 2>/dev/null; then
+    ok "lean-toolchain pinned to vX.Y.Z"
+  else
+    bad "lean-toolchain must be exact leanprover/lean4:vX.Y.Z (not stable/nightly)"
+  fi
+  if grep -qE '^[[:space:]]*(sorry|admit)\b' "$PAPER_TPL/lean/Paper.lean" 2>/dev/null; then
+    bad "paper-template Paper.lean contains sorry (template must actually prove)"
+  else
+    ok "paper-template Paper.lean has no sorry"
+  fi
+  if grep -q 'lake build' "$PAPER_TPL/build.sh" && grep -q 'lean/' "$PAPER_TPL/build.sh"; then
+    ok "paper-template build.sh gates lake on lean/"
+  else
+    bad "paper-template build.sh missing lake gate"
+  fi
+  if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+    for f in lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore; do
+      if git -C "$AGENTS_HOME" ls-files --error-unmatch "paper-template/$f" >/dev/null 2>&1; then
+        ok "paper-template $f tracked in git"
+      else
+        bad "paper-template $f NOT tracked"
+      fi
+    done
+  fi
 else
   bad "paper-template/ missing (writepaper_project has no scaffold)"
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh install-elan.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -613,7 +643,7 @@ else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs'; do
+  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
@@ -1107,6 +1137,52 @@ if grep -q 'vendor dirs' "$AGENTS_HOME/setup-infographic.svg" \
   ok "infographic shows inventory vendor-dir fallback (not SETUP.md versions)"
 else
   bad "infographic still pins versions in SETUP.md or omits vendor-dir fallback"
+fi
+if grep -q 'lean/' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'lake' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "infographic shows opt-in lean/ lake build"
+else
+  bad "infographic missing Lean paper toolchain"
+fi
+
+echo "[lean toolchain]"
+if grep -q 'ok       elan' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'MISSING  elan' "$AGENTS_HOME/setup.sh"; then
+  ok "setup.sh probes elan non-fatally"
+else
+  bad "setup.sh missing non-fatal elan probe"
+fi
+if grep -qF 'Bash(elan *)' "$AGENTS_HOME/permissions.json" \
+   && grep -qF 'Bash(lean *)' "$AGENTS_HOME/permissions.json" \
+   && grep -qF 'Bash(lake *)' "$AGENTS_HOME/permissions.json" \
+   && grep -qF 'Bash(bash ~/.agents/hooks/install-elan.sh)' "$AGENTS_HOME/permissions.json"; then
+  ok "permissions.json allowlists elan/lean/lake + install hook"
+else
+  bad "permissions.json missing Lean allow rules"
+fi
+if grep -q 'docs/paper/lean/.lake/' "$TEMPLATE/.gitignore"; then
+  ok "project-template gitignores docs/paper/lean/.lake/"
+else
+  bad "project-template .gitignore missing Lean .lake/"
+fi
+# lake build of the scaffold is INFO if lake is missing (fresh clone / this box before elan).
+_lake=""
+if command -v lake >/dev/null 2>&1; then
+  _lake="$(command -v lake)"
+elif [ -x "${HOME}/.elan/bin/lake" ]; then
+  _lake="${HOME}/.elan/bin/lake"
+fi
+if [ -n "$_lake" ]; then
+  _leantmp="$(mktemp -d)"
+  cp -a "$PAPER_TPL/lean/." "$_leantmp/"
+  if (cd "$_leantmp" && PATH="${HOME}/.elan/bin:${PATH}" "$_lake" build >/dev/null 2>&1); then
+    ok "lake build of paper-template/lean/ (scratch)"
+  else
+    bad "lake build of paper-template/lean/ failed"
+  fi
+  rm -rf "$_leantmp"
+else
+  info "lake not on PATH — skip paper-template lake build (run hooks/install-elan.sh)"
 fi
 
 # --- summary ---------------------------------------------------------------

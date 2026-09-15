@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-16 — Lean 4 opt-in kernel-check for papers (P0)
+
+**Decision:** Add Lean 4 as an opt-in paper kernel-check. Template `paper-template/lean/` is core Lean only (pinned `leanprover/lean4:v4.34.0`, no Mathlib). `writepaper_project` copies `lean/` only when a theorem is being formalized. Existing papers are grandfathered. `setup.sh` probes `elan` non-fatally like TeX and never installs it. Install path is `hooks/install-elan.sh` (official tarball, then run the binary — never `curl | sh`). `build.sh` runs `lake build` when `lean/` exists; missing lake skips; type errors fail. Verified count is `n/m kernel-checked Lean statements`. `lake` green is not fidelity to the LaTeX sentence — Gaps must say `statement-fidelity unmeasured` until a mechanical xwalk exists.
+
+**Why:** Kernel is the right judge of *Lean proofs*. It cannot see LaTeX. Forcing Lean on every `amsthm` paper would tax Vigil/sites/trading papers and freeze Darboux trees as illegal. Mathlib in the template would make `verify.sh` a multi-GB download. The conversion protocol (parts list → pedantic Lean → compiled-signature diff, or Lean-first statements) is the actual anti-wrong-theorem layer and is deferred to P1/P2.
+
+**Rejected:** Landing the full xwalk/lock/probes/dual-formalizer stack in the same turn. Mathlib-on by default in the template. HARD RULE that every `amsthm` paper must have a Lean mirror. `litex` as a Lean-in-LaTeX SSOT (the named tool is a different language). Distro/AUR Lean. `curl | sh` elan-init. Pinning `stable`/`nightly` or stale 4.32. Claiming “paper theorems are kernel-verified.” leanlab (unrelated PyPI tool). Human sign-off as a same-turn writepaper gate.
+
 ## 2026-09-05 Deny `rm -rf` is exact `/` `~` `$HOME`, not a glob under them
 
 **Decision:** Drop `Bash(rm -rf /*)`, `Bash(rm -rf ~/*)`, `Bash(rm -rf $HOME/*)` from canonical `permissions.json`. Keep exact `Bash(rm -rf /)`, `Bash(rm -rf ~)`, `Bash(rm -rf $HOME)`.
