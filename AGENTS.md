@@ -108,7 +108,7 @@ Whenever anything is added to or changed in this setup:
 1. **Land it in all three, in the same turn.** Canonical source stays single (`~/.agents/…`); `setup.sh` fans it out per tool. Never write a per-tool copy by hand.
 2. **If a tool has no native mechanism**, implement the closest equivalent (hook, config key, translated rule syntax) and record what differs — SETUP.md §4, one line. "Claude-only" is acceptable ONLY when the other two physically cannot do it, and only when written down.
 3. **`setup.sh` installs it for all three; `verify.sh` checks all three.** A feature with no verify check does not count as installed.
-4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards) fires identically everywhere.
+4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
 5. Same for memory: shared markdown only, identical for all three (see Memory policy). Tool-internal stores stay disabled everywhere.
 
 Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok/OpenCode, SessionStart hook in Claude; permissions → `permissions.json` fan-out (above).
@@ -219,6 +219,18 @@ Parent, every herd:
 6. Argument waves do not run the official measurement seeds.
 7. Cap posts (about 3) and length. A cut post is restored by a new post.
 8. Seats must open the project files that hold the bar and the graveyard. The prompt is not a substitute.
+9. A post that only agrees is noise. Say nothing. A recant, a kill, or a new measurement is a post.
+10. If a required file is missing, the post says that file is missing; do not invent its contents.
+
+---
+
+## Kept out
+
+These three stay out.
+
+- Do not split voice, user, or identity into `SOUL.md`, `USER.md`, or `IDENTITY.md`. The three tools load this file. Caveman mode is the voice.
+- Do not add an agent-readable daily diary. The transcript stays private. `session_compact.md` is the handoff.
+- Do not add a personal heartbeat (mail, calendar, or a ping after hours of silence). Heartbeat here is machine health and job staleness.
 
 ---
 
@@ -453,6 +465,8 @@ When `create_project` lands under `~/Projects/sites/`, merge the usual session i
 ### During work
 
 - **Meaningful choice made** (architecture, naming, security trade-off, rejected alternative) → append an ADR entry to `docs/DECISIONS.md` **in the same turn**. Include *why* and what was rejected.
+- **Before a new tool, script, or service:** look for a maintained one. Build custom only when that one is dead, unsafe, or the user asked for custom.
+- **A required file that is absent is said out loud.** Name the path; do not invent its contents.
 - **Durable fact** (commands, paths, conventions) → project `AGENTS.md`; global fact → this file.
 - **Project has `docs/paper/` and something scientifically relevant changed** (method, theorem, assumption, setup, measured number, limitation) → update the paper and rebuild it in the **same turn** (see `writepaper_project` → "Keeping the paper current").
 - **Milestone reached** → append to `session_transcript.md`.

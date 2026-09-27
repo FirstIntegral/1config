@@ -41,6 +41,7 @@ Sections, in order:
 6. Machine toolchains — `texlive-full` + `tectonic` installed; Lean 4 via `elan` (user-space hook, not a distro pkg); write LaTeX directly, never ask for TeX/Lean installs
 7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
 8. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
+   Herd boards sit after caveman and before the triggers (§5f): one wall, a post that only agrees is noise, a missing file said aloud. Kept out: `SOUL.md`, daily diary, personal heartbeat.
 9. `create_project` trigger (§5)
 10. `continue_project <path>` trigger (§5b)
 11. `checkpoint_project` trigger (§5c)
@@ -293,7 +294,7 @@ docs/paper/lean/.lake/
 ### Rules (enforced via the canonical file, all tools)
 
 1. **Session start:** read `session_compact.md` FIRST if it exists. NEVER open `session_transcript.md` — it is the user's private log (Transcript privacy HARD RULE; read only if the user explicitly asks).
-2. **During work:** append to `session_transcript.md` at milestones (writing OK, reading not); ADRs to `docs/DECISIONS.md` in the same turn.
+2. **During work:** append to `session_transcript.md` at milestones (writing OK, reading not); ADRs to `docs/DECISIONS.md` in the same turn. Before a new tool, script, or service, look for a maintained one; build custom only when that one is dead, unsafe, or the user asked for custom. A required file that is absent is said out loud — name the path; do not invent its contents.
 3. **End of session / milestone / before compaction:** rewrite `session_compact.md` — accurate enough for a fresh AI to resume from it alone.
 4. Session files live in project root; **never committed unless the user explicitly says otherwise** — template `.gitignore` covers them. `docs/DECISIONS.md` IS committed in repos.
 5. **Model tracking:** at `create_project` record active model + effort (read tool config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask user once). The **Models used** list is CUMULATIVE: preserve across rewrites, mark current, add a line on any model/effort change. Every switch ALSO appended to `session_transcript.md` (old → new, reason if known). User says they switched → log immediately.
@@ -379,6 +380,12 @@ It requires repository root + branch `main`, validates every origin fetch and pu
 Standing rule, not a typed trigger. Full text in canonical `AGENTS.md` (`## Herd boards`) — that file wins if they diverge. All three tools read it through the symlinks. No per-tool copy. No installer step.
 
 When the user asks for tens or hundreds of agents that should talk: one append-only flocked wall, waves so later seats can read earlier posts, honesty with public recants, a parseable last-line token, argument seats do not edit source, one hands seat codes only after a mechanical lock, and argument waves do not run the official measurement seeds. An empty lock is legal. A parallel blast on an empty wall is not a conversation.
+
+A post that only agrees is noise. If a required file is missing, the post says that file is missing; do not invent its contents.
+
+Before a new tool, script, or service, look for a maintained one. Build custom only when that one is dead, unsafe, or the user asked for custom. A required file that is absent is said out loud on any task, not only on a herd wall.
+
+Kept out, on purpose: no `SOUL.md`, `USER.md`, or `IDENTITY.md` (this file is what the tools load; caveman is the voice); no agent-readable daily diary (the transcript stays private); no personal heartbeat (mail, calendar, or a ping after hours of silence). Machine health and job staleness stay the heartbeat.
 
 ## 6. Memory policy
 

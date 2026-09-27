@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-27 — Three OpenClaw habits in, three layouts out
+
+**Decision:** Steal three habits. (1) A herd post that only agrees is noise; a recant, a kill, or a new measurement is a post. (2) Before a new tool, script, or service, look for a maintained one; build custom only when that one is dead, unsafe, or the user asked for custom. (3) A required file that is absent is said out loud; do not invent its contents. Refuse three layouts: no `SOUL.md` / `USER.md` / `IDENTITY.md`; no agent-readable daily diary; no personal heartbeat. Text lives in `AGENTS.md` (`## Herd boards`, `## Kept out`, During work) and `SETUP.md` §5f plus the during-work rule. `verify.sh` checks the phrases in both files.
+
+**Why:** The useful half of that layout was already here under other names (one rules file, caveman as voice, private transcript, machine heartbeat). Round 11 burned seats repeating a fact already on the wall, and a missing graveyard must not be invented. The preflight was practiced sometimes and unwritten. The three refusals would fight injection, transcript privacy, and the heartbeat this machine already runs.
+
+**Rejected:** Copying the extra Markdown files. An agent-readable `memory/YYYY-MM-DD.md`. A social ping for mail, calendar, or hours of silence. Leaving the refusals unwritten.
+
 ## 2026-09-27 — Herd boards are a standing rule
 
 **Decision:** A crowd of talking agents uses one append-only flocked wall, waves so later seats can read earlier posts, public recants, a parseable last line, and one coder only after a mechanical lock. Argument waves do not run the official seeds. Text lives in `AGENTS.md` (`## Herd boards`) and `SETUP.md` §5f. `verify.sh` checks the heading in both.

@@ -642,8 +642,15 @@ if grep -q 'NEEDS-MEMORY-MERGE' "$SETUP" && grep -q 'continue_project' "$SETUP";
 else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
+if grep -q 'only agrees is noise' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -q 'SOUL.md' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -q 'personal heartbeat' "$AGENTS_HOME/docs/DECISIONS.md"; then
+  ok "docs/DECISIONS.md records the OpenClaw habit ADR"
+else
+  bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
+fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards'; do
+  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
