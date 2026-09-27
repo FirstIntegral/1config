@@ -59,7 +59,7 @@
   <text x="1132" y="186" font-size="13" fill="#79c0ff">~/.config/opencode/AGENTS.md</text>
   <text x="1132" y="210" font-size="12" fill="#3fb950">native AGENTS.md · zero config ✓</text>
   <text x="1132" y="230" font-size="12" fill="#8b949e">opencode.jsonc = permissions fan-out</text>
-  <text x="1132" y="250" font-size="12" fill="#8b949e">edit=allow · bash *=allow (last-match wins)</text>
+  <text x="1132" y="250" font-size="12" fill="#8b949e">edit=allow · bash *=ask unless local.json</text>
 
   <!-- ===== HUB ===== -->
   <rect x="580" y="338" width="440" height="196" rx="10" fill="none" stroke="#39d3e0" stroke-width="2.5" opacity="0.55" filter="url(#glow)"/>
@@ -69,7 +69,7 @@
   <text x="612" y="416" font-size="12" fill="#f85149">HARD: no AI attribution in commits/PRs</text>
   <text x="612" y="436" font-size="12" fill="#f85149">HARD: never bypass GPG commit signing</text>
   <text x="612" y="456" font-size="12" fill="#f85149">HARD: transcript = user-only, AI never reads</text>
-  <text x="612" y="476" font-size="12" fill="#e6edf3">caveman mode always on · tri-tool parity</text>
+  <text x="612" y="476" font-size="12" fill="#e6edf3">caveman off unless local.json · tri-tool parity</text>
   <text x="612" y="496" font-size="12" fill="#e6edf3">triggers: create · continue · checkpoint ·</text>
   <text x="612" y="516" font-size="12" fill="#e6edf3">writepaper · global_brain_update</text>
 
@@ -121,7 +121,7 @@
   <text x="607" y="640" font-size="12" fill="#8b949e">→ gpg-agent-unlock.sh (boot + migrate)</text>
   <text x="607" y="660" font-size="12" fill="#8b949e">→ every commit signed · never bypassed</text>
   <text x="607" y="680" font-size="12" fill="#79c0ff">sync.sh: verify → commit → push · brain-sync.sh: pull</text>
-  <text x="607" y="700" font-size="12" fill="#8b949e">⇄ github:FirstIntegral/1config (main) · boot ff-only</text>
+  <text x="607" y="700" font-size="12" fill="#8b949e">⇄ origin must match BRAIN_REMOTE · boot ff-only</text>
 
   <!-- ===== PERMISSIONS ===== -->
   <rect x="1040" y="568" width="430" height="150" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
@@ -130,7 +130,7 @@
   <text x="1062" y="640" font-size="12" fill="#8b949e">claude settings · grok toml · opencode jsonc</text>
   <text x="1062" y="660" font-size="12" fill="#8b949e">verify byte-checks all three vs canonical</text>
   <text x="1062" y="680" font-size="12" fill="#3fb950">edit_without_prompt = true ✓</text>
-  <text x="1062" y="700" font-size="12" fill="#d29922">bash_without_prompt = true (flip in json)</text>
+  <text x="1062" y="700" font-size="12" fill="#d29922">bash_without_prompt = false (local.json may set true)</text>
 
   <!-- ===== arrow band -> project ===== -->
   <line x1="800" y1="718" x2="800" y2="748" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>

@@ -10,3 +10,6 @@ skills/
 
 # Live grok/claude/opencode versions — differ per machine, rewritten by setup/updater
 inventory.local.md
+
+# This machine's overrides. Upstream never owns them. See local.json.example.
+local.json

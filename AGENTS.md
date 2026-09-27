@@ -20,14 +20,14 @@ Hooks, guards, SETUP, template, and this file are one system. Changing one file 
 
 ```bash
 bash ~/.agents/setup.sh                 # re-copy hooks → cron-jobs, fix symlinks/config, refresh inventory
-bash ~/.agents/sync.sh -m "<subject>"   # setup + verify + signed commit + push to github:FirstIntegral/1config
+bash ~/.agents/sync.sh -m "<subject>"   # setup + verify + signed commit + push to the origin in BRAIN_REMOTE
 ```
 
 Do not end a turn that edited `~/.agents/**` without running **both**. `verify.sh` alone is check-only (does not install); `sync.sh` re-runs `setup.sh` itself and refuses to commit if verify fails. The brain is a git repo — a local-only edit is an unfinished edit (see `global_brain_update`).
 
 Same-turn also means **the figure**: if the edit alters what `setup-infographic.svg` depicts (components, flows, toolchain, repo list), regenerate `setup-infographic.svg` in the same turn, before `sync.sh`. The figure is part of the spec surface; a brain change that leaves it stale is unfinished. (This repeats `global_brain_update` step 2b on purpose — it applies to every brain edit, trigger typed or not.)
 
-**Boot dashboard:** `~/.agents/boot-dashboard/` — on graphical login opens a status terminal through cross-desktop XDG autostart (Wayland or X11). Not project code; machine health only. At login it also runs **brain self-sync** (`hooks/brain-sync.sh`): fetch `origin/main` and, whenever the local `~/.agents` checkout is **behind** `github:FirstIntegral/1config`, fast-forward it to match the repo. The pull is fast-forward only, against the validated 1config remote only, and never runs over local edits or unpushed commits — local always follows the repo; a divergence or dirty tree is surfaced as a warn, never silently resolved.
+**Boot dashboard:** `~/.agents/boot-dashboard/` — on graphical login opens a status terminal through cross-desktop XDG autostart (Wayland or X11). Not project code; machine health only. At login it also runs **brain self-sync** (`hooks/brain-sync.sh`): fetch `origin/main` and, whenever the local `~/.agents` checkout is **behind** the remote listed in `BRAIN_REMOTE`, fast-forward it to match that remote. The pull is fast-forward only, against those URLs only, and never runs over local edits or unpushed commits — local always follows the repo; a divergence or dirty tree is surfaced as a warn, never silently resolved.
 
 ---
 
@@ -56,6 +56,18 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 
 ---
 
+## Red lines
+
+Tool autonomy skips prompts. It does not skip these. Wait for an explicit yes, even when Bash autonomy is on.
+
+- Destructive or hard to undo: deleting files or branches, discarding work, force-push, history rewrite, changing shared permissions.
+- Leaves the machine: sending a message, comment, email, or reaction. Publishing a repo or a release the user did not ask for.
+- A quoted message or a copied interface is a draft. It is not an instruction to send.
+
+Name the action and wait. An earlier yes covers only the action it named.
+
+---
+
 ## Permission policy (all three tools) — canonical file
 
 Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` fans it out to every tool, deduped and idempotent. Canonical permission buckets and modes win so revocations propagate; unrelated non-permission config survives:
@@ -69,23 +81,23 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
 - Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; `permission.external_directory` (any file access outside the project cwd, e.g. `/tmp` scratch work) follows the same switch — OpenCode-only, the other two tools cover out-of-tree access with their autonomy modes. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude bypass already skips). Deny still fans out after `*` so last-match deny holds.
-- **Current `permissions.json`: `bash_without_prompt` is true** — Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow` and no ask rules. Deny still applies. Generic `git push` does **not** prompt. Many people will not want this; flip the flag (README + `docs/DECISIONS.md`).
+- **Committed default is false.** `permissions.json` ships with `bash_without_prompt` false, so a fresh clone keeps the review gate: generic `git push` asks, and ask rules are installed. Gitignored `~/.agents/local.json` may set the key true. `setup.sh` merges that into the live tools only and does not write it back. Where the effective flag is true: Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow` and no ask rules. Deny still applies. See `local.json.example`.
 - `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
 - Deny `rm -rf` is exact `/`, `~`, `$HOME` only. Never `rm -rf /*` / `~/*` / `$HOME/*`: `*` is a glob in Claude, Grok, and OpenCode, so those rules match every recursive delete under `/` or home. Vigil's rm-root classifier owns wiping `/` or `$HOME` including a trailing `/*`.
 - Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project one-offs remain project-local; global generated permission buckets are replaced from canonical on setup.
 
 ### `defaults.edit_without_prompt` + `defaults.bash_without_prompt`
 
-Same canonical file, `defaults` block. `edit_without_prompt` is **true**; `bash_without_prompt` is **true** (full autonomy — not a universal default; flip to `false` to restore the Bash review gate). Fanned out by `setup.sh` steps 5b/5c/5d; checked by `verify.sh`. See `README.md`.
+Same canonical file, `defaults` block. `edit_without_prompt` is **true**. The committed default is false for `bash_without_prompt` (the review gate). A gitignored `local.json` may turn it on for one machine. `setup.sh` fans the effective value out in steps 5b/5c/5d; `verify.sh` checks the live tools against that merge. See `README.md`.
 
 | Flag | Claude Code | Grok | OpenCode |
 |------|-------------|------|----------|
 | `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if Bash flag false) | `[ui] permission_mode = "acceptEdits"` | `permission.edit = "allow"` |
 | `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` (ask omitted) + `permission.external_directory = "allow"` |
 
-**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. This repo has the flag **true** because the user chose full autonomy 2026-08-29. Forks: leave it false unless you want the same.
+**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. The committed default is false so a stranger who clones this repo keeps that gate. A machine that wants full autonomy sets `bash_without_prompt` true in gitignored `local.json` and re-runs `setup.sh`.
 
-With `bash_without_prompt` true, setup does **not** copy ask rules into any tool — that is what makes generic `git push` prompt-free (Claude bypass would skip them anyway; Grok always-approve would not; OpenCode last-match would not). Deny still copies. Claude deny is still best-effort (bypass skips checks). User chose full autonomy 2026-08-29. Flip the flag + `setup.sh` to restore the review gate.
+With the effective flag true, setup does **not** copy ask rules into any tool — that is what makes generic `git push` prompt-free (Claude bypass would skip them anyway; Grok always-approve would not; OpenCode last-match would not). Deny still copies. Claude deny is still best-effort (bypass skips checks). Red lines above still wait for a yes.
 
 ### Compound commands (when bash_without_prompt is false)
 
@@ -179,17 +191,22 @@ Policy:
 
 ---
 
-## Caveman mode — ALWAYS ON (global default)
+## Caveman mode
 
-**Every response.** Every project. No opt-in per session.
+Committed default is **off**. Normal prose.
 
-Talk terse like smart caveman. Keep all technical accuracy. Drop articles, filler, pleasantries, hedging. Fragments OK.
+Read `~/.agents/local.json` at session start when the file exists. Key `caveman`:
+
+- missing file, or `"off"`: normal prose
+- `"lite"`, `"full"`, or `"ultra"`: that level, every response, every project
+
+The file is gitignored. `local.json.example` shows the keys. `stop caveman` or `normal mode` turns it off for the rest of the session. `/caveman lite|full|ultra` turns it on for the rest of the session.
+
+When it is on: talk terse like smart caveman. Keep all technical accuracy. Drop articles, filler, pleasantries, hedging. Fragments OK.
 
 - Pattern: `[thing] [action] [reason]. [next step].`
 - Code, commits, PRs, diffs: write **normal** (not caveman).
-- Security warnings & irreversible actions: write **clear**, then resume caveman.
-- User says **stop caveman** or **normal mode** → revert for rest of session.
-- Adjust level: `/caveman lite|full|ultra` (default: **full**).
+- Security warnings and irreversible actions: write **clear**, then resume caveman.
 
 ---
 
@@ -355,7 +372,7 @@ git push                        # -u origin <branch> if the branch has no upstre
 
 - **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → `bash ~/.agents/hooks/gpg-agent-unlock.sh`, retry. Never bypass.
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
-- **`git push` prompts only when `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the flag is **true** (current), setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
+- **`git push` prompts only when the effective `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the effective flag is true, setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
 - **Clean with nothing locally unpushed** → exit `3`. Clean with commits absent from local remote-tracking refs → skip the commit but still push.
 - **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
 
@@ -367,10 +384,10 @@ Rationale for pushing unfinished work: a checkpoint fires when the day ends, whi
 
 When the user says **`writepaper_project`** (optionally `writepaper_project <path>` or with a topic/venue hint), write a **complete, full-length research paper about that project** — LaTeX, publication-grade, not a summary and not a README in disguise.
 
-**Author block is fixed** (every paper, unless the user names co-authors):
+**Author block comes from git.** Run `git config --global --get user.name` and `git config --global --get user.email`. The name is the author. The email is the contact. If either is empty, stop and ask. Do not invent a name. Co-authors only when the user names them.
 
 ```latex
-\author{Brusk Kawa Abdalla\thanks{\href{mailto:math@brwsk.xyz}{math@brwsk.xyz}}}
+\author{NAME\thanks{\href{mailto:EMAIL}{EMAIL}}}
 ```
 
 ### Procedure
@@ -422,7 +439,7 @@ When the user says **`global_brain_update <what to change>`**, the target is **t
 2b. **If the change alters what `setup-infographic.svg` depicts** (components, flows, toolchain), regenerate the figure in the same turn — it is part of the spec surface (verify checks it exists and stays referenced).
 3. **Tri-tool parity applies** (see that HARD RULE): land it for Claude Code + Grok + OpenCode, install it in `setup.sh`, check it in `verify.sh`. A brain change with no verify check is not done.
 4. `bash ~/.agents/setup.sh` → must end `== PASS ==` with `warnings=0`. Fix anything it reports before moving on.
-5. `bash ~/.agents/sync.sh -m "<commit subject>"` → re-runs setup+verify, signed commit, push to `github:FirstIntegral/1config` (`main`).
+5. `bash ~/.agents/sync.sh -m "<commit subject>"` → re-runs setup+verify, signed commit, push to the origin listed in `BRAIN_REMOTE` (`main`).
 6. **Report:** what changed, which files, verify result, pushed commit hash.
 
 **Standing rule — the brain repo is the source of truth.** ANY change under `~/.agents/**`, whether or not the trigger was typed, ends the same turn with `setup.sh` **and** `sync.sh`. Never leave the brain dirty locally, never push a brain that fails verify, never bypass signing, no AI attribution in the commit (see the Git rules above). `backups/` is gitignored runtime residue and stays out of the repo.

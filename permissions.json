@@ -49,12 +49,12 @@
       "  bypass and Grok always-approve cover that natively). Otherwise external_directory = ask.",
       "With bash_without_prompt true, setup omits ask fan-out (OpenCode last-match and Grok",
       "shell-ask would otherwise still prompt git push). Deny still copies. Claude deny is",
-      "best-effort only — bypass skips checks. Current policy (user chose full autonomy",
-      "2026-08-29): edit_without_prompt=true AND bash_without_prompt=true — no Bash prompts",
-      "in any tool; generic git push no longer asks. Flip back to false to restore the gate."
+      "best-effort only — bypass skips checks. Committed default is false (public review gate).",
+      "Gitignored local.json may set bash_without_prompt true; setup merges that into the live",
+      "tools only and does not write it back here. edit_without_prompt stays true."
     ],
     "edit_without_prompt": true,
-    "bash_without_prompt": true
+    "bash_without_prompt": false
   },
   "permissions": {
     "allow": [

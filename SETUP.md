@@ -20,13 +20,21 @@ Tools whose login-shell PATH resolves under mise are skipped by the updater; mis
 
 ### Opinionated defaults (this repo — many people will not want them)
 
-Canonical file: `permissions.json`. **`bash_without_prompt` is `true`:** Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`. Setup **omits ask fan-out** (OpenCode last-match and Grok shell-ask would otherwise still prompt `git push`). Deny still copies. Generic `git push` no longer prompts. Flip to `false` and re-run `setup.sh` to restore the review gate. Full table (signing, caveman, TeX, no AI attribution, no auto-remotes): `README.md`. Why: `docs/DECISIONS.md`.
+Canonical file: `permissions.json`. The committed default is false for `bash_without_prompt`, so a fresh clone keeps the review gate (generic `git push` asks). Gitignored `local.json` may set that key true; `setup.sh` merges it into the live tools only. While the effective flag is true: Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`, and setup omits ask fan-out. Deny still copies. Full table: `README.md`. Why: `docs/DECISIONS.md`.
+
+### Local overlay
+
+`local.json.example` is the committed shape. `local.json` is gitignored. Keys: `bash_without_prompt` (bool) and `caveman` (`off`, `lite`, `full`, `ultra`). Missing file means the committed defaults: Bash review gate on, caveman off. `BRAIN_REMOTE` is the origin allowlist for `sync.sh`, `verify.sh`, and boot sync. A fork edits that file, not the scripts.
+
+### Red lines
+
+Red lines are in canonical `AGENTS.md`. Destructive or hard-to-undo acts, and anything under Leaves the machine, wait for an explicit yes even when Bash autonomy is on. A quoted message is a draft.
 
 ### Boot dashboard (graphical login)
 
 On any XDG graphical login, a terminal opens with a one-screen summary of boot health (symlinks, guards, `verify.sh`, tool versions, tool-updater log). The desktop entry has no `OnlyShowIn` filter, so both Wayland sessions such as Hyprland and X11 desktops run it. Lives in `~/.agents/boot-dashboard/`. Installed by `setup.sh` → `~/.config/autostart/agents-boot-status.desktop`. Manual: `bash ~/.agents/boot-dashboard/launch.sh`.
 
-The dashboard also runs **brain self-sync** (`hooks/brain-sync.sh`) right after the network check: it fetches `origin/main` and, when the local `~/.agents` checkout is **behind** `github:FirstIntegral/1config`, fast-forwards to match the repo. Fast-forward only, against the validated 1config remote only, never over uncommitted local edits or unpushed commits, and never prompting (ssh `BatchMode`, time-bounded fetch). Exit codes: `0` up-to-date/ff'd · `1` fetch failed · `2` local ahead · `3` behind + dirty tree · `4` divergence / not-a-repo / wrong remote. A stale, diverged, or dirty brain is a warn (or fail for `4`) on screen, never silently rewritten.
+The dashboard also runs **brain self-sync** (`hooks/brain-sync.sh`) right after the network check: it fetches `origin/main` and, when the local `~/.agents` checkout is **behind** the remote listed in `BRAIN_REMOTE`, fast-forwards to match it. Fast-forward only, against those URLs only, never over uncommitted local edits or unpushed commits, and never prompting (ssh `BatchMode`, time-bounded fetch). Exit codes: `0` up-to-date/ff'd · `1` fetch failed · `2` local ahead · `3` behind + dirty tree · `4` divergence / not-a-repo / URL not in `BRAIN_REMOTE`. A stale, diverged, or dirty brain is a warn (or fail for `4`) on screen, never silently rewritten.
 
 ## 2. Canonical rules file
 
@@ -40,7 +48,8 @@ Sections, in order:
 5. Tri-tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode, installed by `setup.sh`, checked by `verify.sh`
 6. Machine toolchains — `texlive-full` + `tectonic` installed; Lean 4 via `elan` (user-space hook, not a distro pkg); write LaTeX directly, never ask for TeX/Lean installs
 7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
-8. Caveman mode — ALWAYS ON (terse style; `/caveman lite|full|ultra`)
+8. Caveman mode — committed default off; `local.json` key `caveman` turns on `lite` / `full` / `ultra`
+   Red lines sit with the hard rules: destructive acts and anything that leaves the machine wait for a yes, even when Bash autonomy is on.
    Herd boards sit after caveman and before the triggers (§5f): one wall, a post that only agrees is noise, a missing file said aloud. Kept out: `SOUL.md`, daily diary, personal heartbeat.
 9. `create_project` trigger (§5)
 10. `continue_project <path>` trigger (§5b)
@@ -339,7 +348,7 @@ Same for all three tools. Formalizes the "End of session / milestone" rule as an
 Trigger: user says **`writepaper_project`** (optionally with a path or topic/venue hint). Writes a complete, publication-grade LaTeX research paper about the project. Full spec lives in canonical `AGENTS.md` — that file wins if they ever diverge.
 
 - **Scaffold source:** `~/.agents/paper-template/` → copied to `<project>/docs/paper/` on first run (`main.tex`, `build.sh`, `figures/`, `lean/`). Later runs extend the existing paper; they never restart it. `lean/` is **default on that first scaffold**. Existing `docs/paper/` without `lean/` is not backfilled. Never overwrite a paper's existing Lean files.
-- **Author block is fixed:** `Brusk Kawa Abdalla`, contact `math@brwsk.xyz`.
+- **Author block comes from git:** `git config --global user.name` and `user.email`. Empty either one and stop. The template ships `AUTHOR` / `EMAIL` placeholders, not a personal name.
 - **Template contents:** `article` + `amsthm` theorem environments (theorem/lemma/proposition/corollary/conjecture/definition/assumption/example/remark), `mathtools`, `siunitx`, `booktabs`, `pgfplots`/TikZ, `algorithm2e`, `cleveref`, and a red `\TODO{}` macro so every gap is visible instead of guessed. Default `lean/` stub on first scaffold: pinned `lean-toolchain`, core-only `lakefile.toml` (no Mathlib), `Paper.lean` with a real tiny proof (`template_sanity` — delete once real theorems exist), `.lake/` gitignored.
 - **No references, by design.** AI-written papers are self-contained: no bibliography, no `refs.bib`, no `\cite`, no reference list. Prior art is described in prose. `verify.sh` fails if bibliography machinery reappears in the template.
 - **Build:** `bash docs/paper/build.sh` → `latexmk -pdf` → `main.pdf`, prints the page count and every open `\TODO`. If `lean/` exists and `lake` is on PATH (build.sh prepends `~/.elan/bin`), also `lake build` and a sorry count. Type errors fail the script. Missing `lake` prints `LEAN SKIPPED` and the PDF still ships. `clean` runs `latexmk -C` and `lake clean` when present. Never `lake exe cache get` from `build.sh`. No tool has a Lean plugin — all three run `lake` via `build.sh`.
@@ -373,7 +382,7 @@ bash ~/.agents/sync.sh --no-setup -m "msg"    # skip installation, still run ver
 bash ~/.agents/sync.sh --dry-run              # show what would be committed, change nothing
 ```
 
-It requires repository root + branch `main`, validates every origin fetch and push URL against `FirstIntegral/1config`, and requires `== PASS (warnings=0) ==` before any commit, including with `--no-setup`. Normal sync fetches first; `--dry-run` skips both install and fetch so it changes nothing. New commits use explicit `git commit -S`, and every outgoing commit must have a good signature before push. It is allowlisted because it is the narrow verified push path; canonical `permissions.json` still lists generic `git push` as ask (restore-gate), but live tools omit that ask while `bash_without_prompt` is true. `verify.sh` reports dirty/ahead brain state as `INFO`, because that state is expected before sync.
+It requires repository root + branch `main`, validates every origin fetch and push URL against `BRAIN_REMOTE`, and requires `== PASS (warnings=0) ==` before any commit, including with `--no-setup`. Normal sync fetches first; `--dry-run` skips both install and fetch so it changes nothing. New commits use explicit `git commit -S`, and every outgoing commit must have a good signature before push. It is allowlisted because it is the narrow verified push path; canonical `permissions.json` still lists generic `git push` as ask (restore-gate), but live tools omit that ask while `bash_without_prompt` is true. `verify.sh` reports dirty/ahead brain state as `INFO`, because that state is expected before sync.
 
 ## 5f. Herd boards
 

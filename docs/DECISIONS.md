@@ -1,6 +1,14 @@
 # Brain decisions
 
-ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
+ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
+
+## 2026-09-27 — Public adoption: license, git author, red lines, local overlay, one remote
+
+**Decision:** Five changes so a stranger can take this repo. (1) MIT license. The copyright notice names Brusk Kawa Abdalla and `github:FirstIntegral/1config`; keeping that notice is the credit, including for commercial use. (2) Paper author and contact come from `git config user.name` and `user.email`. The template no longer carries a personal email. (3) Red lines live in `AGENTS.md`: destructive acts and anything that leaves the machine wait for an explicit yes even when Bash autonomy is on. (4) Committed `bash_without_prompt` is false and caveman is off. Gitignored `local.json` may set either. `setup.sh` merges the Bash key into the live tools only. (5) `sync.sh`, `verify.sh`, and boot sync read allowed origins from `BRAIN_REMOTE`. A fork edits that file.
+
+**Why:** The behavior rules were already the adoptable part. The blockers were a missing license, a personal name baked into every session, safety confirms that lived outside the shared file, taste shipped as the only durable default, and the GitHub URL copied through the scripts. This machine keeps autonomy and caveman via `local.json`, which upstream does not own.
+
+**Rejected:** A custom "say my name in your README" license. Leaving autonomy on in the committed json. Splitting voice into a second file. Hardcoding the remote in each script and telling forks to hunt the copies.
 
 ## 2026-09-27 — Three OpenClaw habits in, three layouts out
 

@@ -1,0 +1,5 @@
+# Accepted origin URLs for this brain.
+# sync.sh, verify.sh, and boot sync refuse any other fetch or push URL.
+# A fork changes this file. The scripts stay.
+https://github.com/FirstIntegral/1config.git
+git@github.com:FirstIntegral/1config.git

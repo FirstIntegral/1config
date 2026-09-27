@@ -242,9 +242,37 @@ PYEOF
   fi
 fi
 
-# --- 5b claude global permission policy (source: permissions.json) -----------
+# --- effective permissions: committed json + gitignored local.json overlay ---
+# The overlay changes live tools only. permissions.json stays the public default.
+echo "[5a] local.json overlay → effective permissions"
+PERMS_CANON="$AGENTS_HOME/permissions.json"
+LOCAL_JSON="$AGENTS_HOME/local.json"
+EFFECTIVE_PERMS="$(mktemp)"
+if [ -f "$PERMS_CANON" ]; then
+  PERMS_CANON="$PERMS_CANON" LOCAL_JSON="$LOCAL_JSON" EFFECTIVE_PERMS="$EFFECTIVE_PERMS" python3 - <<'PYEOF'
+import json, os, pathlib, sys
+canon_path = pathlib.Path(os.environ["PERMS_CANON"])
+canon = json.loads(canon_path.read_text())
+local_path = pathlib.Path(os.environ["LOCAL_JSON"])
+if local_path.is_file():
+    over = json.loads(local_path.read_text())
+    if "bash_without_prompt" in over:
+        canon.setdefault("defaults", {})["bash_without_prompt"] = bool(over["bash_without_prompt"])
+        print(f'  overlay  local.json bash_without_prompt={str(bool(over["bash_without_prompt"])).lower()}')
+    else:
+        print("  overlay  local.json present, bash_without_prompt unchanged")
+else:
+    print("  overlay  no local.json (committed defaults)")
+pathlib.Path(os.environ["EFFECTIVE_PERMS"]).write_text(json.dumps(canon))
+PYEOF
+  PERMS_SRC="$EFFECTIVE_PERMS"
+else
+  PERMS_SRC="$PERMS_CANON"
+  rm -f "$EFFECTIVE_PERMS"
+fi
+
+# --- 5b claude global permission policy (source: effective permissions) ------
 echo "[5b] permission rules → claude"
-PERMS_SRC="$AGENTS_HOME/permissions.json"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 if [ ! -f "$PERMS_SRC" ]; then
   log "WARNING: $PERMS_SRC missing — copy ~/.agents fully; skipping permission merge"
@@ -529,6 +557,8 @@ PYEOF
     rm -f "$BACKUP_DIR/opencode-perms.jsonc"
   fi
 fi
+
+rm -f "${EFFECTIVE_PERMS:-}"
 
 # --- 5e claude PreToolUse hook: quoted-heredoc -> scratchpad rewrite --------
 echo "[5e] claude PreToolUse heredoc-rewrite hook"

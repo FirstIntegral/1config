@@ -303,8 +303,8 @@ check_tool_updates() {
 }
 
 check_brain_sync() {
-  # Fetch origin/main and, if the local checkout is behind github:FirstIntegral/1config,
-  # fast-forward to match. Safe: ff-only, validated remote, never over local edits.
+  # Fetch origin/main and, if the local checkout is behind the remote in BRAIN_REMOTE,
+  # fast-forward to match. Safe: ff-only, allowlisted remote, never over local edits.
   local hook="$AGENTS_HOME/hooks/brain-sync.sh"
   if [ ! -x "$hook" ]; then
     row warn "brain sync" "hook missing — run setup.sh"

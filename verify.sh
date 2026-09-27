@@ -40,28 +40,35 @@ if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
     && ok "brain path is repository root" || bad "brain is nested inside repo $brain_root"
   brain_branch="$(git -C "$AGENTS_HOME" branch --show-current)"
   [ "$brain_branch" = main ] && ok "brain branch is main" || bad "brain branch is ${brain_branch:-detached}, expected main"
+  # shellcheck disable=SC1091
+  source "$AGENTS_HOME/hooks/brain-remote.sh"
+  if brain_remote_load "$AGENTS_HOME/BRAIN_REMOTE"; then
+    ok "BRAIN_REMOTE lists ${#BRAIN_REMOTE_URLS[@]} origin URL(s)"
+  else
+    bad "BRAIN_REMOTE missing or empty"
+  fi
   mapfile -t brain_fetch_urls < <(git -C "$AGENTS_HOME" remote get-url --all origin 2>/dev/null || true)
   mapfile -t brain_push_urls < <(git -C "$AGENTS_HOME" remote get-url --push --all origin 2>/dev/null || true)
   if [ "${#brain_fetch_urls[@]}" -eq 0 ]; then
     bad "brain repo has no origin fetch URL"
   else
     for brain_remote in "${brain_fetch_urls[@]}"; do
-      case "$brain_remote" in
-        https://github.com/FirstIntegral/1config.git|git@github.com:FirstIntegral/1config.git)
-          ok "brain repo fetch URL → $brain_remote" ;;
-        *) bad "brain fetch URL is not FirstIntegral/1config → $brain_remote" ;;
-      esac
+      if brain_remote_ok "$brain_remote"; then
+        ok "brain repo fetch URL → $brain_remote"
+      else
+        bad "brain fetch URL is not in BRAIN_REMOTE → $brain_remote"
+      fi
     done
   fi
   if [ "${#brain_push_urls[@]}" -eq 0 ]; then
     bad "brain repo has no origin push URL"
   else
     for brain_remote in "${brain_push_urls[@]}"; do
-      case "$brain_remote" in
-        https://github.com/FirstIntegral/1config.git|git@github.com:FirstIntegral/1config.git)
-          ok "brain repo push URL → $brain_remote" ;;
-        *) bad "brain push URL is not FirstIntegral/1config → $brain_remote" ;;
-      esac
+      if brain_remote_ok "$brain_remote"; then
+        ok "brain repo push URL → $brain_remote"
+      else
+        bad "brain push URL is not in BRAIN_REMOTE → $brain_remote"
+      fi
     done
   fi
   [ "$(git -C "$AGENTS_HOME" config --bool commit.gpgsign 2>/dev/null || true)" = true ] \
@@ -154,7 +161,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh install-elan.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -169,6 +176,7 @@ if [ -x "$AGENTS_HOME/sync.sh" ]; then
   _synctmp="$(mktemp -d)"
   git -C "$_synctmp" init -q -b main
   git -C "$_synctmp" remote add origin https://github.com/FirstIntegral/1config.git
+  printf '%s\n' 'https://github.com/FirstIntegral/1config.git' 'git@github.com:FirstIntegral/1config.git' > "$_synctmp/BRAIN_REMOTE"
 
   printf '#!/bin/sh\necho "== FAIL (fail>=1, warnings=0) =="\nexit 1\n' > "$_synctmp/verify.sh"
   chmod +x "$_synctmp/verify.sh"
@@ -522,9 +530,10 @@ if [ -x "$HOOKS/brain-sync.sh" ]; then
   grep -q -- '--ff-only' "$HOOKS/brain-sync.sh" \
     && ok "brain-sync pulls fast-forward only" \
     || bad "brain-sync lacks --ff-only guard (must never rewrite local commits)"
-  grep -q 'FirstIntegral/1config' "$HOOKS/brain-sync.sh" \
-    && ok "brain-sync validates the 1config remote" \
-    || bad "brain-sync does not validate the 1config remote (could pull a fork)"
+  grep -q 'brain-remote.sh' "$HOOKS/brain-sync.sh" \
+    && grep -q 'BRAIN_REMOTE' "$HOOKS/brain-sync.sh" \
+    && ok "brain-sync validates origin against BRAIN_REMOTE" \
+    || bad "brain-sync does not validate origin against BRAIN_REMOTE"
   grep -q 'BatchMode=yes' "$HOOKS/brain-sync.sh" \
     && ok "brain-sync never prompts (ssh BatchMode)" \
     || bad "brain-sync can hang on an ssh passphrase prompt at boot"
@@ -650,7 +659,7 @@ else
   bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat'; do
+  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'committed default is false' 'BRAIN_REMOTE' 'local.json'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
@@ -674,7 +683,33 @@ if grep -qE '\[[0-9]+[a-z]?/[0-9]+\]' "$AGENTS_HOME/setup.sh"; then
 else
   ok "setup.sh stage banners make no stale total-count claim"
 fi
-grep -qF 'math@brwsk.xyz' "$CANON" && ok "paper author contact pinned in AGENTS.md" || bad "paper author contact missing from AGENTS.md"
+if grep -q 'user.name' "$CANON" && grep -q 'user.email' "$CANON" \
+   && ! grep -qF 'math@brwsk.xyz' "$CANON" \
+   && ! grep -qF 'math@brwsk.xyz' "$AGENTS_HOME/paper-template/main.tex"; then
+  ok "paper author comes from git config, not a pinned personal email"
+else
+  bad "paper author still pinned to a personal email, or git-config rule missing"
+fi
+if [ -f "$AGENTS_HOME/LICENSE" ] && grep -q 'MIT License' "$AGENTS_HOME/LICENSE" \
+   && grep -q 'Brusk Kawa Abdalla' "$AGENTS_HOME/LICENSE" \
+   && grep -q 'FirstIntegral/1config' "$AGENTS_HOME/LICENSE"; then
+  ok "MIT LICENSE credits the author and the repo"
+else
+  bad "LICENSE missing MIT notice, author, or repo credit"
+fi
+if grep -q '^local.json$' "$AGENTS_HOME/.gitignore" \
+   && [ -f "$AGENTS_HOME/local.json.example" ] \
+   && git -C "$AGENTS_HOME" check-ignore -q local.json \
+   && ! git -C "$AGENTS_HOME" check-ignore -q local.json.example; then
+  ok "local.json is gitignored; local.json.example is not"
+else
+  bad "local overlay is not gitignored, or local.json.example is missing"
+fi
+if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["defaults"]["bash_without_prompt"] is False else 1)' "$AGENTS_HOME/permissions.json"; then
+  ok "committed bash_without_prompt default is false"
+else
+  bad "permissions.json bash_without_prompt is not the public false default"
+fi
 if grep -q 'Residue / conflict check' "$SETUP" || grep -q 'Residue / conflict check' "$CANON"; then
   ok "residue/conflict check wording present"
 else
@@ -771,6 +806,11 @@ def load_jsonc(path):
     return json.loads("".join(out))
 
 canon = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
+_local = pathlib.Path(os.environ["PERMS_SRC"]).with_name("local.json")
+if _local.is_file():
+    _over = json.loads(_local.read_text())
+    if "bash_without_prompt" in _over:
+        canon.setdefault("defaults", {})["bash_without_prompt"] = bool(_over["bash_without_prompt"])
 src = canon.get("permissions", {})
 defaults = canon.get("defaults", {})
 edit_on = bool(defaults.get("edit_without_prompt"))
@@ -1103,10 +1143,10 @@ if grep -q 'bash_without_prompt' "$AGENTS_HOME/docs/DECISIONS.md" \
 else
   bad "docs/DECISIONS.md missing autonomy or distro ADR"
 fi
-if grep -q 'bash_without_prompt is \*\*false\*\*' "$CANON"; then
-  bad "AGENTS.md still says bash_without_prompt is false (permissions.json is true)"
+if grep -q 'committed default is false' "$CANON" && grep -q 'local.json' "$CANON"; then
+  ok "AGENTS.md states the public Bash default and the local.json override"
 else
-  ok "AGENTS.md does not contradict permissions.json bash_without_prompt"
+  bad "AGENTS.md missing the public Bash default or the local.json override"
 fi
 if grep -q 'git push is not allowlisted and will prompt' "$CANON"; then
   bad "AGENTS.md still claims git push always prompts (OpenCode last-match / autonomy omit-ask)"
@@ -1133,11 +1173,13 @@ if [ -f "$AGENTS_HOME/setup-infographic.svg" ] && grep -q 'setup-infographic.svg
 else
   bad "setup-infographic.svg missing or unreferenced"
 fi
-if grep -q 'bash_without_prompt = true' "$AGENTS_HOME/setup-infographic.svg" \
+if grep -q 'bash_without_prompt = false' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'local.json' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'BRAIN_REMOTE' "$AGENTS_HOME/setup-infographic.svg" \
    && grep -qi 'Ubuntu' "$AGENTS_HOME/setup-infographic.svg"; then
-  ok "infographic shows full Bash autonomy and Ubuntu+Omarchy"
+  ok "infographic shows public Bash default, local.json, BRAIN_REMOTE, Ubuntu+Omarchy"
 else
-  bad "infographic still shows bash_without_prompt=false or omits Ubuntu"
+  bad "infographic still shows the old autonomy default or omits Ubuntu / local.json / BRAIN_REMOTE"
 fi
 if grep -q 'vendor dirs' "$AGENTS_HOME/setup-infographic.svg" \
    && grep -q 'inventory.local.md' "$AGENTS_HOME/setup-infographic.svg"; then

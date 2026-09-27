@@ -2,6 +2,8 @@
 
 Canonical AI-terminal brain for **Claude Code**, **Grok**, and **OpenCode**. One rules file, one permission policy, one setup script. Lives at `~/.agents/`.
 
+License: [MIT](LICENSE). Use it, including commercially. Keep the copyright notice: Brusk Kawa Abdalla and `github:FirstIntegral/1config`. That notice is the credit.
+
 This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runtime rules the three tools load every session are [`AGENTS.md`](AGENTS.md). Opinionated choices and *why* are [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Supported systems
@@ -76,17 +78,17 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 
 | Default | Value here | Why | Flip |
 |---------|------------|-----|------|
-| **`bash_without_prompt`** | **`true`** | Claude's allowlist cannot kill some hard-coded prompts (`cd`+write, `cd`+git). Full autonomy sets Claude `bypassPermissions`, Grok `always-approve`, OpenCode `permission.bash["*"]="allow"`, **and omits ask fan-out** (OpenCode last-match and Grok shell-ask would otherwise still prompt `git push`). Deny still fans out. Generic `git push` no longer prompts. | `permissions.json` → `"bash_without_prompt": false` then `bash ~/.agents/setup.sh`. Restores the Bash review gate. |
+| **`bash_without_prompt`** | **`false` in the repo** | A fresh clone keeps the review gate. Generic `git push` asks. | Copy `local.json.example` to gitignored `local.json`, set `true`, then `bash ~/.agents/setup.sh`. Live tools only. The committed json stays false. |
 | **`edit_without_prompt`** | `true` | File writes should not stop a session. | Same file, `"edit_without_prompt": false`. |
 | GPG commit signing | Required, never `--no-gpg-sign` | Attribution is cryptographic. | Don't. If you must unsigned history, this is the wrong brain. |
 | No AI co-author lines | Hard rule | Commits/PRs attributed to the user only. | Don't. |
-| Caveman mode | Always on | Terse AI prose. `/caveman lite\|full\|ultra` or `stop caveman`. | Say `normal mode` in that session. |
+| Caveman mode | **Off** in the repo | Normal prose unless a machine opts in. | Gitignored `local.json` key `caveman`: `lite`, `full`, or `ultra`. `stop caveman` lasts one session. |
 | Tool memory stores | Disabled | Facts live in markdown (`AGENTS.md`, `session_compact.md`, `docs/DECISIONS.md`). | Don't recreate `~/.grok/memory/` or Claude topic files. |
 | `create_project` / `checkpoint_project` | New simple names land in `~/Projects/<name>`; never `git init`, never add a remote | Project location and publishing are deliberate choices. | Give an explicit path when needed; ask before publishing. |
 | TeX | Assumed installed | Papers are LaTeX, never a Markdown fallback. | Install `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). |
 | Lean 4 | Default on new `writepaper_project` scaffolds | First paper copies `docs/paper/lean/`. Existing papers not backfilled. `setup.sh` does not install elan. | `bash ~/.agents/hooks/install-elan.sh` |
-| Paper author block | Brusk Kawa Abdalla | This user's papers. | Edit `AGENTS.md` `writepaper_project` if you fork. |
-| Remote check | `FirstIntegral/1config` only | `sync.sh` / `verify.sh` refuse a different origin. | Forks: change the two URL constants. |
+| Paper author block | `git config user.name` and `user.email` | No personal name in the shared rules or the paper template. | Set those two git configs. Empty means stop and ask. |
+| Remote check | URLs in `BRAIN_REMOTE` | `sync.sh`, `verify.sh`, and boot sync refuse any other origin. | Forks: edit `BRAIN_REMOTE` only. |
 
 Canonical permission file: [`permissions.json`](permissions.json). Comments in that file are part of the spec.
 
@@ -106,7 +108,10 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 |------|------|
 | `AGENTS.md` | Rules every tool loads (via symlinks). Keep lean. |
 | `SETUP.md` | Full install spec. Authoritative for AIs recreating the machine. |
-| `permissions.json` | One policy, fanned out to all three tools. |
+| `LICENSE` | MIT. Commercial use is fine. Keep the copyright notice. |
+| `BRAIN_REMOTE` | Origin allowlist. Forks change this file, not the scripts. |
+| `local.json.example` | Shape of the gitignored machine overlay (`bash_without_prompt`, `caveman`). |
+| `permissions.json` | One policy, fanned out to all three tools. Committed Bash default is false. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
 | `hooks/` | GPG unlock, checkpoint, guards, heredoc rewrite. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). |

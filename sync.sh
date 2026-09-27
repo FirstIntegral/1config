@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync.sh — install + verify + commit + push the brain (~/.agents → github:FirstIntegral/1config).
+# sync.sh — install + verify + commit + push the brain (~/.agents → the origin in BRAIN_REMOTE).
 #
 #   bash ~/.agents/sync.sh -m "Commit subject"     # normal use
 #   bash ~/.agents/sync.sh --no-setup -m "msg"     # skip install, still run verify.sh
@@ -12,8 +12,6 @@
 set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
-REMOTE_HTTPS="https://github.com/FirstIntegral/1config.git"
-REMOTE_SSH="git@github.com:FirstIntegral/1config.git"
 BRANCH="main"
 run_setup=1
 dry_run=0
@@ -43,12 +41,15 @@ current_branch="$(git branch --show-current)"
   exit 1
 }
 
-valid_remote_url() {
-  case "$1" in
-    "$REMOTE_HTTPS"|"$REMOTE_SSH") return 0 ;;
-    *) return 1 ;;
-  esac
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck disable=SC1091
+source "$_script_dir/hooks/brain-remote.sh"
+brain_remote_load "$AGENTS_HOME/BRAIN_REMOTE" || {
+  echo "sync.sh: $AGENTS_HOME/BRAIN_REMOTE missing or empty" >&2
+  exit 1
 }
+
+valid_remote_url() { brain_remote_ok "$1"; }
 
 mapfile -t fetch_urls < <(git remote get-url --all origin 2>/dev/null || true)
 mapfile -t push_urls < <(git remote get-url --push --all origin 2>/dev/null || true)
@@ -57,19 +58,18 @@ mapfile -t push_urls < <(git remote get-url --push --all origin 2>/dev/null || t
 for remote in "${fetch_urls[@]}"; do
   if ! valid_remote_url "$remote"; then
     echo "sync.sh: refusing unexpected origin fetch URL: $remote" >&2
-    echo "  expected $REMOTE_HTTPS (or SSH equivalent)" >&2
+    echo "  expected one of: ${BRAIN_REMOTE_URLS[*]}" >&2
     exit 1
   fi
 done
 for remote in "${push_urls[@]}"; do
-  case "$remote" in
-    "$REMOTE_HTTPS"|"$REMOTE_SSH") echo "  repo     $remote" ;;
-    *)
-      echo "sync.sh: refusing unexpected origin push URL: $remote" >&2
-      echo "  expected $REMOTE_HTTPS (or SSH equivalent)" >&2
-      exit 1
-      ;;
-  esac
+  if valid_remote_url "$remote"; then
+    echo "  repo     $remote"
+  else
+    echo "sync.sh: refusing unexpected origin push URL: $remote" >&2
+    echo "  expected one of: ${BRAIN_REMOTE_URLS[*]}" >&2
+    exit 1
+  fi
 done
 
 # 1. install + verify: never push a brain that fails its own checks
