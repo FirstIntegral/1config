@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents` / `github:FirstIntegral/1config`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-27 — Herd boards are a standing rule
+
+**Decision:** A crowd of talking agents uses one append-only flocked wall, waves so later seats can read earlier posts, public recants, a parseable last line, and one coder only after a mechanical lock. Argument waves do not run the official seeds. Text lives in `AGENTS.md` (`## Herd boards`) and `SETUP.md` §5f. `verify.sh` checks the heading in both.
+
+**Why:** Repeated across projects. Parallel seats cannot see each other, so a single blast is not a conversation. Honesty instructions produced blunt, sourced kills. Unrestricted official-seed runs made the later table a reproduction. The rule stays short because this file loads into every session.
+
+**Rejected:** A per-project-only note. A long sociology section. Raising the live cap so every seat starts together. Personal-abuse as a goal.
+
 ## 2026-09-16 — Lean `docs/paper/lean/` is default on new writepaper scaffolds
 
 **Decision:** First `writepaper_project` copies `paper-template/lean/` with `main.tex` / `build.sh` / `figures/`. New papers get a Lean project by default. Existing `docs/paper/` trees without `lean/` stay grandfathered (not backfilled). Do not overwrite a paper's existing Lean files.

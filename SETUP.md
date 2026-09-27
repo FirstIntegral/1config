@@ -374,6 +374,12 @@ bash ~/.agents/sync.sh --dry-run              # show what would be committed, ch
 
 It requires repository root + branch `main`, validates every origin fetch and push URL against `FirstIntegral/1config`, and requires `== PASS (warnings=0) ==` before any commit, including with `--no-setup`. Normal sync fetches first; `--dry-run` skips both install and fetch so it changes nothing. New commits use explicit `git commit -S`, and every outgoing commit must have a good signature before push. It is allowlisted because it is the narrow verified push path; canonical `permissions.json` still lists generic `git push` as ask (restore-gate), but live tools omit that ask while `bash_without_prompt` is true. `verify.sh` reports dirty/ahead brain state as `INFO`, because that state is expected before sync.
 
+## 5f. Herd boards
+
+Standing rule, not a typed trigger. Full text in canonical `AGENTS.md` (`## Herd boards`) — that file wins if they diverge. All three tools read it through the symlinks. No per-tool copy. No installer step.
+
+When the user asks for tens or hundreds of agents that should talk: one append-only flocked wall, waves so later seats can read earlier posts, honesty with public recants, a parseable last-line token, argument seats do not edit source, one hands seat codes only after a mechanical lock, and argument waves do not run the official measurement seeds. An empty lock is legal. A parallel blast on an empty wall is not a conversation.
+
 ## 6. Memory policy
 
 - ALL durable memory → shared markdown only: `~/.agents/AGENTS.md` (global rules), project `AGENTS.md`, `session_compact.md`, `docs/DECISIONS.md` (project facts/decisions).

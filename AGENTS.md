@@ -108,7 +108,7 @@ Whenever anything is added to or changed in this setup:
 1. **Land it in all three, in the same turn.** Canonical source stays single (`~/.agents/…`); `setup.sh` fans it out per tool. Never write a per-tool copy by hand.
 2. **If a tool has no native mechanism**, implement the closest equivalent (hook, config key, translated rule syntax) and record what differs — SETUP.md §4, one line. "Claude-only" is acceptable ONLY when the other two physically cannot do it, and only when written down.
 3. **`setup.sh` installs it for all three; `verify.sh` checks all three.** A feature with no verify check does not count as installed.
-4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy) fires identically everywhere.
+4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards) fires identically everywhere.
 5. Same for memory: shared markdown only, identical for all three (see Memory policy). Tool-internal stores stay disabled everywhere.
 
 Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok/OpenCode, SessionStart hook in Claude; permissions → `permissions.json` fan-out (above).
@@ -190,6 +190,35 @@ Talk terse like smart caveman. Keep all technical accuracy. Drop articles, fille
 - Security warnings & irreversible actions: write **clear**, then resume caveman.
 - User says **stop caveman** or **normal mode** → revert for rest of session.
 - Adjust level: `/caveman lite|full|ultra` (default: **full**).
+
+---
+
+## Herd boards — many agents, one wall
+
+When the user asks for a crowd of agents that should talk (tens or hundreds), use this. Cross-project. The bar, the closed ideas, and the opponent stay in the project files.
+
+A parallel blast is not a conversation. Seats that start together cannot read each other. Later waves, or a queue whose later seats are told to read the wall first, are how talk happens. Do not raise the live cap so every mouth starts on an empty wall.
+
+What these seats do when the wall is set up this way:
+
+- They talk by appending to one file. The private return message is not the conversation.
+- They answer named seats. They recant in a new post. They do not edit old lines.
+- A fixed last line is how a vote gets counted. The body stays free.
+- They will run code and kill their own idea when a switch they wrote beforehand fires.
+- Blunt correction of a false claim is the useful rudeness. Personal abuse is noise. An invented number, path, or quote is the failure.
+- They will measure the official seeds during the argument if the prompt allows it. The later table is then a reproduction, not a held-out test.
+- A character cap truncates a post. The next post restores the tail. Tell them that.
+
+Parent, every herd:
+
+1. One append-only wall. Exclusive lock. The only legal write is the post script.
+2. Waves with a barrier between them. Say the seat ranges in the prompt.
+3. Honesty is required. Correct a wrong claim in public. `NO-PROPOSAL` beats a costume. An empty lock is a legal result.
+4. Every post ends with a token the tally can parse. Name the tokens before launch.
+5. Argument seats do not edit project source. One hands seat may code, and only after a mechanical lock written before anyone saw the official table.
+6. Argument waves do not run the official measurement seeds.
+7. Cap posts (about 3) and length. A cut post is restored by a new post.
+8. Seats must open the project files that hold the bar and the graveyard. The prompt is not a substitute.
 
 ---
 
