@@ -20,11 +20,11 @@ Tools whose login-shell PATH resolves under mise are skipped by the updater; mis
 
 ### Opinionated defaults (this repo — many people will not want them)
 
-Canonical file: `permissions.json`. The committed default is false for `bash_without_prompt`, so a fresh clone keeps the review gate (generic `git push` asks). Gitignored `local.json` may set that key true; `setup.sh` merges it into the live tools only. While the effective flag is true: Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`, and setup omits ask fan-out. Deny still copies. Full table: `README.md`. Why: `docs/DECISIONS.md`.
+Canonical file: `permissions.json`. The opinionated default is on: `bash_without_prompt` true. A fresh clone gets Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`, and setup omits ask fan-out. Deny still copies. Generic `git push` does not prompt. Gitignored `local.json` may set the key false; `setup.sh` merges that into the live tools only. Full table: `README.md`. Why: `docs/DECISIONS.md`.
 
 ### Local overlay
 
-`local.json.example` is the committed shape. `local.json` is gitignored. Keys: `bash_without_prompt` (bool) and `caveman` (`off`, `lite`, `full`, `ultra`). Missing file means the committed defaults: Bash review gate on, caveman off. `BRAIN_REMOTE` is the origin allowlist for `sync.sh`, `verify.sh`, and boot sync. A fork edits that file, not the scripts.
+`local.json` is gitignored and optional. Missing file means the opinionated default is on: Bash autonomy and caveman full. Copy `local.json.example` to `local.json` only to opt out (`bash_without_prompt` false, `caveman` off). `BRAIN_REMOTE` is the origin allowlist for `sync.sh`, `verify.sh`, and boot sync. A fork edits that file, not the scripts.
 
 ### Red lines
 
@@ -48,7 +48,7 @@ Sections, in order:
 5. Tri-tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode, installed by `setup.sh`, checked by `verify.sh`
 6. Machine toolchains — `texlive-full` + `tectonic` installed; Lean 4 via `elan` (user-space hook, not a distro pkg); write LaTeX directly, never ask for TeX/Lean installs
 7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
-8. Caveman mode — committed default off; `local.json` key `caveman` turns on `lite` / `full` / `ultra`
+8. Caveman mode — ALWAYS ON (full). `local.json` key `caveman` is the durable opt-out (`off`, `lite`, `ultra`)
    Red lines sit with the hard rules: destructive acts and anything that leaves the machine wait for a yes, even when Bash autonomy is on.
    Herd boards sit after caveman and before the triggers (§5f): one wall, a post that only agrees is noise, a missing file said aloud. Kept out: `SOUL.md`, daily diary, personal heartbeat.
 9. `create_project` trigger (§5)

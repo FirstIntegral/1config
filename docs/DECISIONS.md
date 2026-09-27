@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-27 — Opinionated default is on
+
+**Decision:** Clones get this config. `bash_without_prompt` is true in `permissions.json`. Caveman is always on (full) in `AGENTS.md`. This machine has no `local.json`. That file stays a gitignored opt-out (`false` / `off`) for someone who rejects the default. `setup.sh` still merges it when it exists, into the live tools only.
+
+**Why:** The repo is opinionated. Shipping the safe default in git and the real default in a private file made GitHub and this machine disagree. Autonomy and caveman are the direction. Red lines still wait for a yes.
+
+**Rejected:** Leaving the committed Bash flag false. Keeping caveman off unless a private file turns it on.
+
 ## 2026-09-27 — Public adoption: license, git author, red lines, local overlay, one remote
 
 **Decision:** Five changes so a stranger can take this repo. (1) MIT license. The copyright notice names Brusk Kawa Abdalla and `github:FirstIntegral/1config`; keeping that notice is the credit, including for commercial use. (2) Paper author and contact come from `git config user.name` and `user.email`. The template no longer carries a personal email. (3) Red lines live in `AGENTS.md`: destructive acts and anything that leaves the machine wait for an explicit yes even when Bash autonomy is on. (4) Committed `bash_without_prompt` is false and caveman is off. Gitignored `local.json` may set either. `setup.sh` merges the Bash key into the live tools only. (5) `sync.sh`, `verify.sh`, and boot sync read allowed origins from `BRAIN_REMOTE`. A fork edits that file.

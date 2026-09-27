@@ -78,11 +78,11 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 
 | Default | Value here | Why | Flip |
 |---------|------------|-----|------|
-| **`bash_without_prompt`** | **`false` in the repo** | A fresh clone keeps the review gate. Generic `git push` asks. | Copy `local.json.example` to gitignored `local.json`, set `true`, then `bash ~/.agents/setup.sh`. Live tools only. The committed json stays false. |
+| **`bash_without_prompt`** | **`true`** | Opinionated. A fresh clone gets full Bash autonomy. Generic `git push` does not prompt. Red lines still wait for a yes. | Copy `local.json.example` to gitignored `local.json` (`false`), then `bash ~/.agents/setup.sh`. |
 | **`edit_without_prompt`** | `true` | File writes should not stop a session. | Same file, `"edit_without_prompt": false`. |
 | GPG commit signing | Required, never `--no-gpg-sign` | Attribution is cryptographic. | Don't. If you must unsigned history, this is the wrong brain. |
 | No AI co-author lines | Hard rule | Commits/PRs attributed to the user only. | Don't. |
-| Caveman mode | **Off** in the repo | Normal prose unless a machine opts in. | Gitignored `local.json` key `caveman`: `lite`, `full`, or `ultra`. `stop caveman` lasts one session. |
+| Caveman mode | **Always on (full)** | Terse prose. The direction of this repo. | `stop caveman` for one session. Durable opt-out: `local.json` key `caveman` set to `off`. |
 | Tool memory stores | Disabled | Facts live in markdown (`AGENTS.md`, `session_compact.md`, `docs/DECISIONS.md`). | Don't recreate `~/.grok/memory/` or Claude topic files. |
 | `create_project` / `checkpoint_project` | New simple names land in `~/Projects/<name>`; never `git init`, never add a remote | Project location and publishing are deliberate choices. | Give an explicit path when needed; ask before publishing. |
 | TeX | Assumed installed | Papers are LaTeX, never a Markdown fallback. | Install `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). |
@@ -110,8 +110,8 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `SETUP.md` | Full install spec. Authoritative for AIs recreating the machine. |
 | `LICENSE` | MIT. Commercial use is fine. Keep the copyright notice. |
 | `BRAIN_REMOTE` | Origin allowlist. Forks change this file, not the scripts. |
-| `local.json.example` | Shape of the gitignored machine overlay (`bash_without_prompt`, `caveman`). |
-| `permissions.json` | One policy, fanned out to all three tools. Committed Bash default is false. |
+| `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. |
+| `permissions.json` | One policy, fanned out to all three tools. `bash_without_prompt` is true. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
 | `hooks/` | GPG unlock, checkpoint, guards, heredoc rewrite. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). |

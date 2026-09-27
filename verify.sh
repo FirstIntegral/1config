@@ -659,7 +659,7 @@ else
   bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'committed default is false' 'BRAIN_REMOTE' 'local.json'; do
+  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
@@ -705,10 +705,10 @@ if grep -q '^local.json$' "$AGENTS_HOME/.gitignore" \
 else
   bad "local overlay is not gitignored, or local.json.example is missing"
 fi
-if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["defaults"]["bash_without_prompt"] is False else 1)' "$AGENTS_HOME/permissions.json"; then
-  ok "committed bash_without_prompt default is false"
+if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["defaults"]["bash_without_prompt"] is True else 1)' "$AGENTS_HOME/permissions.json"; then
+  ok "committed bash_without_prompt default is true"
 else
-  bad "permissions.json bash_without_prompt is not the public false default"
+  bad "permissions.json bash_without_prompt is not the opinionated true default"
 fi
 if grep -q 'Residue / conflict check' "$SETUP" || grep -q 'Residue / conflict check' "$CANON"; then
   ok "residue/conflict check wording present"
@@ -1143,10 +1143,10 @@ if grep -q 'bash_without_prompt' "$AGENTS_HOME/docs/DECISIONS.md" \
 else
   bad "docs/DECISIONS.md missing autonomy or distro ADR"
 fi
-if grep -q 'committed default is false' "$CANON" && grep -q 'local.json' "$CANON"; then
-  ok "AGENTS.md states the public Bash default and the local.json override"
+if grep -q 'opinionated default is on' "$CANON" && grep -q 'ALWAYS ON' "$CANON"; then
+  ok "AGENTS.md ships autonomy and caveman on"
 else
-  bad "AGENTS.md missing the public Bash default or the local.json override"
+  bad "AGENTS.md missing the opinionated autonomy or caveman default"
 fi
 if grep -q 'git push is not allowlisted and will prompt' "$CANON"; then
   bad "AGENTS.md still claims git push always prompts (OpenCode last-match / autonomy omit-ask)"
@@ -1173,13 +1173,13 @@ if [ -f "$AGENTS_HOME/setup-infographic.svg" ] && grep -q 'setup-infographic.svg
 else
   bad "setup-infographic.svg missing or unreferenced"
 fi
-if grep -q 'bash_without_prompt = false' "$AGENTS_HOME/setup-infographic.svg" \
-   && grep -q 'local.json' "$AGENTS_HOME/setup-infographic.svg" \
+if grep -q 'bash_without_prompt = true' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'caveman always on' "$AGENTS_HOME/setup-infographic.svg" \
    && grep -q 'BRAIN_REMOTE' "$AGENTS_HOME/setup-infographic.svg" \
    && grep -qi 'Ubuntu' "$AGENTS_HOME/setup-infographic.svg"; then
-  ok "infographic shows public Bash default, local.json, BRAIN_REMOTE, Ubuntu+Omarchy"
+  ok "infographic shows opinionated Bash autonomy, caveman, BRAIN_REMOTE, Ubuntu+Omarchy"
 else
-  bad "infographic still shows the old autonomy default or omits Ubuntu / local.json / BRAIN_REMOTE"
+  bad "infographic still shows the safe default or omits Ubuntu / caveman / BRAIN_REMOTE"
 fi
 if grep -q 'vendor dirs' "$AGENTS_HOME/setup-infographic.svg" \
    && grep -q 'inventory.local.md' "$AGENTS_HOME/setup-infographic.svg"; then

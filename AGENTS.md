@@ -81,21 +81,21 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
 - Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; `permission.external_directory` (any file access outside the project cwd, e.g. `/tmp` scratch work) follows the same switch — OpenCode-only, the other two tools cover out-of-tree access with their autonomy modes. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude bypass already skips). Deny still fans out after `*` so last-match deny holds.
-- **Committed default is false.** `permissions.json` ships with `bash_without_prompt` false, so a fresh clone keeps the review gate: generic `git push` asks, and ask rules are installed. Gitignored `~/.agents/local.json` may set the key true. `setup.sh` merges that into the live tools only and does not write it back. Where the effective flag is true: Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow` and no ask rules. Deny still applies. See `local.json.example`.
+- **The opinionated default is on.** `permissions.json` ships `bash_without_prompt` true. A fresh clone gets Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`, and no ask rules. Generic `git push` does not prompt. Deny still applies. Red lines still wait for a yes. Gitignored `local.json` may set the key false; `setup.sh` merges that into the live tools only. Missing `local.json` means the committed true.
 - `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
 - Deny `rm -rf` is exact `/`, `~`, `$HOME` only. Never `rm -rf /*` / `~/*` / `$HOME/*`: `*` is a glob in Claude, Grok, and OpenCode, so those rules match every recursive delete under `/` or home. Vigil's rm-root classifier owns wiping `/` or `$HOME` including a trailing `/*`.
 - Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project one-offs remain project-local; global generated permission buckets are replaced from canonical on setup.
 
 ### `defaults.edit_without_prompt` + `defaults.bash_without_prompt`
 
-Same canonical file, `defaults` block. `edit_without_prompt` is **true**. The committed default is false for `bash_without_prompt` (the review gate). A gitignored `local.json` may turn it on for one machine. `setup.sh` fans the effective value out in steps 5b/5c/5d; `verify.sh` checks the live tools against that merge. See `README.md`.
+Same canonical file, `defaults` block. `edit_without_prompt` is **true**. `bash_without_prompt` is **true**. The opinionated default is on. A gitignored `local.json` may turn the Bash flag off. `setup.sh` fans the effective value out in steps 5b/5c/5d; `verify.sh` checks the live tools against that merge. See `README.md`.
 
 | Flag | Claude Code | Grok | OpenCode |
 |------|-------------|------|----------|
 | `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if Bash flag false) | `[ui] permission_mode = "acceptEdits"` | `permission.edit = "allow"` |
 | `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` (ask omitted) + `permission.external_directory = "allow"` |
 
-**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. The committed default is false so a stranger who clones this repo keeps that gate. A machine that wants full autonomy sets `bash_without_prompt` true in gitignored `local.json` and re-runs `setup.sh`.
+**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. This repo ships the flag **true**. That is the direction. `local.json` is only an opt-out.
 
 With the effective flag true, setup does **not** copy ask rules into any tool — that is what makes generic `git push` prompt-free (Claude bypass would skip them anyway; Grok always-approve would not; OpenCode last-match would not). Deny still copies. Claude deny is still best-effort (bypass skips checks). Red lines above still wait for a yes.
 
@@ -191,22 +191,18 @@ Policy:
 
 ---
 
-## Caveman mode
+## Caveman mode — ALWAYS ON
 
-Committed default is **off**. Normal prose.
+**Every response.** Every project. The opinionated default is on: level **full**.
 
-Read `~/.agents/local.json` at session start when the file exists. Key `caveman`:
-
-- missing file, or `"off"`: normal prose
-- `"lite"`, `"full"`, or `"ultra"`: that level, every response, every project
-
-The file is gitignored. `local.json.example` shows the keys. `stop caveman` or `normal mode` turns it off for the rest of the session. `/caveman lite|full|ultra` turns it on for the rest of the session.
-
-When it is on: talk terse like smart caveman. Keep all technical accuracy. Drop articles, filler, pleasantries, hedging. Fragments OK.
+Talk terse like smart caveman. Keep all technical accuracy. Drop articles, filler, pleasantries, hedging. Fragments OK.
 
 - Pattern: `[thing] [action] [reason]. [next step].`
 - Code, commits, PRs, diffs: write **normal** (not caveman).
 - Security warnings and irreversible actions: write **clear**, then resume caveman.
+- User says **stop caveman** or **normal mode** → normal prose for the rest of the session.
+- `/caveman lite|full|ultra` sets the level for the rest of the session.
+- Durable opt-out only: gitignored `local.json` key `caveman` set to `off`, `lite`, or `ultra`. Missing file means full.
 
 ---
 
