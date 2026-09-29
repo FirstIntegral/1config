@@ -47,6 +47,7 @@ BOOT_DASHBOARD_COLS=100 BOOT_DASHBOARD_ROWS=36 bash ~/.agents/boot-dashboard/lau
 | `BOOT_DASHBOARD_NET_GAP` | `3` | Seconds between net retries |
 | `BOOT_DASHBOARD_UPD_WAIT` | `180` | Max seconds to watch tool updater |
 | `BOOT_DASHBOARD_COLS` / `ROWS` | `92` / `32` | Ptyxis size for this window |
+| `BOOT_DASHBOARD_SLIP` | `~/.agents/boot-dashboard/close-slip.txt` | Override the close-slip path |
 
 ## Reading the common warns
 
@@ -66,3 +67,7 @@ Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail —
 
 5. **omarchy dots — fetch failed / ahead / dirty / opentabletdriver missing**  
    Same fetch semantics as brain sync. `ahead` = pack repo has unpushed commits; `dirty` = uncommitted pack edits (pull refused, apply still safe but deferred). `opentabletdriver missing` = the AUR package needs sudo once by hand: `omarchy pkg aur add opentabletdriver`. Drift in the config files themselves is fixed automatically by `apply.sh --no-pkg` at the next login.
+
+## After the window closes
+
+Exit overwrites `~/.agents/boot-dashboard/close-slip.txt` (gitignored). One line per warn or fail that is not **tool updates**. Shape: `warn  signing  no stored passphrase` (status, two spaces, label, two spaces, detail). Newlines in a detail become spaces. No such row writes the single word `CLEAN`. A missing file means this dashboard has not exited since the slip existed. Tool-update text stays in `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.log`. Ok and skip rows are omitted.

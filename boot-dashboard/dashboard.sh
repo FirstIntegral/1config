@@ -30,6 +30,8 @@ fi
 pass=0
 fail=0
 warn=0
+# Warn/fail lines kept for close-slip.txt. Empty means CLEAN.
+slip_lines=()
 
 # ── layout helpers ─────────────────────────────────────────────────────────
 clear_screen() { printf '\033[2J\033[H'; }
@@ -48,6 +50,19 @@ header() {
   line
 }
 
+slip_note() {
+  # Keep warn/fail text for the close slip. Tool updates already have a log.
+  local st="$1" label="$2" detail="$3"
+  case "$st" in
+    warn|fail) ;;
+    *) return 0 ;;
+  esac
+  [ "$label" = "tool updates" ] && return 0
+  detail="${detail//$'\n'/ }"
+  detail="${detail//$'\r'/ }"
+  slip_lines+=("$st  $label  $detail")
+}
+
 row() {
   # row STATUS LABEL DETAIL
   local st="$1" label="$2" detail="$3"
@@ -61,6 +76,7 @@ row() {
     *)    icon="·"; color="$GRAY" ;;
   esac
   printf "  ${color}%s${R}  ${BOLD}%-18s${R}  ${DIM}%s${R}\n" "$icon" "$label" "$detail"
+  slip_note "$st" "$label" "$detail"
 }
 
 spinner_wait() {
@@ -352,8 +368,79 @@ check_dots_sync() {
   esac
 }
 
+write_close_slip() {
+  # Overwrite close-slip.txt. CLEAN if this run had no kept warn/fail.
+  # A missing file means the dashboard has not exited since the slip existed.
+  local dest tmp
+  dest="${BOOT_DASHBOARD_SLIP:-$AGENTS_HOME/boot-dashboard/close-slip.txt}"
+  mkdir -p "$(dirname "$dest")" || return 0
+  tmp="$(mktemp /tmp/close-slip.XXXXXX)" || return 0
+  if [ "${#slip_lines[@]}" -eq 0 ]; then
+    printf 'CLEAN\n' >"$tmp"
+  else
+    printf '%s\n' "${slip_lines[@]}" >"$tmp"
+  fi
+  mv -f "$tmp" "$dest" || rm -f "$tmp"
+}
+
+slip_selftest() {
+  local dir dest want
+  dir="$(mktemp -d)"
+  dest="$dir/close-slip.txt"
+  want="$dir/want"
+  BOOT_DASHBOARD_SLIP="$dest"
+
+  slip_lines=()
+  row ok "network" "github reachable" >/dev/null
+  row skip "omarchy dots" "not an Omarchy machine" >/dev/null
+  row warn "tool updates" "partial fail" >/dev/null
+  write_close_slip
+  printf 'CLEAN\n' >"$want"
+  if ! cmp -s "$want" "$dest"; then
+    echo "close-slip selftest: clean case mismatch" >&2
+    rm -rf "$dir"
+    return 1
+  fi
+
+  slip_lines=()
+  row warn "signing" "no stored passphrase" >/dev/null
+  row fail "network" "offline" >/dev/null
+  row warn "tool updates" "partial fail" >/dev/null
+  row warn "brain sync" $'line one\nline two' >/dev/null
+  write_close_slip
+  printf '%s\n' \
+    "warn  signing  no stored passphrase" \
+    "fail  network  offline" \
+    "warn  brain sync  line one line two" >"$want"
+  if ! cmp -s "$want" "$dest"; then
+    echo "close-slip selftest: warn/fail case mismatch" >&2
+    rm -rf "$dir"
+    return 1
+  fi
+
+  slip_lines=()
+  row ok "network" "github reachable" >/dev/null
+  write_close_slip
+  printf 'CLEAN\n' >"$want"
+  if ! cmp -s "$want" "$dest"; then
+    echo "close-slip selftest: overwrite case mismatch" >&2
+    rm -rf "$dir"
+    return 1
+  fi
+
+  rm -rf "$dir"
+  return 0
+}
+
 # ── main ───────────────────────────────────────────────────────────────────
 main() {
+  # Window close is SIGHUP. Exit writes the slip once. Trap stays inside main
+  # so --slip-selftest does not touch the real file.
+  trap write_close_slip EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
   # Prefer compact size if the terminal honors CSI 8 (rows;cols). launch.sh
   # also forces Ptyxis window-size for this one window.
   if [ -t 1 ]; then
@@ -398,4 +485,8 @@ main() {
   fi
 }
 
+if [ "${1:-}" = "--slip-selftest" ]; then
+  slip_selftest
+  exit $?
+fi
 main "$@"

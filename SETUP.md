@@ -36,6 +36,8 @@ On any XDG graphical login, a terminal opens with a one-screen summary of boot h
 
 The dashboard also runs **brain self-sync** (`hooks/brain-sync.sh`) right after the network check: it fetches `origin/main` and, when the local `~/.agents` checkout is **behind** the remote listed in `BRAIN_REMOTE`, fast-forwards to match it. Fast-forward only, against those URLs only, never over uncommitted local edits or unpushed commits, and never prompting (ssh `BatchMode`, time-bounded fetch). Exit codes: `0` up-to-date/ff'd · `1` fetch failed · `2` local ahead · `3` behind + dirty tree · `4` divergence / not-a-repo / URL not in `BRAIN_REMOTE`. A stale, diverged, or dirty brain is a warn (or fail for `4`) on screen, never silently rewritten.
 
+On exit, `dashboard.sh` overwrites `~/.agents/boot-dashboard/close-slip.txt`. One line per warn or fail that is not the tool-updates row (that row already lives in `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.log`), using the status, label, and detail the row showed. Newlines in the detail become spaces. No such row writes the single word `CLEAN`. The file is gitignored. A missing file means the dashboard has not exited since the slip existed. `BOOT_DASHBOARD_SLIP` overrides the path for tests. Ok and skip rows are not written.
+
 ## 2. Canonical rules file
 
 `~/.agents/AGENTS.md` — the ONE global rules file. All three tools read it every session via the symlinks in §3. Loaded once per session start. **Keep it LEAN** (cross-project rules only; project facts go in project files) — every extra paragraph costs context on every session of every tool.

@@ -576,6 +576,16 @@ if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
   else
     bad "boot dashboard does not sync brain before verify"
   fi
+  if bash "$BD/dashboard.sh" --slip-selftest; then
+    ok "boot dashboard close slip records warn/fail and writes CLEAN"
+  else
+    bad "boot dashboard close-slip selftest failed"
+  fi
+  if grep -q 'close-slip.txt' "$CANON" && grep -q 'close-slip.txt' "$SETUP"; then
+    ok "close slip documented in AGENTS.md and SETUP.md"
+  else
+    bad "close slip missing from AGENTS.md or SETUP.md"
+  fi
 fi
 
 # --- flag names (must not reintroduce bare NEEDS-MERGE as the live flag) ---
@@ -616,6 +626,11 @@ if grep -q '^inventory.local.md$' "$AGENTS_HOME/.gitignore"; then
   ok "inventory.local.md is gitignored"
 else
   bad "inventory.local.md missing from .gitignore"
+fi
+if grep -q '^boot-dashboard/close-slip.txt$' "$AGENTS_HOME/.gitignore"; then
+  ok "boot-dashboard/close-slip.txt is gitignored"
+else
+  bad "boot-dashboard/close-slip.txt missing from .gitignore"
 fi
 INV_REFRESH="$UPD_SRC/refresh-inventory.py"
 if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=os.environ["INV_REFRESH"]; compile(open(p, encoding="utf-8").read(), p, "exec")' 2>/dev/null; then
