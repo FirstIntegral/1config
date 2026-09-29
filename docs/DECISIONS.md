@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-09-29 — Digit refuse is the default gate on a new paper
+
+**Decision:** After latexmk, a new paper's `build.sh` runs `hooks/digit-refuse.sh`. A measurement token in prose must already appear, character for character, in a tabular or a caption of that paper. `digit-refuse.deny` lists tokens that must not be typeset at all. `\TODO{...}` is not a claim. A bare integer in the deny file, or any fuzzy / near / LLM / repo-wide flag, exits 2 and writes nothing. A clean check is silent. A miss prints `file:line` and fails the build. Scope defaults to the whole paper. Existing papers are not backfilled.
+
+**Why:** On 2026-09-12 a leftover counter billed 2 evals where the method spent 6, rescue took about 45% of the budget instead of the reserved sixth, and the headline `118/135` (and `121/135`) was repeated as the result. The corrected table is `100/135`. The prose and the buggy table had agreed, so a later sentence can still carry the dead token. The gate is the build, not a widget, because that is the minute a digit ships.
+
+**Rejected:** A glass claim board. A fuzzy match that would accept `100/136` because `100/135` is close. Searching the whole repo for the digit. Backfilling every existing `build.sh`. Treating a caption protocol line (n, seeds, budget) as prose that must be repeated inside the grid. Equating `1.20\times 10^{4}` with `12040`.
+
 ## 2026-09-27 — Opinionated default is on
 
 **Decision:** Clones get this config. `bash_without_prompt` is true in `permissions.json`. Caveman is always on (full) in `AGENTS.md`. This machine has no `local.json`. That file stays a gitignored opt-out (`false` / `off`) for someone who rejects the default. `setup.sh` still merges it when it exists, into the live tools only.

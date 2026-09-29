@@ -20,6 +20,15 @@ fi
 # No bibliography by design — no biber/bibtex pass.
 latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 
+# Digit refuse: prose measurement tokens must already be in a table.
+# Fuzzy / near / LLM / repo-wide search is not this hook. Silence means clean.
+refuse="${HOME}/.agents/hooks/digit-refuse.sh"
+if [ ! -x "$refuse" ]; then
+  echo "digit-refuse: missing $refuse" >&2
+  exit 1
+fi
+bash "$refuse" main.tex main.pdf
+
 pages="$(pdfinfo main.pdf 2>/dev/null | awk '/^Pages:/ {print $2}')"
 echo "built main.pdf (${pages:-?} pages)"
 

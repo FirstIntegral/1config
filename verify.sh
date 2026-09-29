@@ -147,6 +147,19 @@ if [ -d "$PAPER_TPL" ]; then
   else
     bad "paper-template build.sh missing lake gate"
   fi
+  if grep -q 'digit-refuse.sh' "$PAPER_TPL/build.sh" \
+    && [ -f "$PAPER_TPL/digit-refuse.cfg" ] \
+    && [ -f "$PAPER_TPL/digit-refuse.deny" ]; then
+    ok "paper-template build.sh runs digit-refuse"
+  else
+    bad "paper-template missing digit-refuse hook, cfg, or deny file"
+  fi
+  if grep -q 'scope=paper' "$PAPER_TPL/digit-refuse.cfg" \
+    && ! grep -qE '^[^#]*[0-9]' "$PAPER_TPL/digit-refuse.deny"; then
+    ok "paper-template digit-refuse defaults are paper scope and an empty cemetery"
+  else
+    bad "paper-template digit-refuse.cfg/deny drifted"
+  fi
   if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
     for f in lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore; do
       if git -C "$AGENTS_HOME" ls-files --error-unmatch "paper-template/$f" >/dev/null 2>&1; then
@@ -161,12 +174,24 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
   [ -f "$HOOKS/$f" ] && { bash -n "$HOOKS/$f" 2>/dev/null && ok "hooks/$f parses" || bad "hooks/$f SYNTAX ERROR"; }
 done
+
+echo "[digit-refuse]"
+if grep -q 'Digit refuse' "$AGENTS_HOME/AGENTS.md" && grep -q 'Digit refuse' "$SETUP"; then
+  ok "digit-refuse documented in AGENTS.md and SETUP.md"
+else
+  bad "digit-refuse missing from AGENTS.md or SETUP.md"
+fi
+if [ -x "$HOOKS/digit-refuse-test.sh" ] && bash "$HOOKS/digit-refuse-test.sh" >/tmp/digit-refuse-test.out 2>&1; then
+  ok "digit-refuse fixtures"
+else
+  bad "digit-refuse fixtures failed — see /tmp/digit-refuse-test.out"
+fi
 
 # Every sync path must require a clean verification result. Scratch scripts let
 # this test the gate without installing anything or contacting a remote.
@@ -1188,10 +1213,11 @@ else
   bad "infographic still pins versions in SETUP.md or omits vendor-dir fallback"
 fi
 if grep -q 'lean/' "$AGENTS_HOME/setup-infographic.svg" \
-   && grep -q 'lake' "$AGENTS_HOME/setup-infographic.svg"; then
-  ok "infographic shows default lean/ lake build"
+   && grep -q 'lake' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'digit-refuse' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "infographic shows lean/, lake, and digit-refuse"
 else
-  bad "infographic missing Lean paper toolchain"
+  bad "infographic missing Lean paper toolchain or digit-refuse"
 fi
 
 echo "[lean toolchain]"

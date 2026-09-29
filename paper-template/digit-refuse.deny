@@ -1,0 +1,3 @@
+# Cemetery tokens, one exact token per line. A hit fails the PDF even inside a table.
+# A bare integer (100) is refused and the check does not run. Use the full token
+# (118/135, 0.963, 13--2). Comments are not typeset, so a warning may live in a % line.
