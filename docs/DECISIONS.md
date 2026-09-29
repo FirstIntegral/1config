@@ -2,7 +2,13 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
-## 2026-09-29 — Digit refuse is the default gate on a new paper
+## 2026-09-29 — This tree is 1config
+
+**Decision:** Canonical `AGENTS.md` opens with the name. This checkout is the GitHub repo `FirstIntegral/1config`. On this machine that checkout is `~/.agents/`. "Global brain", "the brain", and `global_brain_update` mean that same repo. `SETUP.md` carries the same paragraph. `verify.sh` fails if either file drops `This tree is **1config**`.
+
+**Why:** The rules file said "this repo" and "the brain" and never said the GitHub name in the text every session loads. `SETUP.md`, `LICENSE`, and the figure already said 1config. An agent then went looking for what 1config was.
+
+**Rejected:** Leaving the name only in `SETUP.md` or the figure. A second identity file. Tool-local copies of the sentence.
 
 **Decision:** After latexmk, a new paper's `build.sh` runs `hooks/digit-refuse.sh`. A measurement token in prose must already appear, character for character, in a tabular or a caption of that paper. `digit-refuse.deny` lists tokens that must not be typeset at all. `\TODO{...}` is not a claim. A bare integer in the deny file, or any fuzzy / near / LLM / repo-wide flag, exits 2 and writes nothing. A clean check is silent. A miss prints `file:line` and fails the build. Scope defaults to the whole paper. Existing papers are not backfilled.
 

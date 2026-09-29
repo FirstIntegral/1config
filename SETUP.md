@@ -373,7 +373,7 @@ Trigger: user says **`global_brain_update <what to change>`**. Target is `~/.age
 
 ### The brain is a git repo
 
-`~/.agents` is versioned and pushed to **`https://github.com/FirstIntegral/1config.git`** (SSH equivalent also accepted; branch `main`, signed commits, no AI attribution, `backups/` gitignored). **Any** change under `~/.agents/**` — trigger typed or not — ends the same turn with `setup.sh` + `sync.sh`. Local-only edits are unfinished edits.
+This tree is **1config**. The GitHub repo is `FirstIntegral/1config` (`git@github.com:FirstIntegral/1config.git`, `https://github.com/FirstIntegral/1config.git`). On this machine the checkout is `~/.agents/`. "Global brain", "the brain", and the trigger `global_brain_update` all mean this same repo. Edit `~/.agents/`, not a tool-local copy. Branch `main`, signed commits, no AI attribution, `backups/` gitignored. **Any** change under `~/.agents/**` — trigger typed or not — ends the same turn with `setup.sh` + `sync.sh`. Local-only edits are unfinished edits.
 
 `sync.sh` is the single scripted path:
 

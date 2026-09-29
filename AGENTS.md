@@ -12,6 +12,10 @@ Project-level: `<repo>/AGENTS.md` is the ONLY project rules file. Grok/OpenCode 
 
 Fresh machine (Omarchy or Ubuntu): clone this repo to `~/.agents/` and run `bash ~/.agents/setup.sh` — recreates symlinks, tool configs, and the cron guards (idempotent). Existing box: `git pull && bash ~/.agents/setup.sh`. Human report + opinionated defaults: `README.md`. Full spec: `SETUP.md`. Runtime archives land under `~/.agents/backups/` only when needed — do not treat that folder as source of truth.
 
+## Name
+
+This tree is **1config**. The GitHub repo is `FirstIntegral/1config` (`git@github.com:FirstIntegral/1config.git`, `https://github.com/FirstIntegral/1config.git`). On this machine the checkout is `~/.agents/`. "Global brain", "the brain", and the trigger `global_brain_update` all mean this same repo. Edit `~/.agents/`, not a tool-local copy.
+
 ### After any edit under `~/.agents/` (HARD RULE)
 
 Hooks, guards, SETUP, template, and this file are one system. Changing one file can leave installed copies / docs / cron stale.
