@@ -327,7 +327,9 @@ check_brain_sync() {
     return 1
   fi
   local out rc
-  out="$("$hook" 2>&1)" || true
+  # No `|| true`: this script is `set -u` only, and `|| true` forces $? to 0,
+  # which painted a green row for every sync failure.
+  out="$("$hook" 2>&1)"
   rc=$?
   case "$rc" in
     0) row ok "brain sync" "$out" ;;
@@ -354,7 +356,7 @@ check_dots_sync() {
     return 1
   fi
   local out rc last
-  out="$(bash "$script" 2>&1)" || true
+  out="$(bash "$script" 2>&1)"
   rc=$?
   last="$(echo "$out" | grep -E '^dots-sync:' | tail -1 | sed 's/^dots-sync: //')"
   [ -n "$last" ] || last="$(echo "$out" | tail -1)"
@@ -363,7 +365,7 @@ check_dots_sync() {
     1) row warn "omarchy dots" "fetch failed — offline or key not loaded" ;;
     2) row warn "omarchy dots" "$last" ;;
     3) row warn "omarchy dots" "$last" ;;
-    5) row warn "omarchy dots" "opentabletdriver needs manual: omarchy pkg aur add opentabletdriver" ;;
+    5) row warn "omarchy dots" "$last" ;;
     *) row fail "omarchy dots" "$last" ;;
   esac
 }

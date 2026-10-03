@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-04 — Boot dashboard keeps sync exit codes
+
+**Decision:** `check_brain_sync` and `check_dots_sync` store `$?` from the hook itself. Exit 5 from `omarchy-dots/sync.sh` is shown as that script's own last line (a live file was edited). The README no longer mentions `apply.sh --no-pkg` or an opentabletdriver row.
+
+**Why:** Both checks were `out="$(...)" || true` then `rc=$?`. The dashboard is `set -u` only, so `|| true` is not what keeps it alive. It makes `$?` always 0. A failed dots sync painted a green check and wrote `CLEAN`. The 2026-10-04 false green row was a different bug (the dots script re-execs itself now), but the next real failure would have been hidden the same way. Exit 5's text still said opentabletdriver, which `sync.sh` does not use.
+
+**Rejected:** Parsing the output text to guess success. Re-running `sync.sh` from the dashboard after a fast-forward (the script re-execs; the caller is the wrong place).
+
 ## 2026-09-29 — Boot dashboard writes a close slip
 
 **Decision:** On exit, `dashboard.sh` overwrites `~/.agents/boot-dashboard/close-slip.txt`. One line per warn or fail that is not the tool-updates row, words as shown. No such row writes the single word `CLEAN`. The file is gitignored. A missing file means this dashboard has not exited since the slip existed.

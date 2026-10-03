@@ -581,6 +581,22 @@ if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
   else
     bad "boot dashboard close-slip selftest failed"
   fi
+  # `out=$(cmd) || true` then `rc=$?` is always 0. A failed sync must stay a warn.
+  if awk '
+    /^check_brain_sync\(\)|^check_dots_sync\(\)/ { inside=1 }
+    inside && /^}/ { inside=0 }
+    inside && /out=/ && /\|\| true/ { bad=1 }
+    END { exit bad ? 1 : 0 }
+  ' "$BD/dashboard.sh"; then
+    ok "boot dashboard keeps brain and dots sync exit codes"
+  else
+    bad "boot dashboard swallows a sync exit code with || true"
+  fi
+  if grep -q 'opentabletdriver' "$BD/dashboard.sh" "$BD/README.md"; then
+    bad "boot dashboard still describes omarchy-dots exit 5 as opentabletdriver"
+  else
+    ok "boot dashboard omarchy-dots exit 5 is the sync.sh line"
+  fi
   if grep -q 'close-slip.txt' "$CANON" && grep -q 'close-slip.txt' "$SETUP"; then
     ok "close slip documented in AGENTS.md and SETUP.md"
   else
