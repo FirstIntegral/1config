@@ -2,6 +2,19 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Oracles, policy keys, kill tokens, brain checkpoint refuse
+
+**Decision:** Four mechanical laws. No line cap on `AGENTS.md`.
+
+1. `hooks/rule-oracles.sh` is the executable form of the `create_project` path rule and of the ban on hooks reading `session_transcript.md`. `verify.sh` runs it.
+2. A keyed fact in this file is a `**Policy:**` line. One active `key=value`. A replaced value is `key superseded-by <heading>`. `verify.sh` fails on a second active value or a missing heading. Whole headings stay, because one ADR can mix live and dead facts.
+3. Retired names live in `hooks/kill-tokens.deny`. `merge-strays.sh` will not append a section that contains one; the stray stays. `verify.sh` fails if a token appears in the prompt or the templates. A gitignore sample may still name a retired path so new projects keep ignoring it.
+4. `checkpoint.sh` exits 22 on this checkout, before git. `sync.sh` remains the publisher of the brain.
+
+**Why:** A phrase check does not compute the path rule. Two live ADRs assigned opposite values to the same fact. The stray merger can paste a killed name back into the prompt. `checkpoint.sh` would commit and push this repo without running `verify.sh`.
+
+**Rejected:** A line cap on `AGENTS.md` (still under debate; a share of the context window is the candidate, not a line count). An LLM judge inside `verify.sh`. Marking an entire mixed ADR superseded. A `session_compact.md` for the brain.
+
 ## 2026-10-04 — Boot dashboard keeps sync exit codes
 
 **Decision:** `check_brain_sync` and `check_dots_sync` store `$?` from the hook itself. Exit 5 from `omarchy-dots/sync.sh` is shown as that script's own last line (a live file was edited). The README no longer mentions `apply.sh --no-pkg` or an opentabletdriver row.
@@ -36,6 +49,9 @@ ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs 
 
 ## 2026-09-27 — Opinionated default is on
 
+**Policy:** bash_without_prompt=true
+**Policy:** caveman=full
+
 **Decision:** Clones get this config. `bash_without_prompt` is true in `permissions.json`. Caveman is always on (full) in `AGENTS.md`. This machine has no `local.json`. That file stays a gitignored opt-out (`false` / `off`) for someone who rejects the default. `setup.sh` still merges it when it exists, into the live tools only.
 
 **Why:** The repo is opinionated. Shipping the safe default in git and the real default in a private file made GitHub and this machine disagree. Autonomy and caveman are the direction. Red lines still wait for a yes.
@@ -43,6 +59,12 @@ ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs 
 **Rejected:** Leaving the committed Bash flag false. Keeping caveman off unless a private file turns it on.
 
 ## 2026-09-27 — Public adoption: license, git author, red lines, local overlay, one remote
+
+**Policy:** bash_without_prompt superseded-by 2026-09-27 — Opinionated default is on
+**Policy:** caveman superseded-by 2026-09-27 — Opinionated default is on
+**Policy:** paper_author=git-config
+
+Item (4) below, and the claim that this machine keeps autonomy and caveman via `local.json`, are historical. The live bash flag and caveman level are the Opinionated default ADR. License, git author, red lines, and `BRAIN_REMOTE` in this ADR stay live.
 
 **Decision:** Five changes so a stranger can take this repo. (1) MIT license. The copyright notice names Brusk Kawa Abdalla and `github:FirstIntegral/1config`; keeping that notice is the credit, including for commercial use. (2) Paper author and contact come from `git config user.name` and `user.email`. The template no longer carries a personal email. (3) Red lines live in `AGENTS.md`: destructive acts and anything that leaves the machine wait for an explicit yes even when Bash autonomy is on. (4) Committed `bash_without_prompt` is false and caveman is off. Gitignored `local.json` may set either. `setup.sh` merges the Bash key into the live tools only. (5) `sync.sh`, `verify.sh`, and boot sync read allowed origins from `BRAIN_REMOTE`. A fork edits that file.
 
@@ -68,6 +90,8 @@ ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs 
 
 ## 2026-09-16 — Lean `docs/paper/lean/` is default on new writepaper scaffolds
 
+**Policy:** lean_scaffold=default
+
 **Decision:** First `writepaper_project` copies `paper-template/lean/` with `main.tex` / `build.sh` / `figures/`. New papers get a Lean project by default. Existing `docs/paper/` trees without `lean/` stay grandfathered (not backfilled). Do not overwrite a paper's existing Lean files.
 
 **Why:** User wants Lean present the moment a new paper is scaffolded, not as a later copy step. The kernel-check still only runs because `build.sh` sees `lean/`. Fidelity caveat unchanged: `lake` green is not a proof the LaTeX sentence matches.
@@ -75,6 +99,10 @@ ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs 
 **Rejected:** Silent backfill of Darboux / other in-flight papers. Making Mathlib the template default. Treating `template_sanity` as a paper theorem.
 
 ## 2026-09-16 — Lean 4 opt-in kernel-check for papers (P0)
+
+**Policy:** lean_scaffold superseded-by 2026-09-16 — Lean `docs/paper/lean/` is default on new writepaper scaffolds
+
+The sentence below that copies `lean/` only when a theorem is being formalized is historical. New papers copy `lean/` by default. The rest of this ADR stays live: no Mathlib in the template, `install-elan.sh` as the install path, `lake build` when `lean/` exists, and `statement-fidelity unmeasured` until a mechanical crosswalk exists.
 
 **Decision:** Add Lean 4 as an opt-in paper kernel-check. Template `paper-template/lean/` is core Lean only (pinned `leanprover/lean4:v4.34.0`, no Mathlib). `writepaper_project` copies `lean/` only when a theorem is being formalized. Existing papers are grandfathered. `setup.sh` probes `elan` non-fatally like TeX and never installs it. Install path is `hooks/install-elan.sh` (official tarball, then run the binary — never `curl | sh`). `build.sh` runs `lake build` when `lean/` exists; missing lake skips; type errors fail. Verified count is `n/m kernel-checked Lean statements`. `lake` green is not fidelity to the LaTeX sentence — Gaps must say `statement-fidelity unmeasured` until a mechanical xwalk exists.
 
@@ -109,6 +137,10 @@ ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs 
 **Rejected:** Moving `"*": "allow"` after the ask keys (works, but leaves dead ask rules that look like they still prompt). Converting ask → allow (would keep `git push` silent even after a TUI mode flip). Leaving ask in OpenCode as "best-effort" (they are not best-effort — last-match makes them win).
 
 ## 2026-08-29 — Full Bash autonomy (`bash_without_prompt: true`)
+
+**Policy:** bash_without_prompt superseded-by 2026-09-27 — Opinionated default is on
+
+The flag value below still matches the live value. The active Policy line lives on the Opinionated default ADR so the key has one home.
 
 **Decision:** All three tools run without Bash permission prompts. Claude `bypassPermissions`, Grok `always-approve`, OpenCode `permission.bash["*"] = allow`.
 
@@ -168,7 +200,7 @@ Claude project `memory/` dirs are DISABLED stubs. Grok `[memory] enabled = false
 
 ## Standing — Papers are LaTeX, no bibliography
 
-`writepaper_project` assumes `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). No `\cite`, no `refs.bib`. Author block is this user's unless a fork changes it.
+`writepaper_project` assumes `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). No `\cite`, no `refs.bib`. Author block comes from `git config --global user.name` and `user.email`. An empty value means stop and ask.
 
 ## 2026-09-09 — Default `create_project` root
 

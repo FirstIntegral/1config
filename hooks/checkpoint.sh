@@ -10,6 +10,7 @@
 #
 # Decides, in order, and stops at the first thing that applies:
 #
+#   brain checkout                  -> do nothing at all                    (exit 22)
 #   not a git repo                  -> do nothing at all                    (exit 10)
 #   dir is not the repo toplevel    -> do nothing at all                    (exit 11)
 #   session files not ignored       -> refuse, change nothing               (exit 20)
@@ -51,6 +52,32 @@ run() {  # echo and execute, or just echo under --dry-run
   if [ "$DRY" = 1 ]; then echo "  DRY    $*"; return 0; fi
   "$@"
 }
+
+# The brain is not a day-end project. checkpoint.sh pushes without verify.sh;
+# sync.sh is the publisher that refuses a failed verify. Refuse before git.
+refuse_brain() {
+  echo "  repo     brain checkout — not a project"
+  echo "  action   refused — checkpoint does not publish the brain (exit 22). Use sync.sh."
+  exit 22
+}
+BRAIN_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+if [ "$PROJECT" = "$BRAIN_DIR" ]; then
+  refuse_brain
+fi
+if [ -f "$PROJECT/setup.sh" ] && [ -f "$PROJECT/verify.sh" ] && [ -f "$PROJECT/BRAIN_REMOTE" ]; then
+  _origin="$(git -C "$PROJECT" remote get-url --push origin 2>/dev/null || true)"
+  if [ -n "$_origin" ]; then
+    while IFS= read -r _url || [ -n "$_url" ]; do
+      _url="${_url%$'\r'}"
+      case "$_url" in
+        ''|'#'*) continue ;;
+      esac
+      if [ "$_origin" = "$_url" ]; then
+        refuse_brain
+      fi
+    done < "$PROJECT/BRAIN_REMOTE"
+  fi
+fi
 
 # --- 1. is it a repo, and is this directory its root? -------------------------------
 TOP="$(git -C "$PROJECT" rev-parse --show-toplevel 2>/dev/null || true)"

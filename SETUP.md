@@ -149,7 +149,7 @@ Steps 1-5 of that trigger need judgement (what happened today, which decisions t
 bash ~/.agents/hooks/checkpoint.sh <project-root> [-m SUBJECT] [--dry-run]
 ```
 
-Exit codes: `0` remote backup completed (new commit and/or existing commits pushed) · `3` clean tree and `HEAD` has no commit absent from local remote-tracking refs · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `2` usage.
+Exit codes: `0` remote backup completed (new commit and/or existing commits pushed) · `3` clean tree and `HEAD` has no commit absent from local remote-tracking refs · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `22` brain checkout, nothing done · `2` usage.
 
 Invariants, all covered by `verify.sh`:
 
@@ -159,7 +159,16 @@ Invariants, all covered by `verify.sh`:
 - Reachability uses bare `git ls-remote`, **not** `--exit-code`: that flag returns 2 when no refs match, so an empty freshly created repo would be misread as unreachable and the first push silently refused.
 - Cross-checks the URL against the project `AGENTS.md` `## Repo` line and warns on mismatch, but git config always wins — `AGENTS.md` is a file an AI writes and must never authorise a push.
 - **A clean tree is not the same as nothing to do.** Commits made earlier and never pushed are exactly the state where "the machine is not the only copy" fails, so a clean tree still takes the push path and only skips the commit. Local unpushed state is counted as `HEAD --not --remotes`; no fetch occurs, so exit `3` does not claim a live remote is reachable or unchanged.
-- `verify.sh` runs the refusals and the push path for real against scratch dirs and a bare remote (non-repo → 10 with no `.git` created; unignored transcript → 20; clean tree with one locally unpushed commit → pushed, exit 0; clean with no locally unpushed commit → exit 3).
+- `verify.sh` runs the refusals and the push path for real against scratch dirs and a bare remote (non-repo → 10 with no `.git` created; unignored transcript → 20; brain checkout → exit 22 with no git command; clean tree with one locally unpushed commit → pushed, exit 0; clean with no locally unpushed commit → exit 3).
+- The brain checkout exits 22 before any git command. That is the directory `checkpoint.sh` lives in, and a worktree whose `origin` is listed in its `BRAIN_REMOTE` and which contains `setup.sh` and `verify.sh`. `sync.sh` is the publisher. `checkpoint.sh` does not run `verify.sh`, so it must not be a second door onto this repo.
+
+### Rule oracles, policy keys, retired names
+
+`hooks/rule-oracles.sh` is the `create_project` path rule as a shell fixture. `verify.sh` runs it. Simple name `foo` resolves to `~/Projects/foo`. A name containing `/` is resolved as given and is not moved under `~/Projects`. An empty name exits 30 (ask). The same run fails if a script under `hooks/`, `updater/`, or `boot-dashboard/` reads `session_transcript.md`. Naming the file in a gitignore check or an append instruction is allowed.
+
+Keyed facts in `docs/DECISIONS.md` use a `**Policy:**` line. One active value per key. A replaced value keeps a `superseded-by` line whose text is the heading that holds the live value. `verify.sh` fails on a second active value or a target heading that is not in the file. Whole headings stay when one ADR mixes a live fact and a dead one.
+
+Retired names live in `hooks/kill-tokens.deny` (one literal token per line; an empty file is legal). `merge-strays.sh` does not append a section that contains one; the stray stays. `verify.sh` fails if a token appears in `AGENTS.md`, `README.md`, the project-template markdown, or `SETUP.md` outside a fenced `gitignore` sample. `project-template/.gitignore` may still name a retired path so new projects keep ignoring it.
 
 ### §4c `hooks/watch-stale.sh` — staleness watch for detached runs
 

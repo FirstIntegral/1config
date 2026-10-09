@@ -253,7 +253,7 @@ These three stay out.
 
 ## `create_project` trigger
 
-When the user says **`create_project`** (starting a new project), always set up the standard layout. Resolve the target before editing: `create_project <name>` with a simple name means `~/Projects/<name>`; an explicit absolute or relative path containing `/` is used after resolution; a missing name requires a question. Never use the current working directory as the default for a simple name. Fast path: `cp -r ~/.agents/project-template/. <project-dir>/` then fill in names; or create the files manually:
+When the user says **`create_project`** (starting a new project), always set up the standard layout. Resolve the target before editing: `create_project <name>` with a simple name means `~/Projects/<name>`; an explicit absolute or relative path containing `/` is used after resolution; a missing name requires a question. Never use the current working directory as the default for a simple name. `verify.sh` runs `hooks/rule-oracles.sh`: `foo` → `~/Projects/foo`, a name containing `/` is not moved under `~/Projects`, an empty name exits 30 (ask). That fixture also fails if a hook reads `session_transcript.md`. Fast path: `cp -r ~/.agents/project-template/. <project-dir>/` then fill in names; or create the files manually:
 
 | File | Audience | Maintenance |
 |------|----------|-------------|
@@ -315,7 +315,7 @@ Same for all three tools. Formalizes the existing "End of session / milestone" r
 bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"
 ```
 
-**Do not open-code these git commands.** Step 6 is mechanical and has exactly one correct answer per project state; hand-running it produced inconsistent behaviour on consecutive checkpoints of the same project. The script is the behaviour; the prose below documents what it does, and `verify.sh` exercises its two refusals for real on every run.
+**Do not open-code these git commands.** Step 6 is mechanical and has exactly one correct answer per project state; hand-running it produced inconsistent behaviour on consecutive checkpoints of the same project. The script is the behaviour; the prose below documents what it does, and `verify.sh` exercises the refusals for real on every run.
 
 Read its exit code and report accordingly:
 
@@ -329,15 +329,19 @@ Read its exit code and report accordingly:
 | `13` | remote configured but unreachable | committed, not pushed, **not created** |
 | `20` | **refused** — session files would be published | nothing done; fix `.gitignore` and re-run |
 | `21` | commit or push failed | any commit made is safe; not retried, not forced |
+| `22` | **refused** — this checkout is the brain | nothing done; publish with `sync.sh` |
 
 `--dry-run` prints the plan and changes nothing. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
 
 Exit `3` is a local-ref statement, not proof that a live remote is reachable or unchanged: the script does not fetch. A clean tree with commits absent from local remote-tracking refs continues to the remote and push path.
 
+The brain checkout exits 22 before any git command. That is the directory `checkpoint.sh` lives in, and a worktree whose `origin` is listed in its `BRAIN_REMOTE` and which contains `setup.sh` and `verify.sh`. `checkpoint_project` stops there. `sync.sh` is the publisher.
+
 **Gate the script applies, before touching git at all:**
 
 | project is | do |
 |---|---|
+| **the brain checkout** | **nothing.** Exit 22. Say `sync.sh` is the publisher. |
 | **not a git repo** | **nothing.** No commit, no push, no `git init`. Say "not a git repo — nothing pushed" and finish the checkpoint normally. |
 | a repo with **no remote** | commit locally, **do not push**, do not add a remote. Say "committed locally, no remote". |
 | a repo with a remote | commit and push, no asking |
@@ -500,7 +504,7 @@ When `create_project` lands under `~/Projects/sites/`, merge the usual session i
 - **`create_project`** — scaffold a new project (template). Only new-project trigger.
 - **`continue_project <path>`** — resume an existing project from its session files (see section above).
 - **`checkpoint_project`** — end-of-day wrap-up of the current project (see section above).
-- No tool-specific init/continue steps. Retired Grok-era machinery (`init-project`, `/flush`, `docs/SESSION.md`, tool-internal memory) must not be recreated.
+- No tool-specific init/continue steps. Retired names live in `hooks/kill-tokens.deny`. Do not recreate a name from that file, and do not paste one into this file. Tool-internal memory stays retired with them.
 
 ---
 
@@ -513,6 +517,7 @@ When `create_project` lands under `~/Projects/sites/`, merge the usual session i
   - OpenCode: no separate memory store; uses AGENTS.md only.
 - When asked to "remember" something: global fact → this file; project fact → that project's files. Same turn, no exceptions.
 - Keep this file LEAN — it loads into every session. Cross-project rules only; project specifics never belong here.
+- Keyed facts in `docs/DECISIONS.md` use a `**Policy:**` line. One active value per key. A replaced value keeps a `superseded-by` line whose text is the heading that holds the live value. `verify.sh` fails on a second active value.
 - Symlinked paths (`~/.claude/CLAUDE.md`, `~/.grok/AGENTS.md`, `~/.config/opencode/AGENTS.md`) all write to this file.
 
 ### Cron guards (machine hygiene)
@@ -556,7 +561,7 @@ Cron **cannot** judge “important facts” (no LLM). It only stages. **You (the
 
 ### Symlink conflict → merge into canonical (AUTOMATED)
 
-**`~/.agents/hooks/merge-strays.sh` does this automatically** (cron @daily, after the guard): each quarantined stray is fed to a headless LLM ("extract unique durable rules not already in canonical → one markdown section or SKIP"), output is sanitized and appended to canonical, the stray is deleted, the flag cleared. Nothing to type.
+**`~/.agents/hooks/merge-strays.sh` does this automatically** (cron @daily, after the guard): each quarantined stray is fed to a headless LLM ("extract unique durable rules not already in canonical → one markdown section or SKIP"), output is sanitized and appended to canonical, the stray is deleted, the flag cleared. A reply that contains a name from `hooks/kill-tokens.deny` is not appended; the stray stays for a human. Nothing to type when the reply is clean.
 
 **You (AI/human) intervene only when:** the flag survives two merge runs (LLM failing), or you want to relocate merged content from the file tail into its proper section.
 

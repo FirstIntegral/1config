@@ -174,7 +174,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -272,6 +272,19 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_cptmp" >/dev/null 2>&1 || _rc=$?
   [ "$_rc" -eq 10 ] && ok "refuses a non-repo (exit 10, no git init)" \
                     || bad "checkpoint.sh did not refuse a non-repo (exit $_rc, wanted 10)"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$AGENTS_HOME" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 22 ] && ok "refuses the brain checkout (exit 22)" \
+                    || bad "checkpoint.sh did not refuse the brain checkout (exit $_rc, wanted 22)"
+  _brainfake="$(mktemp -d)"
+  git init -q "$_brainfake"
+  printf 'https://example.test/brain.git\n' > "$_brainfake/BRAIN_REMOTE"
+  : > "$_brainfake/setup.sh"
+  : > "$_brainfake/verify.sh"
+  git -C "$_brainfake" remote add origin 'https://example.test/brain.git'
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_brainfake" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 22 ] && ok "refuses a worktree whose origin is listed in BRAIN_REMOTE (exit 22)" \
+                    || bad "checkpoint.sh did not refuse a brain-marked worktree (exit $_rc, wanted 22)"
+  rm -rf "$_brainfake"
   [ -d "$_cptmp/.git" ] && bad "checkpoint.sh CREATED a repo — must never do that" \
                         || ok "left the non-repo alone"
   git -C "$_cptmp" init -q 2>/dev/null || true
@@ -310,6 +323,127 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   rm -rf "$_cpwork" "$_cpremote"
 else
   bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
+fi
+
+echo "[rule oracles]"
+if [ -x "$HOOKS/rule-oracles.sh" ]; then
+  if bash "$HOOKS/rule-oracles.sh"; then
+    ok "rule-oracles.sh fixtures"
+  else
+    bad "rule-oracles.sh fixtures failed"
+  fi
+else
+  bad "hooks/rule-oracles.sh not executable"
+fi
+if grep -q 'rule-oracles.sh' "$CANON" && grep -q 'rule-oracles.sh' "$SETUP"; then
+  ok "rule-oracles documented in AGENTS.md and SETUP.md"
+else
+  bad "rule-oracles missing from AGENTS.md or SETUP.md"
+fi
+if grep -q 'exits 22' "$CANON" && grep -q 'exits 22' "$SETUP"; then
+  ok "brain checkpoint exit 22 documented in AGENTS.md and SETUP.md"
+else
+  bad "exit 22 missing from AGENTS.md or SETUP.md"
+fi
+if grep -q 'kill-tokens.deny' "$CANON" && grep -q 'kill-tokens.deny' "$SETUP"; then
+  ok "kill-tokens.deny documented in AGENTS.md and SETUP.md"
+else
+  bad "kill-tokens.deny missing from AGENTS.md or SETUP.md"
+fi
+if grep -qF '**Policy:**' "$CANON" && grep -qF '**Policy:**' "$SETUP"; then
+  ok "policy-key rule documented in AGENTS.md and SETUP.md"
+else
+  bad "policy-key rule missing from AGENTS.md or SETUP.md"
+fi
+
+echo "[policy keys]"
+if [ -f "$AGENTS_HOME/docs/DECISIONS.md" ]; then
+  declare -A _pol_val _pol_n
+  _pol_line=0
+  while IFS= read -r _pol_row || [ -n "$_pol_row" ]; do
+    _pol_line=$((_pol_line + 1))
+    case "$_pol_row" in
+      '**Policy:** '*) ;;
+      *) continue ;;
+    esac
+    _pol_rest="${_pol_row#\*\*Policy:\*\* }"
+    if [[ "$_pol_rest" =~ ^([a-z][a-z0-9_]*)=([A-Za-z0-9._-]+)$ ]]; then
+      _pk="${BASH_REMATCH[1]}"
+      _pv="${BASH_REMATCH[2]}"
+      if [ -n "${_pol_val[$_pk]+x}" ]; then
+        bad "policy key $_pk assigned twice (${_pol_val[$_pk]} and $_pv)"
+      else
+        _pol_val[$_pk]="$_pv"
+      fi
+      _pol_n[$_pk]=$((${_pol_n[$_pk]:-0} + 1))
+    elif [[ "$_pol_rest" =~ ^([a-z][a-z0-9_]*)\ superseded-by\ (.+)$ ]]; then
+      _ptarget="${BASH_REMATCH[2]}"
+      if grep -qxF "## $_ptarget" "$AGENTS_HOME/docs/DECISIONS.md"; then
+        :
+      else
+        bad "policy superseded-by target missing: $_ptarget"
+      fi
+    else
+      bad "malformed policy line $_pol_line: $_pol_rest"
+    fi
+  done < "$AGENTS_HOME/docs/DECISIONS.md"
+  for _pk in bash_without_prompt caveman paper_author lean_scaffold; do
+    if [ -n "${_pol_val[$_pk]+x}" ]; then
+      ok "policy $_pk=${_pol_val[$_pk]}"
+    else
+      bad "policy key $_pk has no active value"
+    fi
+  done
+  unset _pol_val _pol_n _pol_row _pol_rest _pk _pv _ptarget _pol_line
+else
+  bad "docs/DECISIONS.md missing — no policy keys"
+fi
+
+echo "[kill tokens]"
+_killdeny="$HOOKS/kill-tokens.deny"
+if [ -f "$_killdeny" ] && grep -q 'kill-tokens.deny' "$HOOKS/merge-strays.sh"; then
+  ok "kill-tokens.deny present and merge-strays.sh consults it"
+else
+  bad "kill-tokens.deny missing or merge-strays.sh does not consult it"
+fi
+if [ -f "$_killdeny" ]; then
+  _rc=0; bash "$HOOKS/merge-strays.sh" --check-kill "plain sentence with no retired name" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 0 ] && ok "kill check allows text with no retired name" \
+                   || bad "kill check rejected clean text (exit $_rc)"
+  _tok="$(grep -vE '^[[:space:]]*(#|$)' "$_killdeny" | head -n 1 || true)"
+  if [ -n "$_tok" ]; then
+    _rc=0; bash "$HOOKS/merge-strays.sh" --check-kill "please revive ${_tok} now" >/dev/null 2>&1 || _rc=$?
+    [ "$_rc" -eq 1 ] && ok "kill check refuses a retired name" \
+                     || bad "kill check did not refuse a retired name (exit $_rc)"
+    _setup_body="$(awk '
+      /^```gitignore$/ { s = 1; next }
+      /^```$/ && s { s = 0; next }
+      !s { print }
+    ' "$SETUP")"
+    _kill_hit=0
+    while IFS= read -r _tok || [ -n "$_tok" ]; do
+      case "$_tok" in
+        ''|'#'*) continue ;;
+      esac
+      _tok="${_tok%$'\r'}"
+      for _kf in "$CANON" "$AGENTS_HOME/README.md" \
+                 "$TEMPLATE/AGENTS.md" "$TEMPLATE/session_compact.md" \
+                 "$TEMPLATE/session_transcript.md" "$TEMPLATE/docs/DECISIONS.md"; do
+        [ -f "$_kf" ] || continue
+        if grep -F -q -- "$_tok" "$_kf"; then
+          bad "retired name in ${_kf#"$AGENTS_HOME"/}"
+          _kill_hit=1
+        fi
+      done
+      if printf '%s\n' "$_setup_body" | grep -F -q -- "$_tok"; then
+        bad "retired name in SETUP.md outside the gitignore sample"
+        _kill_hit=1
+      fi
+    done < "$_killdeny"
+    [ "$_kill_hit" -eq 0 ] && ok "retired names absent from the prompt and templates"
+  else
+    ok "kill-tokens.deny is empty (legal)"
+  fi
 fi
 
 # watch-stale.sh behaviour. A watch that never fires is worse than none, so the

@@ -1,0 +1,9 @@
+# Retired names. One literal token per line. Blank lines and # comments are ignored.
+# merge-strays.sh refuses to append a section that contains one of these.
+# verify.sh fails if a token appears in the prompt or the project templates.
+# A .gitignore line may still name a retired path so new projects keep ignoring it.
+# That carve-out is the fenced gitignore sample in SETUP.md and project-template/.gitignore.
+# An empty file is legal (a fork with nothing retired). Tokens are fixed strings, not globs.
+init-project
+/flush
+docs/SESSION.md

@@ -7,6 +7,9 @@
 # markdown section or SKIP". Sanitized output is appended to canonical, the
 # stray is deleted, the flag line removed. If the LLM fails, the flag survives
 # for the next run (manual fallback = the documented AI duty).
+# A reply that contains a token from hooks/kill-tokens.deny is not appended.
+# The stray and the flag line stay, so a human can separate the retired name
+# from anything else in that reply.
 #
 # Env overrides (sandbox testing):
 #   CANON, GUARD_DIR, STRAYS_DIR, AGENTS_HOME,
@@ -25,6 +28,33 @@ MODEL="${MERGE_LLM_MODEL:-}"
 MAX_BYTES="${MERGE_MAX_BYTES:-4000}"
 TIMEOUT="${MERGE_TIMEOUT:-120}"
 SKIP_LLM="${MERGE_SKIP_LLM:-0}"
+KILL_DENY="${KILL_DENY:-$AGENTS_HOME/hooks/kill-tokens.deny}"
+
+# kill_token_hit TEXT -> prints the token and returns 0 when TEXT contains one.
+# Fixed-string match. Empty deny file means nothing is retired.
+kill_token_hit() {
+  local text="$1" tok
+  [ -f "$KILL_DENY" ] || return 1
+  while IFS= read -r tok || [ -n "$tok" ]; do
+    tok="${tok%$'\r'}"
+    case "$tok" in
+      ''|'#'*) continue ;;
+    esac
+    if printf '%s\n' "$text" | grep -F -q -- "$tok"; then
+      printf '%s\n' "$tok"
+      return 0
+    fi
+  done < "$KILL_DENY"
+  return 1
+}
+
+if [ "${1:-}" = "--check-kill" ]; then
+  shift
+  if kill_token_hit "$*" >/dev/null; then
+    exit 1
+  fi
+  exit 0
+fi
 
 mkdir -p "$DIR"
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
@@ -142,6 +172,13 @@ $(cat "$stray")"
     rm -f "$stray"
     sed -i "\|^${stray}$|d" "$tmp_flag"
     processed=$((processed + 1))
+    continue
+  fi
+
+  _kill="$(kill_token_hit "$out" || true)"
+  if [ -n "$_kill" ]; then
+    log "KILL $base — output contains retired token ($_kill); stray kept, not appended"
+    failed=$((failed + 1))
     continue
   fi
 
