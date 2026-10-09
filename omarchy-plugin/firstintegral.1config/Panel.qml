@@ -764,7 +764,7 @@ Panel {
                           width: Style.space(2)
                           height: partName.implicitHeight
                           anchors.left: parent.left
-                          anchors.top: partName.top
+                          anchors.top: parent.top
                           color: partMouse.containsMouse ? root.accent : root.tint(0.25)
                         }
                         Column {
