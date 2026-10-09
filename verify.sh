@@ -1474,7 +1474,9 @@ if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
    && grep -q 'Style.bar.iconSlot' "$PLUGIN/BarWidget.qml" \
    && grep -q 'Style.bar.iconCanvas' "$PLUGIN/BarWidget.qml" \
    && ! grep -q 'var step = 18' "$PLUGIN/Panel.qml" \
-   && grep -q '7 days' "$PLUGIN/Panel.qml" \
+   && ! grep -q '7 days' "$PLUGIN/Panel.qml" \
+   && ! grep -q 'text: "Today"' "$PLUGIN/Panel.qml" \
+   && ! grep -q 'TilePip' "$PLUGIN/Panel.qml" \
    && ! grep -q 'This week' "$PLUGIN/Panel.qml" \
    && ! grep -q 'dayRows' "$PLUGIN/Panel.qml" \
    && grep -q 'showQuiet' "$PLUGIN/Panel.qml" \
@@ -1485,9 +1487,9 @@ if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
    && grep -q 'Not on this machine' "$PLUGIN/bin/usage.py" \
    && ! grep -q 'Fireworks' "$PLUGIN/bin/usage.py" \
    && ! grep -q 'Fireworks' "$PLUGIN/Panel.qml"; then
-  ok "1config bar is the ring only, spend has no weekday rows, and Go windows are read"
+  ok "1config bar is the ring only, spend has no today line or weekday rows, and Go windows are read"
 else
-  bad "1config bar still has a label, or the grid, or weekday rows, or no Go usage URL, or no quiet toggle"
+  bad "1config bar still has a label, or the grid, or a today line, or weekday rows, or no Go usage URL, or no quiet toggle"
 fi
 if grep -q 'function tileFill' "$PLUGIN/Panel.qml" \
    && grep -q 'function tileEdge' "$PLUGIN/Panel.qml" \

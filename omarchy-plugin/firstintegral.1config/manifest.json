@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "firstintegral.1config",
   "name": "1config",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "author": "Brusk Kawa Abdalla",
   "license": "MIT",
   "description": "1config on the Omarchy bar. The face is the ring. Open the panel for live brain vitals and for local AI usage.",

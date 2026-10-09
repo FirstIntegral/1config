@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-10 — Spend hides today and the section pip
+
+**Decision:** The spend card does not show a today total. Plan windows stay: rolling, weekly, monthly, and the other limit bars. Spend boxes keep the vitals fill and accent edge, and they do not draw the accent pip. Vitals tiles keep the pip.
+
+**Why:** The today box was an extra usage line. The pip read as a vertical bar across each window, including OpenCode rolling and monthly.
+
+**Rejected:** Removing the plan windows. Removing the pip from the vitals tiles.
+
 ## 2026-10-10 — Spend boxes use the vitals tile colours
 
 **Decision:** A spend box uses the same colours as a vitals tile. The fill is the foreground at 0.045, or 0.07 when a limit is at 80% or the card has an error. The edge is the accent at 0.28, or 0.8 when that box is hot. An error uses urgent, the same as a failed vital. A short accent pip sits on the left. Figures on the right use the accent, the way CLEAR does. The meter uses the accent, not a gray bar.

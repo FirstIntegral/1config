@@ -192,15 +192,6 @@ Panel {
     }
   }
 
-  component TilePip: Rectangle {
-    property bool strong: false
-    property bool fault: false
-    width: Style.space(3)
-    radius: width / 2
-    color: fault ? Color.urgent : root.accent
-    opacity: (strong || fault) ? 1 : 0.4
-  }
-
   component UsageCard: Item {
     id: card
     required property var modelData
@@ -238,15 +229,6 @@ Panel {
       color: root.tileFill(card.hotLimits() || card.faulted())
       border.width: 1
       border.color: root.tileEdge(card.hotLimits(), card.faulted())
-
-      TilePip {
-        strong: card.hotLimits()
-        fault: card.faulted()
-        anchors.left: parent.left
-        anchors.leftMargin: Style.space(8)
-        anchors.verticalCenter: parent.verticalCenter
-        height: parent.height * 0.55
-      }
 
       Column {
         id: cardCol
@@ -296,47 +278,6 @@ Panel {
           wrapMode: Text.WordWrap
         }
 
-        Rectangle {
-          visible: !card.quiet
-          width: parent.width
-          implicitHeight: summaryCol.implicitHeight + Style.space(20)
-          height: implicitHeight
-          radius: Style.space(6)
-          color: root.tileFill(false)
-          border.width: 1
-          border.color: root.tileEdge(false, false)
-          TilePip {
-            anchors.left: parent.left
-            anchors.leftMargin: Style.space(8)
-            anchors.verticalCenter: parent.verticalCenter
-            height: parent.height * 0.55
-          }
-          Column {
-            id: summaryCol
-            x: Style.space(18)
-            y: Style.space(10)
-            width: parent.width - Style.space(30)
-            spacing: Style.space(4)
-            Text {
-              width: parent.width
-              text: "Today"
-              color: root.contentForeground
-              opacity: 0.6
-              font.family: root.proseFamily
-              font.pixelSize: Style.font.subtitle
-            }
-            Text {
-              width: parent.width
-              text: String(card.agent.todayLabel || "—") + "     ·     7 days  " + String(card.agent.weekLabel || "—")
-              color: root.accent
-              opacity: 0.55
-              font.family: root.monoFamily
-              font.pixelSize: Style.font.title
-              font.bold: true
-            }
-          }
-        }
-
         Repeater {
           model: card.quiet ? [] : (card.agent.limits || [])
           delegate: Rectangle {
@@ -350,18 +291,11 @@ Panel {
             color: root.tileFill(strong)
             border.width: 1
             border.color: root.tileEdge(strong, false)
-            TilePip {
-              strong: limitBox.strong
-              anchors.left: parent.left
-              anchors.leftMargin: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              height: parent.height * 0.55
-            }
             Column {
               id: limitCol
-              x: Style.space(18)
+              x: Style.space(12)
               y: Style.space(10)
-              width: parent.width - Style.space(30)
+              width: parent.width - Style.space(24)
               spacing: Style.space(6)
               Item {
                 width: parent.width
@@ -430,17 +364,11 @@ Panel {
               color: root.tileFill(false)
               border.width: 1
               border.color: root.tileEdge(false, false)
-              TilePip {
-                anchors.left: parent.left
-                anchors.leftMargin: Style.space(8)
-                anchors.verticalCenter: parent.verticalCenter
-                height: parent.height * 0.55
-              }
               Column {
                 id: modelCol
-                x: Style.space(18)
+                x: Style.space(12)
                 y: Style.space(10)
-                width: parent.width - Style.space(30)
+                width: parent.width - Style.space(24)
                 spacing: Style.space(6)
                 Text {
                   width: parent.width
