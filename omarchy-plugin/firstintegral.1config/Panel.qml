@@ -26,10 +26,13 @@ Panel {
   readonly property string proseFamily: "sans-serif"
   readonly property string monoFamily: Style.font.family
 
-  property string mode: "map"
+  property string mode: "usage"
   property string selectedId: ""
 
-  function open() { root.controller.show() }
+  function open() {
+    root.mode = "usage"
+    root.controller.show()
+  }
   function close() { root.controller.hide() }
   function toggle() {
     if (root.opened) root.close()
@@ -99,8 +102,9 @@ Panel {
 
   readonly property real screenW: panel.screenW > 0 ? panel.screenW : 1600
   readonly property real screenH: panel.screenH > 0 ? panel.screenH : 1025
-  readonly property int cardWidth: Math.round(Math.min(1400, 0.75 * screenW))
-  readonly property int cardHeight: Math.round(Math.min(950, 0.8 * screenH))
+  // Drops from the bar icon. Wide enough for one usage card, short enough to leave the desktop.
+  readonly property int cardWidth: Math.round(Math.min(Style.space(440), Math.max(Style.space(320), 0.28 * screenW)))
+  readonly property int cardHeight: Math.round(Math.min(Style.space(560), Math.max(Style.space(360), 0.52 * screenH)))
 
   component SectionHeader: Item {
     id: sh
@@ -170,7 +174,7 @@ Panel {
       text: st.value
       color: st.hot ? Color.accent : st.tone
       font.family: st.family
-      font.pixelSize: Style.font.display
+      font.pixelSize: Style.font.body
       font.weight: Font.Light
       font.letterSpacing: 0.5
     }
@@ -329,7 +333,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     borderSpec: root.panelBorder
-    centerOnBar: true
+    centerOnBar: false
     contentWidth: panel.fittedContentWidth(root.cardWidth)
     contentHeight: panel.cappedContentHeight(root.cardHeight)
 
@@ -392,13 +396,17 @@ Panel {
           id: header
           width: parent.width
           implicitHeight: headerRow.implicitHeight + Style.space(8)
-          Row {
+          Column {
             id: headerRow
             width: parent.width
-            spacing: Style.space(16)
+            spacing: Style.space(4)
+            Row {
+              id: titleLine
+              width: parent.width
+              spacing: Style.space(8)
             Column {
               id: titleCol
-              width: Math.max(Style.space(180), headerRow.width - statRow.implicitWidth - switchBox.implicitWidth - Style.space(48))
+              width: Math.max(Style.space(80), titleLine.width - switchBox.implicitWidth - Style.space(8))
               spacing: Style.space(2)
               Text {
                 text: "1config"
@@ -434,42 +442,6 @@ Panel {
                 font.family: root.monoFamily
                 font.pixelSize: Style.font.caption
                 elide: Text.ElideRight
-              }
-            }
-            Row {
-              id: statRow
-              spacing: Style.space(14)
-              Stat {
-                value: String(root.brain.commit || "----")
-                label: root.brain.dirty === true ? "dirty" : "commit"
-                hot: root.brain.dirty === true
-                family: root.monoFamily
-                tone: root.contentForeground
-              }
-              Stat {
-                value: root.pad2(root.brain.links)
-                label: "links"
-                hot: root.ready && Number(root.brain.links) < Number(root.brain.linksExpected || 3)
-                family: root.monoFamily
-                tone: root.contentForeground
-              }
-              Stat {
-                value: {
-                  var n = 0
-                  var tools = root.brain.tools || []
-                  for (var i = 0; i < tools.length; i++) if (tools[i].present) n++
-                  return root.pad2(n)
-                }
-                label: "tools"
-                family: root.monoFamily
-                tone: root.contentForeground
-              }
-              Stat {
-                value: root.service ? String(root.service.barLabel || "—") : "…"
-                label: "spend"
-                hot: root.service ? root.service.alarming === true : false
-                family: root.monoFamily
-                tone: root.contentForeground
               }
             }
             Rectangle {
@@ -517,6 +489,43 @@ Panel {
                 }
               }
             }
+            }
+            Row {
+              id: statRow
+              spacing: Style.space(12)
+              Stat {
+                value: String(root.brain.commit || "----")
+                label: root.brain.dirty === true ? "dirty" : "commit"
+                hot: root.brain.dirty === true
+                family: root.monoFamily
+                tone: root.contentForeground
+              }
+              Stat {
+                value: root.pad2(root.brain.links)
+                label: "links"
+                hot: root.ready && Number(root.brain.links) < Number(root.brain.linksExpected || 3)
+                family: root.monoFamily
+                tone: root.contentForeground
+              }
+              Stat {
+                value: {
+                  var n = 0
+                  var tools = root.brain.tools || []
+                  for (var i = 0; i < tools.length; i++) if (tools[i].present) n++
+                  return root.pad2(n)
+                }
+                label: "tools"
+                family: root.monoFamily
+                tone: root.contentForeground
+              }
+              Stat {
+                value: root.service ? String(root.service.barLabel || "—") : "…"
+                label: "spend"
+                hot: root.service ? root.service.alarming === true : false
+                family: root.monoFamily
+                tone: root.contentForeground
+              }
+            }
           }
           Rectangle {
             anchors.left: parent.left
@@ -537,14 +546,14 @@ Panel {
           width: parent.width
           height: Math.max(Style.space(200), parent.height - header.implicitHeight - footer.implicitHeight - Style.space(24))
 
-          Row {
+          Column {
             anchors.fill: parent
             visible: root.mode === "map"
-            spacing: Style.space(12)
+            spacing: Style.space(8)
             Rectangle {
               id: mapFrame
-              width: parent.width - detailPane.width - Style.space(12)
-              height: parent.height
+              width: parent.width
+              height: Math.max(Style.space(140), parent.height * 0.46)
               radius: Style.space(6)
               color: root.tint(0.02)
               border.width: 1
@@ -570,8 +579,8 @@ Panel {
             }
             Rectangle {
               id: detailPane
-              width: Math.max(Style.space(280), Math.min(Style.space(400), body.width * 0.32))
-              height: parent.height
+              width: parent.width
+              height: Math.max(Style.space(80), parent.height - mapFrame.height - Style.space(8))
               radius: Style.space(6)
               color: root.tint(0.02)
               border.width: 1

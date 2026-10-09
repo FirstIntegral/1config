@@ -1450,6 +1450,12 @@ if [ -f "$PLUGIN/BrainMap.qml" ] && grep -q 'BrainMap' "$PLUGIN/Panel.qml"; then
 else
   bad "1config panel missing BrainMap"
 fi
+if grep -q 'property string mode: "usage"' "$PLUGIN/Panel.qml" \
+   && ! grep -q 'centerOnBar: true' "$PLUGIN/Panel.qml"; then
+  ok "1config panel opens on usage under the icon"
+else
+  bad "1config panel still centred or still defaults to the map"
+fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then
   bad "setup.sh does not install firstintegral.1config"

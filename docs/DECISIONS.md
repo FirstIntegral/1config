@@ -2,11 +2,21 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — 1config panel opens on spend, under the icon
+
+**Policy:** omarchy_panel_open=usage-at-icon
+
+**Decision:** The card is about 440 by 560 and anchors under the `1c` bar icon. `centerOnBar` stays off. Every open starts on the spend list. `g` still opens the map, stacked above a short explanation because the card is no longer wide enough for a side-by-side pane. Numerals in the header use the body size so the row fits.
+
+**Why:** The centred 1400 by 950 map covered the desktop. The icon is on the right of the bar. Spend is what the click is for. The map stays one key away.
+
+**Rejected:** Keeping the centred card and only changing the default tab. A usage-only panel with the map removed.
+
 ## 2026-10-09 — Open panel is the brain HUD; the bar id ships in omarchy-dots
 
 **Policy:** omarchy_bar_id=packed-in-omarchy-dots
 
-**Decision:** The open panel is a brain HUD of this repo, using the design language in `~/Projects/skills/brain-hud-design` (theme colours, thin accent frame, grid, scanlines, corner brackets, sweep only while the map is open, small-caps, large numerals). Default view is the map: centre is 1config, orbit is Rules, Install, Permissions, Hooks, Scaffolds, Usage. The side pane says what the repo is. Spend stays on the bar face, on the Usage part, and on the `s` view. The collector adds a path-free checkout snapshot (short commit, branch, dirty, three symlink checks, three tools on `PATH`, boot slip clean or not). The live bar layout, including `firstintegral.1config` and `brwsk.brain`, is packed in omarchy-dots `omarchy/shell.json`. Plugin files stay in this repo. omarchy-dots still does not install them.
+**Decision:** The open panel is a brain HUD of this repo, using the design language in `~/Projects/skills/brain-hud-design` (theme colours, thin accent frame, grid, scanlines, corner brackets, sweep only while the map is open, small-caps). The map is centre 1config, orbit Rules, Install, Permissions, Hooks, Scaffolds, Usage. The side pane says what the repo is. Spend stays on the bar face and on the spend view. The centred 1400 by 950 card and the map-as-default are replaced by the ADR above (`omarchy_panel_open=usage-at-icon`). The collector adds a path-free checkout snapshot (short commit, branch, dirty, three symlink checks, three tools on `PATH`, boot slip clean or not). The live bar layout, including `firstintegral.1config` and `brwsk.brain`, is packed in omarchy-dots `omarchy/shell.json`. Plugin files stay in this repo. omarchy-dots still does not install them.
 
 **Why:** The first panel was only usage cards. The bar should still answer "how much did the tools spend", and opening it should answer "what is 1config". Packing the bar id is what stops login sync from classifying `shell.json` as a local edit. Copying the plugin into the dots repo would make a second source for the same QML.
 

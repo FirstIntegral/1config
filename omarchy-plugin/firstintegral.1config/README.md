@@ -2,7 +2,7 @@
 
 Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). The bar face is this machine's AI usage. The panel is the brain: what the repo is, then the spend.
 
-Left click opens the panel. Right click re-reads local files. The map is the default. `s` switches to the spend list. `g` returns to the map. `h` and `l` cycle the six parts. Click a part, or a card in the side pane.
+Left click opens a small card under the bar icon. Right click re-reads local files. Spend is the default. `g` opens the map. `s` returns to spend. `h` and `l` cycle the six parts. Click a part, or a card in the side pane.
 
 The bar shows the hottest plan percentage on disk (the self-test fixture produces `C 50%`), or today's token total when no plan figure exists. An accent dot pulses on the bar when a limit is at 80% or more.
 
