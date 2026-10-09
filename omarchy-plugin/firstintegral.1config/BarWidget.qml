@@ -110,4 +110,33 @@ BarWidget {
       }
     }
   }
+
+  Rectangle {
+    id: pulseDot
+    readonly property bool armed: root.alarming && !root.vertical
+    visible: armed && opacity > 0
+    width: Math.max(3, Style.space(4))
+    height: width
+    radius: width / 2
+    color: Color.accent
+    anchors.left: parent.right
+    anchors.leftMargin: -button.scaledHorizontalMargin + Style.space(1)
+    anchors.top: parent.top
+    anchors.topMargin: Math.round(parent.height * 0.22)
+    opacity: 0
+
+    SequentialAnimation {
+      id: pulseAnim
+      NumberAnimation { target: pulseDot; property: "opacity"; to: 0.95; duration: 450; easing.type: Easing.OutCubic }
+      NumberAnimation { target: pulseDot; property: "opacity"; to: 0.0; duration: 1300; easing.type: Easing.InOutSine }
+    }
+    Timer {
+      interval: 6000
+      repeat: true
+      running: pulseDot.armed
+      triggeredOnStart: true
+      onTriggered: pulseAnim.restart()
+      onRunningChanged: if (!running) { pulseAnim.stop(); pulseDot.opacity = 0 }
+    }
+  }
 }

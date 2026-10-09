@@ -11,7 +11,9 @@ emit paths, prompts, credentials, or message text.
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 from collections import defaultdict
@@ -342,6 +344,135 @@ def bar_summary(agents: list[dict]) -> dict:
     return {"label": label, "alarm": alarm, "todayTokens": today, "lines": lines}
 
 
+PILLARS = (
+    {
+        "id": "rules",
+        "name": "Rules",
+        "blurb": "One AGENTS.md. Claude, Grok, and OpenCode load the same file through symlinks.",
+        "points": [
+            "create_project",
+            "continue_project",
+            "checkpoint_project",
+            "writepaper_project",
+            "global_brain_update",
+        ],
+    },
+    {
+        "id": "install",
+        "name": "Install",
+        "blurb": "setup.sh wires the machine. verify.sh checks it. sync.sh signs the commit and pushes.",
+        "points": ["setup.sh", "verify.sh", "sync.sh"],
+    },
+    {
+        "id": "permissions",
+        "name": "Permissions",
+        "blurb": "permissions.json is the only policy. setup.sh fans it out to the three tools.",
+        "points": ["allow", "ask", "deny", "bash_without_prompt"],
+    },
+    {
+        "id": "hooks",
+        "name": "Hooks",
+        "blurb": "GPG unlock without a pinentry window, cron guards, staleness watch, boot dashboard.",
+        "points": ["gpg-git.sh", "check-links.sh", "watch-stale.sh", "boot-dashboard"],
+    },
+    {
+        "id": "scaffolds",
+        "name": "Scaffolds",
+        "blurb": "project-template starts a project. paper-template starts a LaTeX paper with a Lean mirror.",
+        "points": ["project-template", "paper-template", "digit-refuse"],
+    },
+    {
+        "id": "usage",
+        "name": "Usage",
+        "blurb": "This machine's AI spend. The timer reads local files. It does not call a provider.",
+        "points": ["Claude", "Grok", "OpenCode", "Codex", "Fireworks"],
+    },
+)
+
+ABOUT = (
+    "1config is the global brain on this machine.",
+    "Claude Code, Grok, and OpenCode load one rules file.",
+    "setup.sh installs it. verify.sh checks it. sync.sh signs a commit and pushes it.",
+    "Projects, papers, permissions, and this bar all come from that same checkout.",
+    "Usage is one part of the map, not the whole plugin.",
+)
+
+LINK_RELS = (
+    Path(".claude/CLAUDE.md"),
+    Path(".grok/AGENTS.md"),
+    Path(".config/opencode/AGENTS.md"),
+)
+
+
+def _token(value: str, limit: int) -> str:
+    line = value.strip().splitlines()[:1]
+    text = line[0] if line else ""
+    if "@" in text or any(ord(ch) < 32 for ch in text):
+        return ""
+    return "".join(ch for ch in text if ch.isalnum() or ch in "-_./")[:limit]
+
+
+def _git(root: Path, args: list[str]) -> str:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
+def brain_status(home: Path) -> dict:
+    root = home / ".agents"
+    present = (root / "setup.sh").is_file() and (root / "AGENTS.md").is_file()
+    commit = ""
+    branch = ""
+    dirty = False
+    links = 0
+    slip = "unknown"
+    if present:
+        commit = _token(_git(root, ["rev-parse", "--short", "HEAD"]), 12)
+        branch = _token(_git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), 40)
+        dirty = bool(_git(root, ["status", "--porcelain", "--untracked-files=no"]))
+        target = (root / "AGENTS.md").resolve()
+        for rel in LINK_RELS:
+            path = home / rel
+            try:
+                if path.is_symlink() and path.resolve() == target:
+                    links += 1
+            except OSError:
+                continue
+        slip_path = root / "boot-dashboard" / "close-slip.txt"
+        try:
+            if slip_path.is_file():
+                first = slip_path.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
+                slip = "clean" if first and first[0].strip() == "CLEAN" else "warn"
+        except OSError:
+            slip = "unknown"
+    tools = [{"id": name, "present": shutil.which(name) is not None} for name in ("claude", "grok", "opencode")]
+    return {
+        "name": "1config",
+        "oneLine": "One rules file for Claude, Grok, and OpenCode. This checkout is the global brain.",
+        "remoteLabel": "FirstIntegral/1config",
+        "about": list(ABOUT),
+        "present": present,
+        "commit": commit,
+        "branch": branch,
+        "dirty": dirty,
+        "links": links,
+        "linksExpected": 3,
+        "tools": tools,
+        "slip": slip,
+        "pillars": [dict(item) for item in PILLARS],
+    }
+
+
 def collect(home: Path, now: datetime | None = None) -> dict:
     now = now or datetime.now().astimezone()
     by_id: dict[str, dict] = {}
@@ -382,7 +513,8 @@ def collect(home: Path, now: datetime | None = None) -> dict:
         "bar": {"label": summary["label"], "alarm": summary["alarm"], "todayTokens": summary["todayTokens"]},
         "tooltip": summary["lines"],
         "agents": agents,
-        "note": "Timer reads this machine only. u asks Omarchy to refresh provider limits.",
+        "brain": brain_status(home),
+        "note": "Open the panel for what 1config is. The timer reads this machine only. u asks Omarchy to refresh provider limits.",
     }
 
 
@@ -486,6 +618,18 @@ def self_test() -> None:
     assert grok["limits"][0]["usedPct"] == 25, grok
     assert opencode["todayTokens"] == 15, opencode
     assert payload["bar"]["label"] == "C 50%", payload["bar"]
+    brain = payload["brain"]
+    assert brain["present"] is False, brain
+    assert brain["links"] == 0, brain
+    assert [item["id"] for item in brain["pillars"]] == [
+        "rules",
+        "install",
+        "permissions",
+        "hooks",
+        "scaffolds",
+        "usage",
+    ], brain
+    assert "global brain" in brain["about"][0], brain
     blob = json.dumps(payload)
     for banned in ("/tmp", "Bearer", "sk-", "usage.json", "@"):
         assert banned not in blob, banned

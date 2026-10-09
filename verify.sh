@@ -1445,6 +1445,11 @@ if PYTHONDONTWRITEBYTECODE=1 python3 "$PLUGIN/bin/usage.py" --self-test >/dev/nu
 else
   bad "usage.py self-test failed"
 fi
+if [ -f "$PLUGIN/BrainMap.qml" ] && grep -q 'BrainMap' "$PLUGIN/Panel.qml"; then
+  ok "1config panel has the brain map"
+else
+  bad "1config panel missing BrainMap"
+fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then
   bad "setup.sh does not install firstintegral.1config"

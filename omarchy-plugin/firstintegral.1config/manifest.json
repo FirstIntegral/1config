@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "firstintegral.1config",
   "name": "1config",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Brusk Kawa Abdalla",
   "license": "MIT",
-  "description": "1config on the Omarchy bar: local AI usage for Claude, Grok, OpenCode, and any Omarchy usage record already on the machine.",
+  "description": "1config on the Omarchy bar. Open the panel for what this brain is. The face shows local AI usage.",
   "kinds": ["service", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "1config",
-    "description": "Local AI usage. The timer does not call a provider.",
+    "description": "What 1config is, plus local AI usage. The timer does not call a provider.",
     "category": "AI",
     "aliases": ["1config", "usage", "brain"],
     "allowMultiple": false,

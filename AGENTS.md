@@ -145,9 +145,9 @@ Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md
 
 ## Omarchy plugin — `firstintegral.1config`
 
-1config's own Omarchy bar widget lives at `omarchy-plugin/firstintegral.1config/`. On a machine with `~/.config/omarchy/plugins/`, `setup.sh` copies it there (Omarchy rejects symlinks inside a plugin) and adds the id to `bar.layout.right` in `~/.config/omarchy/shell.json` when it is missing. Ubuntu has no such directory, so setup skips the copy. The same rules file is what all three tools read; the widget is the Omarchy surface.
+1config's own Omarchy bar widget lives at `omarchy-plugin/firstintegral.1config/`. On a machine with `~/.config/omarchy/plugins/`, `setup.sh` copies it there (Omarchy rejects symlinks inside a plugin) and adds the id to `bar.layout.right` in `~/.config/omarchy/shell.json` when it is missing. Ubuntu has no such directory, so setup skips the copy. The same rules file is what all three tools read; the widget is the Omarchy surface. The bar id also ships in the omarchy-dots pack (`omarchy/shell.json`). That pack does not install the plugin files. `setup.sh` does.
 
-The bar shows local AI usage. Claude, Codex, and Fireworks come from Omarchy's usage records. Grok comes from `~/.grok/sessions/**/usage.json` plus the last credits snapshot Grok already wrote. OpenCode comes from a read-only sum of its local database. The timer does not call a provider. Panel key `u` runs `omarchy-agent-usage-update --limits-only`, which does. This is not `brwsk.brain` (that plugin belongs to grokbot-brain) and it is not a vendored copy of NixFred's Burn Bar or Infomarchy.
+The bar face shows local AI usage. The panel is a brain HUD of this repo: what 1config is (rules, install, permissions, hooks, scaffolds, usage), plus the spend. Claude, Codex, and Fireworks come from Omarchy's usage records. Grok comes from `~/.grok/sessions/**/usage.json` plus the last credits snapshot Grok already wrote. OpenCode comes from a read-only sum of its local database. The timer does not call a provider. Panel key `u` runs `omarchy-agent-usage-update --limits-only`, which does. The sweep runs only while the map is open. This is not `brwsk.brain` (that plugin belongs to grokbot-brain) and it is not a vendored copy of NixFred's Burn Bar or Infomarchy.
 
 ---
 

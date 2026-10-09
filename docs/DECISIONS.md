@@ -2,13 +2,23 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Open panel is the brain HUD; the bar id ships in omarchy-dots
+
+**Policy:** omarchy_bar_id=packed-in-omarchy-dots
+
+**Decision:** The open panel is a brain HUD of this repo, using the design language in `~/Projects/skills/brain-hud-design` (theme colours, thin accent frame, grid, scanlines, corner brackets, sweep only while the map is open, small-caps, large numerals). Default view is the map: centre is 1config, orbit is Rules, Install, Permissions, Hooks, Scaffolds, Usage. The side pane says what the repo is. Spend stays on the bar face, on the Usage part, and on the `s` view. The collector adds a path-free checkout snapshot (short commit, branch, dirty, three symlink checks, three tools on `PATH`, boot slip clean or not). The live bar layout, including `firstintegral.1config` and `brwsk.brain`, is packed in omarchy-dots `omarchy/shell.json`. Plugin files stay in this repo. omarchy-dots still does not install them.
+
+**Why:** The first panel was only usage cards. The bar should still answer "how much did the tools spend", and opening it should answer "what is 1config". Packing the bar id is what stops login sync from classifying `shell.json` as a local edit. Copying the plugin into the dots repo would make a second source for the same QML.
+
+**Rejected:** Vendoring the QML into omarchy-dots. Leaving the panel as usage cards only. Leaving `shell.json` as a permanent local edit. A provider call on the sweep timer.
+
 ## 2026-10-09 — 1config ships its own Omarchy usage plugin
 
 **Decision:** `omarchy-plugin/firstintegral.1config/` is part of this repo. `setup.sh` copies it into `~/.config/omarchy/plugins/firstintegral.1config/` when that directory's parent exists, and inserts the widget id into the live `shell.json` right section if it is absent. The collector reads Omarchy's existing usage records (Claude, Codex, Fireworks), Grok's local session ledger and last credits snapshot, and OpenCode's local sqlite database. The refresh timer does not call a provider. Panel key `u` may run `omarchy-agent-usage-update --limits-only`. Ubuntu skips the copy. The widget is not `brwsk.brain`.
 
 **Why:** NixFred's Burn Bar (`github:nixfred/burnbar`) and Infomarchy (`github:nixfred/infomarchy`) are the Omarchy plugins that put this machine's AI usage on the desktop. Burn Bar is a large cockpit (pace advice, local GPU, Jetson ssh) and a separate project. Omarchy's own `omarchy.agents` widget already draws Claude, Codex, and Fireworks, and it does not read Grok or OpenCode ledgers. 1config is the thing that ties those three tools together, so the bar widget belongs in this repo and only adds the reads Omarchy does not do. Copying Burn Bar in would freeze someone else's UI and its network behavior inside the brain.
 
-**Rejected:** `omarchy plugin add` of burnbar or infomarchy as the 1config answer. Vendoring either repo. A provider call on the timer. Putting the widget in omarchy-dots (that pack does not install plugins, and the live `shell.json` is already a local edit because `brwsk.brain` is on the bar). Reusing the `brwsk.brain` id.
+**Rejected:** `omarchy plugin add` of burnbar or infomarchy as the 1config answer. Vendoring either repo. A provider call on the timer. Putting the plugin files in omarchy-dots. Reusing the `brwsk.brain` id. The bar-id half of the earlier rejection (leave `shell.json` as a local edit) is replaced by the ADR above: the id is packed, the files stay here.
 
 ## 2026-10-09 — Claude reads project AGENTS.md; the hook is a fallback
 

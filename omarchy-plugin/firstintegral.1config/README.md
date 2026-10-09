@@ -1,8 +1,12 @@
 # firstintegral.1config
 
-Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). One widget for this machine's AI usage.
+Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). The bar face is this machine's AI usage. The panel is the brain: what the repo is, then the spend.
 
-The bar shows the hottest plan percentage on disk (the self-test fixture produces `C 50%`), or today's token total when no plan figure exists. Left click opens the panel. Right click re-reads local files.
+Left click opens the panel. Right click re-reads local files. The map is the default. `s` switches to the spend list. `g` returns to the map. `h` and `l` cycle the six parts. Click a part, or a card in the side pane.
+
+The bar shows the hottest plan percentage on disk (the self-test fixture produces `C 50%`), or today's token total when no plan figure exists. An accent dot pulses on the bar when a limit is at 80% or more.
+
+The panel follows the brain HUD look (thin accent frame, grid, scanlines, corner brackets, a slow sweep, small-caps headers, large numerals). Colours come from the current Omarchy theme. The sweep runs only while the map is open.
 
 | Card | Where the numbers come from |
 |---|---|
@@ -11,6 +15,8 @@ The bar shows the hottest plan percentage on disk (the self-test fixture produce
 | OpenCode | Read-only sum of token columns in `~/.local/share/opencode/opencode.db` for today and 7 days. |
 
 The timer does not call a provider. In the panel, `u` runs `omarchy-agent-usage-update --limits-only`, which is Omarchy's collector and does contact the providers you are already signed into. `r` only re-reads disk.
+
+The side pane also reads the checkout, still without printing paths: short commit, branch, dirty bit, how many of the three rules symlinks resolve, whether `claude` / `grok` / `opencode` are on `PATH`, and whether the last boot slip was `CLEAN`. The six parts are Rules, Install, Permissions, Hooks, Scaffolds, and Usage.
 
 No prompt text, paths, or credentials leave the collector. Output is one JSON object on stdout.
 

@@ -22,6 +22,7 @@ Item {
   property string generatedAt: ""
   property string hostname: ""
   property string note: ""
+  property var brain: ({})
   property int revision: 0
   property string _stdout: ""
   property string _stderr: ""
@@ -68,6 +69,7 @@ Item {
       generatedAt = String(data.generatedAt || "")
       hostname = String(data.hostname || "")
       note = String(data.note || "")
+      brain = data.brain && typeof data.brain === "object" ? data.brain : {}
       ready = true
       state = "ready"
       message = ""
