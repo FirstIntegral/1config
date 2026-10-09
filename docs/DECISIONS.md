@@ -221,3 +221,11 @@ Claude project `memory/` dirs are DISABLED stubs. Grok `[memory] enabled = false
 ## 2026-09-09 — Default `create_project` root
 
 Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit paths remain supported. This prevents project placement from depending on whichever directory a tool happened to start in. The previous behavior was ambiguous and placed `infomarchy_design` directly under `$HOME`; that project was moved to `~/Projects/infomarchy_design`. No git repository or remote is created.
+
+## 2026-10-09 — Reusable design skills live in ~/Projects/skills
+
+**Decision:** Removed `~/.agents/skills/ambient-operations-design`. Reusable design skills (ambient-operations-design, brain-hud-design) live in `~/Projects/skills/<name>/SKILL.md`. `~/.agents/skills/` stays machine-local for tool/desktop skills (omarchy, diagnose-crash, vigil).
+
+**Why:** One home for design skills; the global copy was an unused duplicate (only announced, never referenced by a project).
+
+**Rejected:** Keeping identical copies in three places.

@@ -119,4 +119,4 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |
-| `skills/` | Machine-local (Omarchy skill lives here). Gitignored. |
+| `skills/` | Machine-local (Omarchy, diagnose-crash, Vigil skills). Gitignored. Reusable design skills live in `~/Projects/skills/`, not here. |
