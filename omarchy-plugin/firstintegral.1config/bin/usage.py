@@ -13,6 +13,7 @@ Does not emit paths, prompts, credentials, or message text.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -796,59 +797,6 @@ def bar_summary(agents: list[dict]) -> dict:
     return {"label": label, "alarm": alarm, "todayTokens": today, "lines": lines}
 
 
-PILLARS = (
-    {
-        "id": "rules",
-        "name": "Rules",
-        "blurb": "One AGENTS.md. Claude, Grok, and OpenCode load the same file through symlinks.",
-        "points": [
-            "create_project",
-            "continue_project",
-            "checkpoint_project",
-            "writepaper_project",
-            "global_brain_update",
-        ],
-    },
-    {
-        "id": "install",
-        "name": "Install",
-        "blurb": "setup.sh wires the machine. verify.sh checks it. sync.sh signs the commit and pushes.",
-        "points": ["setup.sh", "verify.sh", "sync.sh"],
-    },
-    {
-        "id": "permissions",
-        "name": "Permissions",
-        "blurb": "permissions.json is the only policy. setup.sh fans it out to the three tools.",
-        "points": ["allow", "ask", "deny", "bash_without_prompt"],
-    },
-    {
-        "id": "hooks",
-        "name": "Hooks",
-        "blurb": "GPG unlock without a pinentry window, cron guards, staleness watch, boot dashboard.",
-        "points": ["gpg-git.sh", "check-links.sh", "watch-stale.sh", "boot-dashboard"],
-    },
-    {
-        "id": "scaffolds",
-        "name": "Scaffolds",
-        "blurb": "project-template starts a project. paper-template starts a LaTeX paper with a Lean mirror.",
-        "points": ["project-template", "paper-template", "digit-refuse"],
-    },
-    {
-        "id": "usage",
-        "name": "Usage",
-        "blurb": "OpenCode Go windows come from opencode.ai. The other tools are read on this machine.",
-        "points": ["Claude", "Grok", "OpenAI", "OpenCode", "Codex", "Cursor"],
-    },
-)
-
-ABOUT = (
-    "1config is the global brain on this machine.",
-    "Claude Code, Grok, and OpenCode load one rules file.",
-    "setup.sh installs it. verify.sh checks it. sync.sh signs a commit and pushes it.",
-    "Projects, papers, permissions, and this bar all come from that same checkout.",
-    "Usage is one part of the map, not the whole plugin.",
-)
-
 LINK_RELS = (
     Path(".claude/CLAUDE.md"),
     Path(".grok/AGENTS.md"),
@@ -864,7 +812,7 @@ def _token(value: str, limit: int) -> str:
     return "".join(ch for ch in text if ch.isalnum() or ch in "-_./")[:limit]
 
 
-def _git(root: Path, args: list[str]) -> str:
+def _git_out(root: Path, args: list[str]) -> str | None:
     try:
         proc = subprocess.run(
             ["git", "-C", str(root), *args],
@@ -874,24 +822,277 @@ def _git(root: Path, args: list[str]) -> str:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return ""
+        return None
     if proc.returncode != 0:
-        return ""
+        return None
     return proc.stdout.strip()
 
 
-def brain_status(home: Path) -> dict:
+def _detail(value: str) -> str:
+    cleaned = "".join(ch for ch in value if ch.isalnum() or ch in " /_-")
+    return cleaned.strip()[:40] or "unknown"
+
+
+def _vital(vital_id: str, group: str, name: str, state: str, detail: str) -> dict:
+    if state not in {"ok", "warn", "fail"}:
+        state = "fail"
+    return {
+        "id": vital_id,
+        "group": group,
+        "name": name,
+        "state": state,
+        "detail": _detail(detail),
+    }
+
+
+def _count_files(root: Path, rels: tuple[str, ...]) -> int:
+    found = 0
+    for rel in rels:
+        if (root / rel).is_file():
+            found += 1
+    return found
+
+
+def _ratio(found: int, total: int) -> tuple[str, str]:
+    detail = f"{found}/{total}"
+    if found == total:
+        return "ok", detail
+    if found == 0:
+        return "fail", detail
+    return "warn", detail
+
+
+def _ahead_behind(raw: str | None) -> tuple[str, str]:
+    if raw is None or not raw.strip():
+        return "warn", "no ref"
+    parts = raw.split()
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return "warn", "no ref"
+    behind, ahead = int(parts[0]), int(parts[1])
+    if behind == 0 and ahead == 0:
+        return "ok", "level"
+    if behind and ahead:
+        return "fail", "diverged"
+    if ahead:
+        return "warn", f"ahead {ahead}"
+    return "warn", f"behind {behind}"
+
+
+def _gitconfig(home: Path) -> dict[str, str]:
+    text = ""
+    for rel in (Path(".gitconfig"), Path(".config/git/config")):
+        path = home / rel
+        try:
+            if path.is_file():
+                text += "\n" + path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    section = ""
+    values: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].split(";", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip().lower().split()[0]
+            continue
+        if "=" not in line or not section:
+            continue
+        key, val = line.split("=", 1)
+        values[f"{section}.{key.strip().lower()}"] = val.strip().strip('"').strip("'")
+    return values
+
+
+def _signing_vital(home: Path) -> dict:
+    values = _gitconfig(home)
+    if not values:
+        return _vital("signing", "machine", "Commit signing", "fail", "unset")
+    signed = values.get("commit.gpgsign", "").lower() in {"true", "yes", "on", "1"}
+    program = values.get("gpg.program", "").replace("\\", "/").rstrip("/")
+    wrapper = program.endswith("gpg-git.sh")
+    key_set = bool(values.get("user.signingkey", "").strip())
+    if signed and wrapper and key_set:
+        return _vital("signing", "machine", "Commit signing", "ok", "wrapper")
+    if signed and wrapper:
+        return _vital("signing", "machine", "Commit signing", "warn", "no key")
+    if signed:
+        return _vital("signing", "machine", "Commit signing", "warn", "other program")
+    return _vital("signing", "machine", "Commit signing", "fail", "unsigned")
+
+
+def _tree_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    files: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(path):
+        dirnames[:] = sorted(name for name in dirnames if name != "__pycache__")
+        for name in filenames:
+            if name.endswith(".pyc"):
+                continue
+            files.append(Path(dirpath) / name)
+    for file in sorted(files):
+        digest.update(file.relative_to(path).as_posix().encode())
+        digest.update(b"\0")
+        try:
+            digest.update(file.read_bytes())
+        except OSError:
+            digest.update(b"?")
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _plugin_vital(home: Path, root: Path) -> dict:
+    plugins = home / ".config" / "omarchy" / "plugins"
+    if not plugins.is_dir():
+        return _vital("plugin", "machine", "Plugin copy", "ok", "no shell")
+    src = root / "omarchy-plugin" / "firstintegral.1config"
+    dst = plugins / "firstintegral.1config"
+    if not src.is_dir() or not dst.is_dir():
+        return _vital("plugin", "machine", "Plugin copy", "fail", "missing")
+    try:
+        same = _tree_digest(src) == _tree_digest(dst)
+    except OSError:
+        return _vital("plugin", "machine", "Plugin copy", "warn", "unread")
+    if same:
+        return _vital("plugin", "machine", "Plugin copy", "ok", "matches")
+    return _vital("plugin", "machine", "Plugin copy", "warn", "drifted")
+
+
+def _guard_vital(home: Path, root: Path, vital_id: str, name: str, script: str, flag: str, pending: str | None) -> dict:
+    if not (home / script).is_file():
+        return _vital(vital_id, "guards", name, "fail", "not installed")
+    hot = (home / flag).exists()
+    if pending and (root / pending).exists():
+        hot = True
+    if hot:
+        return _vital(vital_id, "guards", name, "warn", "residue")
+    return _vital(vital_id, "guards", name, "ok", "clear")
+
+
+def _boot_vital(home: Path, root: Path) -> dict:
+    src = root / "boot-dashboard" / "agents-boot-status.desktop"
+    launch = root / "boot-dashboard" / "launch.sh"
+    dst = home / ".config" / "autostart" / "agents-boot-status.desktop"
+    if not src.is_file() or not launch.is_file():
+        return _vital("boot", "guards", "Boot dashboard", "fail", "missing")
+    if not dst.is_file():
+        return _vital("boot", "guards", "Boot dashboard", "fail", "not installed")
+    expected = "Exec=" + launch.as_posix()
+    try:
+        lines = dst.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return _vital("boot", "guards", "Boot dashboard", "warn", "unread")
+    if any(line.strip() == expected for line in lines):
+        return _vital("boot", "guards", "Boot dashboard", "ok", "installed")
+    return _vital("boot", "guards", "Boot dashboard", "warn", "drifted")
+
+
+def _permissions_vital(root: Path) -> dict:
+    path = root / "permissions.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return _vital("permissions", "rules", "Permissions", "fail", "broken")
+    defaults = data.get("defaults")
+    bucket = data.get("permissions")
+    if not isinstance(defaults, dict) or not isinstance(bucket, dict):
+        return _vital("permissions", "rules", "Permissions", "fail", "broken")
+    if not isinstance(bucket.get("allow"), list) or not isinstance(bucket.get("deny"), list):
+        return _vital("permissions", "rules", "Permissions", "fail", "broken")
+    flag = defaults.get("bash_without_prompt")
+    if not isinstance(flag, bool):
+        return _vital("permissions", "rules", "Permissions", "fail", "broken")
+    local = root / "local.json"
+    if local.is_file():
+        try:
+            extra = json.loads(local.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            return _vital("permissions", "rules", "Permissions", "warn", "local broken")
+        if isinstance(extra, dict) and isinstance(extra.get("bash_without_prompt"), bool):
+            flag = extra["bash_without_prompt"]
+    return _vital("permissions", "rules", "Permissions", "ok", "autonomy on" if flag else "autonomy off")
+
+
+def _slip_state(root: Path) -> tuple[str, str]:
+    slip_path = root / "boot-dashboard" / "close-slip.txt"
+    try:
+        if not slip_path.is_file():
+            return "warn", "no exit"
+        first = slip_path.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
+    except OSError:
+        return "warn", "no exit"
+    if first and first[0].strip() == "CLEAN":
+        return "ok", "clean"
+    return "warn", "warn"
+
+
+CHECKOUT_FILES = ("setup.sh", "verify.sh", "sync.sh", "AGENTS.md")
+HOOK_FILES = (
+    "hooks/gpg-git.sh",
+    "hooks/gpg-agent-unlock.sh",
+    "hooks/check-links.sh",
+    "hooks/check-claude-memory.sh",
+    "hooks/watch-stale.sh",
+    "hooks/checkpoint.sh",
+    "hooks/brain-sync.sh",
+    "hooks/digit-refuse.sh",
+    "hooks/merge-strays.sh",
+)
+SCAFFOLD_FILES = (
+    "project-template/AGENTS.md",
+    "paper-template/main.tex",
+    "paper-template/build.sh",
+    "paper-template/lean/lakefile.toml",
+)
+VITAL_IDS = (
+    "checkout",
+    "tree",
+    "remote",
+    "level",
+    "links",
+    "permissions",
+    "hooks",
+    "scaffolds",
+    "slip",
+    "memory",
+    "symlinks",
+    "boot",
+    "tools",
+    "tex",
+    "lean",
+    "signing",
+    "plugin",
+)
+
+
+def _verdict(vitals: list[dict]) -> str:
+    states = {item["state"] for item in vitals}
+    if "fail" in states:
+        return "fault"
+    if "warn" in states:
+        return "warn"
+    return "clear"
+
+
+def brain_status(home: Path, which=None, git=None) -> dict:
+    finder = shutil.which if which is None else which
+    runner = _git_out if git is None else git
     root = home / ".agents"
     present = (root / "setup.sh").is_file() and (root / "AGENTS.md").is_file()
     commit = ""
     branch = ""
     dirty = False
     links = 0
-    slip = "unknown"
+    slip, _slip_detail = _slip_state(root)
+    head = runner(root, ["rev-parse", "--short", "HEAD"])
+    if head:
+        commit = _token(head, 12)
+    ref = runner(root, ["rev-parse", "--abbrev-ref", "HEAD"])
+    if ref:
+        branch = _token(ref, 40)
+    status = runner(root, ["status", "--porcelain", "--untracked-files=no"])
+    if status:
+        dirty = True
     if present:
-        commit = _token(_git(root, ["rev-parse", "--short", "HEAD"]), 12)
-        branch = _token(_git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), 40)
-        dirty = bool(_git(root, ["status", "--porcelain", "--untracked-files=no"]))
         target = (root / "AGENTS.md").resolve()
         for rel in LINK_RELS:
             path = home / rel
@@ -900,19 +1101,112 @@ def brain_status(home: Path) -> dict:
                     links += 1
             except OSError:
                 continue
-        slip_path = root / "boot-dashboard" / "close-slip.txt"
-        try:
-            if slip_path.is_file():
-                first = slip_path.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
-                slip = "clean" if first and first[0].strip() == "CLEAN" else "warn"
-        except OSError:
-            slip = "unknown"
-    tools = [{"id": name, "present": shutil.which(name) is not None} for name in ("claude", "grok", "opencode")]
+
+    checkout_state, checkout_detail = _ratio(_count_files(root, CHECKOUT_FILES), len(CHECKOUT_FILES))
+    if status is None:
+        tree_state, tree_detail = "fail", "no repo"
+    elif status:
+        tree_state, tree_detail = "warn", "dirty"
+    else:
+        tree_state, tree_detail = "ok", "clean"
+
+    allow_path = root / "BRAIN_REMOTE"
+    origin = runner(root, ["remote", "get-url", "origin"])
+    try:
+        allowed = {
+            line.strip()
+            for line in allow_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        } if allow_path.is_file() else set()
+    except OSError:
+        allowed = set()
+    if not allowed:
+        remote_state, remote_detail = "fail", "no list"
+    elif not origin:
+        remote_state, remote_detail = "fail", "none"
+    elif origin in allowed:
+        remote_state, remote_detail = "ok", "listed"
+    else:
+        remote_state, remote_detail = "fail", "other"
+    level_state, level_detail = _ahead_behind(
+        runner(root, ["rev-list", "--left-right", "--count", "origin/main...HEAD"])
+    )
+
+    if links == 3:
+        link_state, link_detail = "ok", "3/3"
+    elif links == 0:
+        link_state, link_detail = "fail", "0/3"
+    else:
+        link_state, link_detail = "warn", f"{links}/3"
+
+    hook_state, hook_detail = _ratio(_count_files(root, HOOK_FILES), len(HOOK_FILES))
+    scaffold_state, scaffold_detail = _ratio(_count_files(root, SCAFFOLD_FILES), len(SCAFFOLD_FILES))
+    tool_hits = sum(1 for name in ("claude", "grok", "opencode") if finder(name))
+    if tool_hits == 3:
+        tool_state, tool_detail = "ok", "3/3"
+    elif tool_hits == 0:
+        tool_state, tool_detail = "fail", "0/3"
+    else:
+        tool_state, tool_detail = "warn", f"{tool_hits}/3"
+    tex_state, tex_detail = ("ok", "ready") if finder("latexmk") or finder("pdflatex") else ("fail", "missing")
+    lean_ready = bool(finder("lean")) or (home / ".elan" / "bin" / "lean").is_file()
+    lean_state, lean_detail = ("ok", "ready") if lean_ready else ("fail", "missing")
+    tools = [{"id": name, "present": finder(name) is not None} for name in ("claude", "grok", "opencode")]
+
+    vitals = [
+        _vital("checkout", "checkout", "Checkout", checkout_state, checkout_detail),
+        _vital("tree", "checkout", "Work tree", tree_state, tree_detail),
+        _vital("remote", "checkout", "Remote", remote_state, remote_detail),
+        _vital("level", "checkout", "Matches origin", level_state, level_detail),
+        _vital("links", "rules", "Rules links", link_state, link_detail),
+        _permissions_vital(root),
+        _vital("hooks", "rules", "Hooks", hook_state, hook_detail),
+        _vital("scaffolds", "rules", "Scaffolds", scaffold_state, scaffold_detail),
+        _vital("slip", "guards", "Boot slip", slip if slip != "unknown" else "warn", _slip_detail),
+        _guard_vital(
+            home,
+            root,
+            "memory",
+            "Memory guard",
+            "cron-jobs/claude-memory-guard/check-memory.sh",
+            "cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE",
+            "backups/claude-residue/PENDING.md",
+        ),
+        _guard_vital(
+            home,
+            root,
+            "symlinks",
+            "Symlink guard",
+            "cron-jobs/agents-symlink-guard/check-links.sh",
+            "cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE",
+            None,
+        ),
+        _boot_vital(home, root),
+        _vital("tools", "machine", "Three tools", tool_state, tool_detail),
+        _vital("tex", "machine", "TeX", tex_state, tex_detail),
+        _vital("lean", "machine", "Lean", lean_state, lean_detail),
+        _signing_vital(home),
+        _plugin_vital(home, root),
+    ]
+    verdict = _verdict(vitals)
+    groups = []
+    for group_id, group_name in (
+        ("checkout", "Checkout"),
+        ("rules", "Rules"),
+        ("guards", "Guards"),
+        ("machine", "Machine"),
+    ):
+        groups.append(
+            {
+                "id": group_id,
+                "name": group_name,
+                "items": [item for item in vitals if item["group"] == group_id],
+            }
+        )
     return {
         "name": "1config",
         "oneLine": "One rules file for Claude, Grok, and OpenCode. This checkout is the global brain.",
         "remoteLabel": "FirstIntegral/1config",
-        "about": list(ABOUT),
         "present": present,
         "commit": commit,
         "branch": branch,
@@ -920,8 +1214,10 @@ def brain_status(home: Path) -> dict:
         "links": links,
         "linksExpected": 3,
         "tools": tools,
-        "slip": slip,
-        "pillars": [dict(item) for item in PILLARS],
+        "slip": "clean" if slip == "ok" else slip,
+        "verdict": verdict,
+        "vitals": vitals,
+        "groups": groups,
     }
 
 
@@ -960,15 +1256,18 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, 
         roster.append(_mark_agent(agent, name, present))
     agents = [item for item in roster if item["used"]] + [item for item in roster if not item["used"]]
     summary = bar_summary(agents)
+    brain = brain_status(home, which=finder)
+    lines = list(summary["lines"])
+    lines.insert(0, "brain " + str(brain["verdict"]))
     return {
         "schemaVersion": 1,
         "generatedAt": now.isoformat(timespec="seconds"),
         "hostname": _hostname(),
         "bar": {"label": summary["label"], "alarm": summary["alarm"], "todayTokens": summary["todayTokens"]},
-        "tooltip": summary["lines"],
+        "tooltip": lines,
         "agents": agents,
-        "brain": brain_status(home),
-        "note": "Each tool is its own box. Tools with no usage stay hidden until you ask. By model shows or hides the model boxes. OpenCode Go is rolling, weekly, and monthly. u refreshes Claude and Codex, and reads Go again.",
+        "brain": brain,
+        "note": "Each tool is its own box. Tools with no usage stay hidden until you ask. By model shows or hides the model boxes. OpenCode Go is rolling, weekly, and monthly. v opens vitals. u refreshes Claude and Codex, and reads Go again.",
     }
 
 
@@ -1169,20 +1468,124 @@ def self_test() -> None:
     brain = payload["brain"]
     assert brain["present"] is False, brain
     assert brain["links"] == 0, brain
-    assert [item["id"] for item in brain["pillars"]] == [
-        "rules",
-        "install",
-        "permissions",
-        "hooks",
-        "scaffolds",
-        "usage",
-    ], brain
-    usage_pillar = next(item for item in brain["pillars"] if item["id"] == "usage")
-    assert usage_pillar["points"] == ["Claude", "Grok", "OpenAI", "OpenCode", "Codex", "Cursor"], usage_pillar
-    assert "global brain" in brain["about"][0], brain
+    assert brain["verdict"] == "fault", brain["verdict"]
+    assert payload["tooltip"][0] == "brain fault", payload["tooltip"]
+    assert [item["id"] for item in brain["vitals"]] == list(VITAL_IDS), [item["id"] for item in brain["vitals"]]
+    empty_expect = {
+        "checkout": ("fail", "0/4"),
+        "tree": ("fail", "no repo"),
+        "remote": ("fail", "no list"),
+        "level": ("warn", "no ref"),
+        "links": ("fail", "0/3"),
+        "permissions": ("fail", "broken"),
+        "hooks": ("fail", "0/9"),
+        "scaffolds": ("fail", "0/4"),
+        "slip": ("warn", "no exit"),
+        "memory": ("fail", "not installed"),
+        "symlinks": ("fail", "not installed"),
+        "boot": ("fail", "missing"),
+        "tools": ("fail", "0/3"),
+        "tex": ("fail", "missing"),
+        "lean": ("fail", "missing"),
+        "signing": ("fail", "unset"),
+        "plugin": ("ok", "no shell"),
+    }
+    for item in brain["vitals"]:
+        assert (item["state"], item["detail"]) == empty_expect[item["id"]], item
+    assert [group["id"] for group in brain["groups"]] == ["checkout", "rules", "guards", "machine"], brain["groups"]
+    assert "global brain" in brain["oneLine"], brain
+    assert _ahead_behind("1\t1") == ("fail", "diverged")
+    assert _ahead_behind("0\t2") == ("warn", "ahead 2")
+    assert _ahead_behind("3\t0") == ("warn", "behind 3")
+    assert _ahead_behind("0\t0") == ("ok", "level")
+    assert _ahead_behind(None) == ("warn", "no ref")
+    with tempfile.TemporaryDirectory() as healthy_tmp:
+        healthy = Path(healthy_tmp)
+        root = healthy / ".agents"
+        root.mkdir()
+        for name in CHECKOUT_FILES:
+            (root / name).write_text("ok\n", encoding="utf-8")
+        (root / "BRAIN_REMOTE").write_text("https://example.test/brain.git\n", encoding="utf-8")
+        for rel in HOOK_FILES + SCAFFOLD_FILES:
+            path = root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("ok\n", encoding="utf-8")
+        (root / "permissions.json").write_text(
+            json.dumps(
+                {
+                    "defaults": {"bash_without_prompt": True},
+                    "permissions": {"allow": [], "deny": []},
+                }
+            ),
+            encoding="utf-8",
+        )
+        slip_dir = root / "boot-dashboard"
+        slip_dir.mkdir()
+        (slip_dir / "close-slip.txt").write_text("CLEAN\n", encoding="utf-8")
+        (slip_dir / "launch.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        (slip_dir / "agents-boot-status.desktop").write_text(
+            "[Desktop Entry]\nExec=/home/USER/.agents/boot-dashboard/launch.sh\n",
+            encoding="utf-8",
+        )
+        auto = healthy / ".config" / "autostart"
+        auto.mkdir(parents=True)
+        launch = (slip_dir / "launch.sh").as_posix()
+        (auto / "agents-boot-status.desktop").write_text(
+            "[Desktop Entry]\nExec=" + launch + "\n",
+            encoding="utf-8",
+        )
+        for script, flag_parent in (
+            ("cron-jobs/claude-memory-guard/check-memory.sh", "cron-jobs/claude-memory-guard"),
+            ("cron-jobs/agents-symlink-guard/check-links.sh", "cron-jobs/agents-symlink-guard"),
+        ):
+            guard = healthy / script
+            guard.parent.mkdir(parents=True, exist_ok=True)
+            guard.write_text("#!/bin/sh\n", encoding="utf-8")
+            assert flag_parent
+        target = root / "AGENTS.md"
+        for rel in LINK_RELS:
+            link = healthy / rel
+            link.parent.mkdir(parents=True, exist_ok=True)
+            link.symlink_to(target)
+        (healthy / ".gitconfig").write_text(
+            "[commit]\ngpgsign = true\n[gpg]\nprogram = gpg-git.sh\n[user]\nsigningkey = TESTKEY\n",
+            encoding="utf-8",
+        )
+
+        def fake_git(_root: Path, args: list[str]) -> str | None:
+            key = tuple(args)
+            if key == ("status", "--porcelain", "--untracked-files=no"):
+                return ""
+            if key == ("rev-parse", "--short", "HEAD"):
+                return "abc1234"
+            if key == ("rev-parse", "--abbrev-ref", "HEAD"):
+                return "main"
+            if key == ("remote", "get-url", "origin"):
+                return "https://example.test/brain.git"
+            if key == ("rev-list", "--left-right", "--count", "origin/main...HEAD"):
+                return "0\t0"
+            return None
+
+        def finder(name: str) -> str | None:
+            if name in {"claude", "grok", "opencode", "latexmk", "lean"}:
+                return "yes"
+            return None
+
+        healthy_brain = brain_status(healthy, which=finder, git=fake_git)
+    assert healthy_brain["verdict"] == "clear", [
+        (item["id"], item["state"], item["detail"])
+        for item in healthy_brain["vitals"]
+        if item["state"] != "ok"
+    ]
+    assert all(item["state"] == "ok" for item in healthy_brain["vitals"]), healthy_brain["vitals"]
+    assert healthy_brain["slip"] == "clean", healthy_brain["slip"]
+    assert healthy_brain["commit"] == "abc1234", healthy_brain
+    healthy_blob = json.dumps(healthy_brain)
+    assert "example.test" not in healthy_blob, healthy_blob
     blob = json.dumps(payload)
     for banned in ("/tmp", "Bearer", "sk-", "usage.json", "@"):
         assert banned not in blob, banned
+        assert banned not in healthy_blob, banned
     print("self-test ok")
 
 

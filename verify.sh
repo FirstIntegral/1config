@@ -1445,10 +1445,15 @@ if PYTHONDONTWRITEBYTECODE=1 python3 "$PLUGIN/bin/usage.py" --self-test >/dev/nu
 else
   bad "usage.py self-test failed"
 fi
-if [ -f "$PLUGIN/BrainMap.qml" ] && grep -q 'BrainMap' "$PLUGIN/Panel.qml"; then
-  ok "1config panel has the brain map"
+if [ ! -f "$PLUGIN/BrainMap.qml" ] \
+   && [ -f "$PLUGIN/Vitals.qml" ] \
+   && grep -q 'Vitals.qml' "$PLUGIN/Panel.qml" \
+   && grep -q 'brainFault' "$PLUGIN/BarWidget.qml" \
+   && grep -q 'verdict' "$PLUGIN/bin/usage.py" \
+   && ! grep -q 'BrainMap' "$PLUGIN/Panel.qml"; then
+  ok "1config panel shows vitals instead of the map"
 else
-  bad "1config panel missing BrainMap"
+  bad "1config panel still has the map, or vitals are missing"
 fi
 if grep -q 'property string mode: "usage"' "$PLUGIN/Panel.qml" \
    && ! grep -q 'centerOnBar: true' "$PLUGIN/Panel.qml"; then

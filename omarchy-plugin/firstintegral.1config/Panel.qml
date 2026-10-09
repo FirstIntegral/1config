@@ -4,9 +4,9 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 
-// 1config brain HUD. The map is what this repo is. Usage is one part of it.
-// Design tokens follow Projects/skills/brain-hud-design (the brwsk.brain look):
-// theme colours only, accent for signal, sweep only while the map is open.
+// 1config brain HUD. Vitals say whether this checkout is actually correct.
+// Spend is the other view. Rays run only inside the vitals view, and only
+// while that view is open. Theme colours only.
 Panel {
   id: root
   moduleName: "firstintegral.1config"
@@ -19,7 +19,6 @@ Panel {
   readonly property int revision: service ? service.revision : 0
   readonly property var agents: service && service.agents ? service.agents : []
   readonly property var brain: service && service.brain ? service.brain : ({})
-  readonly property var pillars: Array.isArray(brain.pillars) ? brain.pillars : []
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
   readonly property color accent: Color.accent
   readonly property color cardBackground: Color.popups.background
@@ -27,7 +26,6 @@ Panel {
   readonly property string monoFamily: Style.font.family
 
   property string mode: "usage"
-  property string selectedId: ""
   property bool showQuiet: false
   property bool showModels: true
 
@@ -62,25 +60,11 @@ Panel {
     var m = g.match(/T(\d\d:\d\d)/)
     return m ? m[1] : ""
   }
-  function selectedPillar() {
-    for (var i = 0; i < root.pillars.length; i++) {
-      if (String(root.pillars[i].id || "") === root.selectedId) return root.pillars[i]
-    }
-    return null
-  }
-  function cycle(delta) {
-    if (!root.pillars.length) return
-    var i = -1
-    for (var k = 0; k < root.pillars.length; k++) {
-      if (String(root.pillars[k].id || "") === root.selectedId) i = k
-    }
-    if (i < 0) i = delta > 0 ? -1 : 0
-    var n = (i + delta) % root.pillars.length
-    if (n < 0) n += root.pillars.length
-    root.selectedId = String(root.pillars[n].id || "")
-    root.mode = "map"
-  }
   function scrollBy(dy) {
+    if (root.mode === "vitals") {
+      if (vitalsLoader.item) vitalsLoader.item.scrollBy(dy)
+      return
+    }
     var max = Math.max(0, usageFlick.contentHeight - usageFlick.height)
     usageFlick.contentY = Math.max(0, Math.min(max, usageFlick.contentY + dy))
   }
@@ -130,12 +114,10 @@ Panel {
   function handleTextKey(t) {
     if (t === "r" || t === "R") root.refresh()
     else if (t === "u" || t === "U") root.refreshLimits()
-    else if (t === "g" || t === "G") root.mode = "map"
+    else if (t === "v" || t === "V" || t === "g" || t === "G") root.mode = "vitals"
     else if (t === "s" || t === "S") root.mode = "usage"
     else if (t === "a" || t === "A") root.showQuiet = !root.showQuiet
     else if (t === "m" || t === "M") root.showModels = !root.showModels
-    else if (t === "h" || t === "H") root.cycle(-1)
-    else if (t === "l" || t === "L") root.cycle(1)
   }
 
   readonly property var panelBorder: {
@@ -153,62 +135,6 @@ Panel {
   // Drops from the bar icon. Wide enough for one usage card, short enough to leave the desktop.
   readonly property int cardWidth: Math.round(Math.min(Style.space(760), Math.max(Style.space(440), 0.46 * screenW)))
   readonly property int cardHeight: Math.round(Math.min(Style.space(820), Math.max(Style.space(480), 0.68 * screenH)))
-
-  component SectionHeader: Item {
-    id: sh
-    property string label: ""
-    property string count: ""
-    property color tone: Color.foreground
-    property color countTone: Color.accent
-    property string family: Style.font.family
-    implicitHeight: shText.implicitHeight
-    width: parent ? parent.width : implicitWidth
-    Rectangle {
-      id: shTick
-      width: Style.space(3)
-      height: Math.round(shText.font.pixelSize * 0.9)
-      radius: 1
-      color: sh.countTone
-      anchors.verticalCenter: shText.verticalCenter
-    }
-    Text {
-      id: shText
-      anchors.left: shTick.right
-      anchors.leftMargin: Style.space(7)
-      text: sh.label
-      color: sh.tone
-      opacity: 0.8
-      font.family: sh.family
-      font.pixelSize: Style.font.body
-      font.capitalization: Font.SmallCaps
-      font.letterSpacing: 0.4
-      font.bold: true
-    }
-    Text {
-      id: shCount
-      anchors.left: shText.right
-      anchors.leftMargin: Style.space(8)
-      anchors.baseline: shText.baseline
-      visible: sh.count !== ""
-      text: sh.count
-      color: sh.countTone
-      font.family: sh.family
-      font.pixelSize: Style.font.body
-      font.bold: true
-    }
-    Rectangle {
-      anchors.left: shCount.visible ? shCount.right : shText.right
-      anchors.leftMargin: Style.space(10)
-      anchors.right: parent.right
-      anchors.verticalCenter: shText.verticalCenter
-      height: 1
-      gradient: Gradient {
-        orientation: Gradient.Horizontal
-        GradientStop { position: 0.0; color: Qt.rgba(sh.tone.r, sh.tone.g, sh.tone.b, 0.28) }
-        GradientStop { position: 1.0; color: Qt.rgba(sh.tone.r, sh.tone.g, sh.tone.b, 0.0) }
-      }
-    }
-  }
 
   component Stat: Column {
     id: st
@@ -579,8 +505,7 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onMoveRequested: function(dx, dy) {
         if (dy === 0) return
-        if (root.mode === "usage") root.scrollBy(dy * Style.space(48))
-        else root.cycle(dy > 0 ? 1 : -1)
+        root.scrollBy(dy * Style.space(48))
       }
       onActivateRequested: root.refresh()
       onTextKey: function(t) { root.handleTextKey(t) }
@@ -665,6 +590,8 @@ Panel {
                   var clock = root.clockLabel()
                   var slip = String(root.brain.slip || "")
                   if (host) bits.push(host)
+                  var verdict = String(root.brain.verdict || "")
+                  if (verdict) bits.push(verdict)
                   bits.push(remote)
                   if (branch) bits.push(branch)
                   if (root.brain.dirty === true) bits.push("dirty")
@@ -674,8 +601,8 @@ Panel {
                   if (msg) bits.push(msg)
                   return bits.join("  ·  ")
                 }
-                color: root.brain.dirty === true ? root.accent : root.contentForeground
-                opacity: root.brain.dirty === true ? 0.9 : 0.6
+                color: (root.brain.verdict === "fault" || root.brain.dirty === true) ? root.accent : root.contentForeground
+                opacity: (root.brain.verdict === "fault" || root.brain.dirty === true) ? 0.9 : 0.6
                 font.family: root.monoFamily
                 font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
@@ -694,7 +621,7 @@ Panel {
                 anchors.centerIn: parent
                 spacing: Style.space(2)
                 Repeater {
-                  model: [{ id: "map", t: "map" }, { id: "usage", t: "spend" }]
+                  model: [{ id: "vitals", t: "vitals" }, { id: "usage", t: "spend" }]
                   Rectangle {
                     id: seg
                     required property var modelData
@@ -730,6 +657,19 @@ Panel {
             Row {
               id: statRow
               spacing: Style.space(12)
+              Stat {
+                value: {
+                  var verdict = String(root.brain.verdict || "")
+                  if (verdict === "clear") return "CLEAR"
+                  if (verdict === "warn") return "WARN"
+                  if (verdict === "fault") return "FAULT"
+                  return "…"
+                }
+                label: "brain"
+                hot: root.brain.verdict === "fault" || root.brain.verdict === "warn"
+                family: root.monoFamily
+                tone: root.contentForeground
+              }
               Stat {
                 value: String(root.brain.commit || "----")
                 label: root.brain.dirty === true ? "dirty" : "commit"
@@ -783,160 +723,23 @@ Panel {
           width: parent.width
           height: Math.max(Style.space(200), parent.height - header.implicitHeight - footer.implicitHeight - Style.space(24))
 
-          Column {
+          Loader {
+            id: vitalsLoader
             anchors.fill: parent
-            visible: root.mode === "map"
-            spacing: Style.space(18)
-            Item {
-              id: mapFrame
-              width: parent.width
-              height: Math.max(Style.space(260), parent.height * 0.62)
-              Loader {
-                id: mapLoader
-                anchors.fill: parent
-                anchors.margins: Style.space(8)
-                source: Qt.resolvedUrl("BrainMap.qml")
-                onLoaded: {
-                  var map = item
-                  map.pillars = Qt.binding(function() { return root.pillars })
-                  map.selectedId = Qt.binding(function() { return root.selectedId })
-                  map.alarming = Qt.binding(function() { return root.service ? root.service.alarming === true : false })
-                  map.active = Qt.binding(function() { return root.opened && root.mode === "map" })
-                  map.foreground = Qt.binding(function() { return root.contentForeground })
-                  map.accent = Qt.binding(function() { return root.accent })
-                  map.background = Qt.binding(function() { return root.cardBackground })
-                  map.monoFamily = Qt.binding(function() { return root.monoFamily })
-                  map.picked.connect(function(id) { root.selectedId = id })
-                }
-              }
-            }
-            Item {
-              id: detailPane
-              width: parent.width
-              height: Math.max(Style.space(120), parent.height - mapFrame.height - Style.space(18))
-              Flickable {
-                id: detailFlick
-                anchors.fill: parent
-                anchors.margins: Style.space(12)
-                contentWidth: width
-                contentHeight: detailCol.implicitHeight
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                Column {
-                  id: detailCol
-                  width: detailFlick.width
-                  spacing: Style.space(14)
-                  SectionHeader {
-                    width: parent.width
-                    label: root.selectedPillar() ? String(root.selectedPillar().name || "") : "What this is"
-                    count: root.selectedPillar() ? "" : root.pad2(root.pillars.length)
-                    tone: root.contentForeground
-                    family: root.monoFamily
-                  }
-                  Text {
-                    width: parent.width
-                    text: {
-                      var pillar = root.selectedPillar()
-                      if (pillar) return String(pillar.blurb || "")
-                      var lines = root.brain.about || []
-                      if (lines.length) return lines.join(" ")
-                      return "1config is the global brain for Claude, Grok, and OpenCode."
-                    }
-                    color: root.contentForeground
-                    opacity: 0.9
-                    font.family: root.proseFamily
-                    renderType: Text.NativeRendering
-                    font.pixelSize: Style.font.body
-                    wrapMode: Text.WordWrap
-                  }
-                  Repeater {
-                    model: root.selectedPillar() ? (root.selectedPillar().points || []) : []
-                    Text {
-                      required property string modelData
-                      width: detailCol.width
-                      text: modelData
-                      color: root.accent
-                      opacity: 0.9
-                      font.family: root.monoFamily
-                      font.pixelSize: Style.font.bodySmall
-                      font.bold: true
-                    }
-                  }
-                  Column {
-                    width: parent.width
-                    visible: !root.selectedPillar()
-                    spacing: Style.space(16)
-                    Repeater {
-                      model: root.pillars
-                      Item {
-                        id: partRow
-                        required property var modelData
-                        width: detailCol.width
-                        implicitHeight: partCol.implicitHeight
-                        Rectangle {
-                          x: 0
-                          y: 0
-                          width: Style.space(2)
-                          height: partName.implicitHeight
-                          color: partMouse.containsMouse ? root.accent : root.tint(0.25)
-                        }
-                        Column {
-                          id: partCol
-                          anchors.left: parent.left
-                          anchors.right: parent.right
-                          anchors.leftMargin: Style.space(12)
-                          spacing: Style.space(3)
-                          Text {
-                            id: partName
-                            width: parent.width
-                            text: String(partRow.modelData.name || "")
-                            color: partMouse.containsMouse ? root.accent : root.contentForeground
-                            font.family: root.monoFamily
-                            font.pixelSize: Style.font.subtitle
-                            font.bold: true
-                          }
-                          Text {
-                            width: parent.width
-                            text: String(partRow.modelData.blurb || "")
-                            color: root.contentForeground
-                            opacity: 0.75
-                            font.family: root.proseFamily
-                            renderType: Text.NativeRendering
-                            font.pixelSize: Style.font.body
-                            wrapMode: Text.WordWrap
-                          }
-                        }
-                        MouseArea {
-                          id: partMouse
-                          anchors.fill: parent
-                          hoverEnabled: true
-                          cursorShape: Qt.PointingHandCursor
-                          onClicked: root.selectedId = String(partRow.modelData.id || "")
-                        }
-                      }
-                    }
-                  }
-                  Column {
-                    width: parent.width
-                    visible: root.selectedId === "usage"
-                    spacing: Style.space(8)
-                    Repeater {
-                      model: root.spendAgents
-                      UsageCard { width: detailCol.width }
-                    }
-                  }
-                  Text {
-                    visible: root.service && root.service.state === "error"
-                    width: parent.width
-                    text: String(root.service ? root.service.message : "")
-                    color: Color.urgent
-                    font.family: root.proseFamily
-                    renderType: Text.NativeRendering
-                    font.pixelSize: Style.font.bodySmall
-                    wrapMode: Text.WordWrap
-                  }
-                }
-              }
+            active: root.mode === "vitals"
+            visible: active
+            source: Qt.resolvedUrl("Vitals.qml")
+            onLoaded: {
+              var board = item
+              board.groups = Qt.binding(function() { return root.brain.groups || [] })
+              board.vitals = Qt.binding(function() { return root.brain.vitals || [] })
+              board.verdict = Qt.binding(function() { return String(root.brain.verdict || "") })
+              board.active = Qt.binding(function() { return root.opened && root.mode === "vitals" })
+              board.foreground = Qt.binding(function() { return root.contentForeground })
+              board.accent = Qt.binding(function() { return root.accent })
+              board.background = Qt.binding(function() { return root.cardBackground })
+              board.proseFamily = Qt.binding(function() { return root.proseFamily })
+              board.monoFamily = Qt.binding(function() { return root.monoFamily })
             }
           }
 
@@ -1052,11 +855,10 @@ Panel {
               { k: "esc", t: "close" },
               { k: "r", t: "re-read" },
               { k: "u", t: "limits" },
-              { k: "g", t: "map" },
+              { k: "v", t: "vitals" },
               { k: "s", t: "spend" },
               { k: "a", t: "all" },
-              { k: "m", t: "models" },
-              { k: "h/l", t: "cycle" }
+              { k: "m", t: "models" }
             ]
             Rectangle {
               id: chip

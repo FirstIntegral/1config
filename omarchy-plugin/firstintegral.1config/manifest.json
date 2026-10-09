@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "firstintegral.1config",
   "name": "1config",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "author": "Brusk Kawa Abdalla",
   "license": "MIT",
-  "description": "1config on the Omarchy bar. The face is the ring. Open the panel for what this brain is, for local AI usage, and for the OpenCode Go plan.",
+  "description": "1config on the Omarchy bar. The face is the ring. Open the panel for live brain vitals and for local AI usage.",
   "kinds": ["service", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "1config",
-    "description": "What 1config is, plus local AI usage and the OpenCode Go plan.",
+    "description": "Live brain vitals, plus local AI usage and the OpenCode Go plan.",
     "category": "AI",
     "aliases": ["1config", "usage", "brain"],
     "allowMultiple": false,

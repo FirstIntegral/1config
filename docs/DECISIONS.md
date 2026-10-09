@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Vitals replace the map
+
+**Decision:** The orbit map is gone (`BrainMap.qml` deleted). `v` opens a vitals board (`g` still lands there). Spend stays the view a click opens, under the icon, same card size. Each tile is one local check with a state of ok, warn, or fail, and a short result that is not a path. The checks are the checkout files, a clean tree, `origin` listed in `BRAIN_REMOTE`, local `HEAD` against `origin/main` with no fetch, the three rules symlinks, `permissions.json`, the hook scripts, the scaffolds, the boot slip, both installed cron guards, the boot autostart file, `claude` / `grok` / `opencode`, TeX, Lean, commit signing, and whether the installed plugin copy matches. Any fail makes the verdict `fault` and pulses the bar dot. Any warn, with no fail, is `warn` and does not pulse. The ring sits in rays that animate only while this view is open. Colours stay on the theme. Urgent is the fault colour.
+
+**Why:** The map named the parts of the repo and did not say whether they were true on this machine. The header already had commit, link count, and tool count. The rest of "is the brain correct" was a `verify.sh` run, not something the bar could show.
+
+**Rejected:** A usage-only panel. Keeping the map beside the tiles. Treating a dirty tree or a missing boot slip as a fault. Fetching `origin` on the refresh timer. Printing paths, remote URLs, or the signing key. Spinning the rays while the panel is closed or while spend is showing.
+
 ## 2026-10-09 — Model toggle, lighter spend boxes
 
 **Decision:** Spend has a second toggle beside the quiet one, labelled "By model". It starts on. `m` is the same switch. Off, the model boxes drop out of every tool card and the limits and the week stay. The tool boxes, and the boxes inside them, use a lower fill and a softer border so the card reads lighter.

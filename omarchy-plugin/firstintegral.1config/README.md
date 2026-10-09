@@ -1,12 +1,12 @@
 # firstintegral.1config
 
-Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). The bar face is the ring. The panel is the brain: what the repo is, then the spend.
+Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). The bar face is the ring. The panel is spend, and vitals for whether this checkout is actually correct.
 
-Left click opens a card under the bar icon. Right click re-reads local files. Spend is the default. `g` opens the map. `s` returns to spend. `h` and `l` cycle the six parts. Click a part in the list under the map.
+Left click opens a card under the bar icon. Right click re-reads local files. Spend is the default. `v` opens vitals. `g` does the same. `s` returns to spend.
 
-The bar shows the ring only, at the bar's own icon size. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`). An accent dot pulses on the bar when a limit is at 80% or more.
+The bar shows the ring only, at the bar's own icon size. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`) and starts with the brain verdict. An accent dot pulses on the bar when a limit is at 80% or more, and when a vital is a fault.
 
-The panel keeps the thin accent frame and a slow sweep on the map. Spend uses the proportional face for words and monospace for numbers, with no small-caps. The square grid and the scanlines are gone. Colours come from the current Omarchy theme. The sweep runs only while the map is open.
+The panel keeps the thin accent frame. Vitals puts the ring in a field of rays, with one tile per live check. The rays run only while that view is open. Spend uses the proportional face for words and monospace for numbers, with no small-caps. Colours come from the current Omarchy theme. A fault uses the urgent colour. A warn stays on the accent. Clear is the calm ray.
 
 The spend list is six tools, in this order, with anything actually used pulled to the front: Claude, Grok, OpenAI, OpenCode, Codex, Cursor. Each used tool is its own light box. Inside it, each limit, each day, and each model is its own lighter box. "By model" sits next to the quiet toggle and starts on. `m` is the same switch. A tool with no tokens, no plan window, and no model rows stays off that list. The button under the title (`a`) shows those quiet tools at the end, one short box each. No install says "Not on this machine". An install with no ledger says "No usage record on this machine". An empty ledger says "No usage this week". Records that are not in that six, including the Omarchy fireworks file, are not shown.
 
@@ -21,7 +21,29 @@ The spend list is six tools, in this order, with anything actually used pulled t
 
 The Go read is the one network call, and only when that cache is older than ten minutes. The prepaid dollar balance on the console is a separate wallet and is not on this route. In the panel, `u` runs `omarchy-agent-usage-update --limits-only` and forces the Go read again. `r` re-reads disk and uses the Go cache if it is still fresh.
 
-The side pane also reads the checkout, still without printing paths: short commit, branch, dirty bit, how many of the three rules symlinks resolve, whether `claude` / `grok` / `opencode` are on `PATH`, and whether the last boot slip was `CLEAN`. The six parts are Rules, Install, Permissions, Hooks, Scaffolds, and Usage.
+Vitals is the checkout, not a diagram of it. Each tile is one check and one short result. No paths, remotes, or keys are printed. The groups are Checkout, Rules, Guards, and Machine.
+
+| Tile | Clear when |
+|---|---|
+| Checkout | `setup.sh`, `verify.sh`, `sync.sh`, and `AGENTS.md` are all in the checkout |
+| Work tree | `git status` is clean. A dirty tree is a warn |
+| Remote | `origin` is one of the lines in `BRAIN_REMOTE` |
+| Matches origin | local `HEAD` equals local `origin/main`. Ahead or behind is a warn. Diverged is a fault. No fetch |
+| Rules links | all three rules symlinks resolve to this `AGENTS.md` |
+| Permissions | `permissions.json` parses, including `bash_without_prompt`. `local.json` may override that flag |
+| Hooks | the nine install and guard scripts are in `hooks/` |
+| Scaffolds | project template, paper template, its build script, and the Lean lakefile are present |
+| Boot slip | the last boot dashboard exit wrote `CLEAN`. A missing slip is a warn, not a fault |
+| Memory guard | the installed cron script is present and the residue flag is absent |
+| Symlink guard | the installed cron script is present and the stray flag is absent |
+| Boot dashboard | the installed autostart `Exec` line points at this checkout's `launch.sh` |
+| Three tools | `claude`, `grok`, and `opencode` are on `PATH` |
+| TeX | `latexmk` or `pdflatex` is on `PATH` |
+| Lean | `lean` is on `PATH`, or `~/.elan/bin/lean` exists |
+| Commit signing | global git config has signing on, `gpg.program` ends in `gpg-git.sh`, and a signing key is set |
+| Plugin copy | the installed plugin matches this directory. No Omarchy plugins directory reads "no shell", which is clear |
+
+The header still shows the short commit, the branch, the dirty bit, the link count, and the tool count. The bar dot pulses on a usage limit at 80% or on a vital fault. A warn does not pulse the bar. Hover starts with `brain clear`, `brain warn`, or `brain fault`.
 
 No prompt text, paths, or credentials leave the collector. Output is one JSON object on stdout.
 

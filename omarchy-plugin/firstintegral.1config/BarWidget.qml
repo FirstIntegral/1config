@@ -13,11 +13,12 @@ BarWidget {
 
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor("firstintegral.1config") : null
   readonly property bool alarming: service ? service.alarming === true : false
+  readonly property bool brainFault: service && service.brain && String(service.brain.verdict || "") === "fault"
   readonly property bool failed: service ? service.state === "error" : false
   readonly property color normalForeground: bar ? bar.barForeground : Color.foreground
   readonly property color paint: root.failed && !(service && service.ready)
     ? Color.urgent
-    : (root.alarming ? Color.accent : root.normalForeground)
+    : ((root.alarming || root.brainFault) ? Color.accent : root.normalForeground)
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
 
@@ -108,7 +109,7 @@ BarWidget {
 
   Rectangle {
     id: pulseDot
-    readonly property bool armed: root.alarming && !root.vertical
+    readonly property bool armed: (root.alarming || root.brainFault) && !root.vertical
     visible: armed && opacity > 0
     width: Math.max(3, Style.space(4))
     height: width
