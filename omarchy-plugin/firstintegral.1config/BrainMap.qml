@@ -119,7 +119,7 @@ Item {
         }
       }
 
-      ctx.font = "11px " + root.monoFamily
+      ctx.font = "13px " + root.monoFamily
       ctx.textBaseline = "middle"
       for (var i = 0; i < count; i++) {
         var node = root.nodeAt(i)

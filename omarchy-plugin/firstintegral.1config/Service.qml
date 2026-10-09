@@ -3,8 +3,9 @@ import Quickshell
 import Quickshell.Io
 
 // Headless reader for the 1config usage snapshot. Runs bin/usage.py on a timer.
-// Read-only on the timer: that script does not call a provider. The panel's
-// `u` key is the only path that runs omarchy-agent-usage-update.
+// That script reads local ledgers, and it refreshes OpenCode Go from
+// opencode.ai when the ten-minute cache is stale. The panel's `u` key also
+// runs omarchy-agent-usage-update and forces a fresh Go read.
 Item {
   id: root
 
@@ -43,12 +44,14 @@ Item {
     return value === undefined || value === null ? fallback : value
   }
 
-  function refresh() {
+  function refresh(forceGo) {
     if (fetchProcess.running) return
     loading = true
     _stdout = ""
     _stderr = ""
-    fetchProcess.command = ["python3", root.scriptPath]
+    var cmd = ["python3", root.scriptPath]
+    if (forceGo === true) cmd.push("--refresh-go")
+    fetchProcess.command = cmd
     fetchProcess.running = true
   }
 
@@ -134,7 +137,7 @@ Item {
         var stderr = String(limitErrors.text || "").trim()
         root.message = stderr !== "" ? stderr.split("\n").slice(-1)[0] : "limit refresh failed (exit " + exitCode + ")"
       }
-      root.refresh()
+      root.refresh(true)
     }
     stderr: StdioCollector {
       id: limitErrors

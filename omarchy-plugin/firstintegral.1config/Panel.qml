@@ -154,9 +154,9 @@ Panel {
       color: sh.tone
       opacity: 0.8
       font.family: sh.family
-      font.pixelSize: Style.font.bodySmall
+      font.pixelSize: Style.font.body
       font.capitalization: Font.SmallCaps
-      font.letterSpacing: 1.8
+      font.letterSpacing: 0.4
       font.bold: true
     }
     Text {
@@ -168,7 +168,7 @@ Panel {
       text: sh.count
       color: sh.countTone
       font.family: sh.family
-      font.pixelSize: Style.font.bodySmall
+      font.pixelSize: Style.font.body
       font.bold: true
     }
     Rectangle {
@@ -197,18 +197,18 @@ Panel {
       text: st.value
       color: st.hot ? Color.accent : st.tone
       font.family: st.family
-      font.pixelSize: Style.font.body
+      font.pixelSize: Style.font.subtitle
       font.weight: Font.Light
-      font.letterSpacing: 0.5
+      font.letterSpacing: 0
     }
     Text {
       text: st.label
       color: st.hot ? Color.accent : st.tone
       opacity: st.hot ? 0.85 : 0.5
       font.family: st.family
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.bodySmall
       font.capitalization: Font.SmallCaps
-      font.letterSpacing: 1.4
+      font.letterSpacing: 0.3
     }
   }
 
@@ -217,7 +217,7 @@ Panel {
     property real ratio: 0
     property bool hot: false
     property bool today: false
-    implicitHeight: Math.max(Style.space(5), 5)
+    implicitHeight: Math.max(Style.space(8), 8)
     Rectangle {
       anchors.fill: parent
       radius: height / 2
@@ -245,7 +245,7 @@ Panel {
       text: share.name
       color: share.today ? root.contentForeground : root.tint(0.72)
       font.family: root.monoFamily
-      font.pixelSize: Style.font.bodySmall
+      font.pixelSize: Style.font.body
       font.bold: share.today
       elide: Text.ElideRight
       anchors.verticalCenter: parent.verticalCenter
@@ -257,7 +257,7 @@ Panel {
       text: share.value
       color: share.today || share.hot ? root.contentForeground : root.tint(0.72)
       font.family: root.monoFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.bodySmall
       font.bold: share.today
     }
     Meter {
@@ -291,9 +291,9 @@ Panel {
         text: String(card.agent.name || card.agent.id || "")
         color: root.contentForeground
         font.family: root.monoFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.subtitle
         font.capitalization: Font.SmallCaps
-        font.letterSpacing: 1.2
+        font.letterSpacing: 0.4
         font.bold: true
         anchors.left: parent.left
         anchors.right: cardTotal.left
@@ -304,10 +304,10 @@ Panel {
         id: cardTotal
         anchors.right: parent.right
         anchors.verticalCenter: cardName.verticalCenter
-        text: String(card.agent.weekCostLabel || "")
+        text: String(card.agent.headline || card.agent.weekCostLabel || "")
         color: root.contentForeground
         font.family: root.monoFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: Style.font.subtitle
         font.bold: true
       }
     }
@@ -319,7 +319,7 @@ Panel {
       color: root.contentForeground
       opacity: 0.7
       font.family: root.monoFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.bodySmall
     }
 
     Repeater {
@@ -336,7 +336,7 @@ Panel {
             text: String(modelData.label || "Limit")
             color: root.contentForeground
             font.family: root.monoFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: Style.font.body
             anchors.left: parent.left
             anchors.right: limitPct.left
             anchors.rightMargin: Style.space(12)
@@ -345,10 +345,10 @@ Panel {
           Text {
             id: limitPct
             anchors.right: parent.right
-            text: Math.round(Number(modelData.usedPct) || 0) + "%"
+            text: Math.round(Number(modelData.usedPct) || 0) + "% used"
             color: Number(modelData.usedPct) >= 80 ? root.accent : root.contentForeground
             font.family: root.monoFamily
-            font.pixelSize: Style.font.bodySmall
+            font.pixelSize: Style.font.body
             font.bold: true
           }
         }
@@ -360,11 +360,11 @@ Panel {
         Text {
           visible: text !== ""
           width: parent.width
-          text: root.resetsIn(modelData.resetsAt)
+          text: String(modelData.detail || "") !== "" ? String(modelData.detail) : root.resetsIn(modelData.resetsAt)
           color: root.contentForeground
           opacity: 0.55
           font.family: root.monoFamily
-          font.pixelSize: Style.font.caption
+          font.pixelSize: Style.font.bodySmall
         }
       }
     }
@@ -378,9 +378,9 @@ Panel {
         color: root.contentForeground
         opacity: 0.55
         font.family: root.monoFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
         font.capitalization: Font.SmallCaps
-        font.letterSpacing: 1.4
+        font.letterSpacing: 0.3
       }
       Repeater {
         model: card.dayRows
@@ -408,9 +408,9 @@ Panel {
         color: root.contentForeground
         opacity: 0.55
         font.family: root.monoFamily
-        font.pixelSize: Style.font.caption
+        font.pixelSize: Style.font.bodySmall
         font.capitalization: Font.SmallCaps
-        font.letterSpacing: 1.4
+        font.letterSpacing: 0.3
       }
       Repeater {
         model: card.modelRows
@@ -435,7 +435,7 @@ Panel {
       color: Color.urgent
       font.family: root.proseFamily
       renderType: Text.NativeRendering
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.bodySmall
       wrapMode: Text.WordWrap
     }
 
@@ -537,9 +537,9 @@ Panel {
                 color: root.contentForeground
                 opacity: 0.85
                 font.family: root.monoFamily
-                font.pixelSize: Style.font.body
+                font.pixelSize: Style.font.subtitle
                 font.capitalization: Font.SmallCaps
-                font.letterSpacing: 2.2
+                font.letterSpacing: 0.6
                 font.bold: true
               }
               Text {
@@ -564,7 +564,7 @@ Panel {
                 color: root.brain.dirty === true ? root.accent : root.contentForeground
                 opacity: root.brain.dirty === true ? 0.9 : 0.6
                 font.family: root.monoFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: Style.font.bodySmall
                 elide: Text.ElideRight
               }
             }
@@ -599,9 +599,9 @@ Panel {
                       color: seg.on ? root.accent : root.contentForeground
                       opacity: seg.on ? 1 : 0.7
                       font.family: root.monoFamily
-                      font.pixelSize: Style.font.caption
+                      font.pixelSize: Style.font.bodySmall
                       font.capitalization: Font.SmallCaps
-                      font.letterSpacing: 1.2
+                      font.letterSpacing: 0.4
                       font.bold: seg.on
                     }
                     MouseArea {
@@ -733,7 +733,7 @@ Panel {
                     opacity: 0.9
                     font.family: root.proseFamily
                     renderType: Text.NativeRendering
-                    font.pixelSize: Style.font.bodySmall
+                    font.pixelSize: Style.font.body
                     wrapMode: Text.WordWrap
                   }
                   Repeater {
@@ -745,7 +745,7 @@ Panel {
                       color: root.accent
                       opacity: 0.9
                       font.family: root.monoFamily
-                      font.pixelSize: Style.font.caption
+                      font.pixelSize: Style.font.bodySmall
                       font.bold: true
                     }
                   }
@@ -779,7 +779,7 @@ Panel {
                             text: String(partRow.modelData.name || "")
                             color: partMouse.containsMouse ? root.accent : root.contentForeground
                             font.family: root.monoFamily
-                            font.pixelSize: Style.font.body
+                            font.pixelSize: Style.font.subtitle
                             font.bold: true
                           }
                           Text {
@@ -789,7 +789,7 @@ Panel {
                             opacity: 0.75
                             font.family: root.proseFamily
                             renderType: Text.NativeRendering
-                            font.pixelSize: Style.font.bodySmall
+                            font.pixelSize: Style.font.body
                             wrapMode: Text.WordWrap
                           }
                         }
@@ -819,7 +819,7 @@ Panel {
                     color: Color.urgent
                     font.family: root.proseFamily
                     renderType: Text.NativeRendering
-                    font.pixelSize: Style.font.caption
+                    font.pixelSize: Style.font.bodySmall
                     wrapMode: Text.WordWrap
                   }
                 }
@@ -853,12 +853,12 @@ Panel {
                 width: parent.width
                 text: root.service && root.service.note
                   ? String(root.service.note)
-                  : "Timer reads this machine only. u asks Omarchy to refresh provider limits."
+                  : "OpenCode Go is rolling, weekly, and monthly. u refreshes the other providers and reads Go again."
                 color: root.contentForeground
                 opacity: 0.7
                 font.family: root.proseFamily
                 renderType: Text.NativeRendering
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: Style.font.body
                 wrapMode: Text.WordWrap
               }
               Repeater {
@@ -900,7 +900,7 @@ Panel {
                   color: root.accent
                   opacity: 0.9
                   font.family: root.monoFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.bodySmall
                   font.bold: true
                 }
                 Text {
@@ -908,9 +908,9 @@ Panel {
                   color: root.contentForeground
                   opacity: 0.8
                   font.family: root.monoFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: Style.font.bodySmall
                   font.capitalization: Font.SmallCaps
-                  font.letterSpacing: 1
+                  font.letterSpacing: 0.3
                 }
               }
             }

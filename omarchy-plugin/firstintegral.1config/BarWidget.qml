@@ -94,7 +94,7 @@ BarWidget {
     Loader {
       id: barMark
       anchors.centerIn: parent
-      width: Math.round(Style.bar.iconSlot * 0.72)
+      width: Style.bar.iconCanvas
       height: width
       source: Qt.resolvedUrl("RingMark.qml")
       onLoaded: {

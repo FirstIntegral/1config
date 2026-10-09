@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
 """Local AI-usage snapshot for the 1config Omarchy plugin.
 
-Reads ledgers already on this machine. Does not call a provider, and does not
-emit paths, prompts, credentials, or message text.
+Reads ledgers already on this machine. Also reads the OpenCode Go plan from
+https://opencode.ai/zen/go/v1/usage with the key already in auth.json. That
+call is cached for ten minutes. The key never leaves the request header.
+Does not emit paths, prompts, credentials, or message text.
 
-  usage.py            one JSON object on stdout
+  usage.py                 one JSON object on stdout
+  usage.py --refresh-go    ignore the Go cache and read the plan again
   usage.py --self-test
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -31,6 +37,9 @@ FACE = {
 
 CORE_IDS = ("claude", "grok", "opencode")
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+GO_USAGE_URL = "https://opencode.ai/zen/go/v1/usage"
+GO_TTL = timedelta(minutes=10)
+GO_WINDOWS = (("rolling", "Rolling"), ("weekly", "Weekly"), ("monthly", "Monthly"))
 
 
 def parse_time(value: object) -> datetime | None:
@@ -271,6 +280,133 @@ def last_billing(path: Path) -> dict | None:
 
 def epoch_ms(moment: datetime) -> int:
     return int(moment.timestamp() * 1000)
+
+
+def go_cache_path(home: Path) -> Path:
+    return home / ".local" / "state" / "1config" / "opencode-go.json"
+
+
+def read_go_key(home: Path) -> str:
+    path = home / ".local" / "share" / "opencode" / "auth.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    entry = data.get("opencode-go") if isinstance(data, dict) else None
+    key = entry.get("key") if isinstance(entry, dict) else ""
+    if not isinstance(key, str):
+        return ""
+    key = key.strip()
+    if not key or any(ch.isspace() for ch in key):
+        return ""
+    return key
+
+
+def slim_go_usage(usage: dict) -> dict:
+    slim: dict[str, dict] = {}
+    for key, _label in GO_WINDOWS:
+        window = usage.get(key)
+        if not isinstance(window, dict):
+            continue
+        percent = as_percent(window.get("percent"), fraction_if_unit=False)
+        if percent is None:
+            continue
+        slim[key] = {
+            "status": "rate-limited" if window.get("status") == "rate-limited" else "ok",
+            "percent": percent,
+            "resetsAt": str(window.get("resetsAt") or "")[:40],
+        }
+    return slim
+
+
+def go_windows(usage: dict) -> list[dict]:
+    limits = []
+    for key, label in GO_WINDOWS:
+        window = slim_go_usage(usage).get(key)
+        if window is None:
+            continue
+        used = float(window["percent"])
+        if window["status"] == "rate-limited":
+            used = 100.0
+        detail = ""
+        if key == "rolling" and used == 0:
+            detail = "Starts on first use"
+        limits.append(
+            {
+                "label": label,
+                "usedPct": used,
+                "resetsAt": window["resetsAt"],
+                "detail": detail,
+            }
+        )
+    return limits
+
+
+def read_go_cache(home: Path) -> tuple[dict | None, datetime | None]:
+    try:
+        payload = json.loads(go_cache_path(home).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None, None
+    if not isinstance(payload, dict) or not isinstance(payload.get("usage"), dict):
+        return None, None
+    return payload["usage"], parse_time(payload.get("fetchedAt"))
+
+
+def write_go_cache(home: Path, now: datetime, usage: dict) -> None:
+    path = go_cache_path(home)
+    slim = slim_go_usage(usage)
+    if not slim:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        blob = json.dumps(
+            {"fetchedAt": now.isoformat(timespec="seconds"), "usage": slim},
+            separators=(",", ":"),
+        )
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(blob + "\n", encoding="utf-8")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    except OSError:
+        return
+
+
+def fetch_go_usage(key: str) -> dict | None:
+    # Cloudflare rejects the Python default client. curl's client is accepted.
+    request = urllib.request.Request(
+        GO_USAGE_URL,
+        headers={
+            "Authorization": "Bearer " + key,
+            "Accept": "application/json",
+            "User-Agent": "curl/8.7.1",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read(16384).decode("utf-8", "replace"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, TimeoutError, ValueError):
+        return None
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    return usage if isinstance(usage, dict) else None
+
+
+def go_limits(home: Path, now: datetime, *, force: bool) -> list[dict]:
+    cached, fetched_at = read_go_cache(home)
+    fresh = False
+    if cached is not None and fetched_at is not None:
+        age = now - as_local(fetched_at, now)
+        fresh = timedelta(0) <= age < GO_TTL
+    if cached is not None and fresh and not force:
+        return go_windows(cached)
+    key = read_go_key(home)
+    if key:
+        fetched = fetch_go_usage(key)
+        if fetched is not None:
+            write_go_cache(home, now, fetched)
+            return go_windows(fetched)
+    if cached is not None:
+        return go_windows(cached)
+    return []
 
 
 def _opencode_empty() -> dict:
@@ -554,7 +690,7 @@ PILLARS = (
     {
         "id": "usage",
         "name": "Usage",
-        "blurb": "This machine's AI spend. The timer reads local files. It does not call a provider.",
+        "blurb": "OpenCode Go windows come from opencode.ai. The other tools are read on this machine.",
         "points": ["Claude", "Grok", "OpenCode", "Codex", "Fireworks"],
     },
 )
@@ -643,7 +779,20 @@ def brain_status(home: Path) -> dict:
     }
 
 
-def collect(home: Path, now: datetime | None = None) -> dict:
+def attach_go(card: dict, home: Path, now: datetime, *, force: bool) -> dict:
+    limits = go_limits(home, now, force=force)
+    if not limits:
+        return card
+    card["limits"] = limits
+    card["name"] = "OpenCode Go"
+    card["plan"] = "Go"
+    monthly = next((item for item in limits if item["label"] == "Monthly"), None)
+    if monthly is not None:
+        card["headline"] = f"{monthly['usedPct']:g}%"
+    return card
+
+
+def collect(home: Path, now: datetime | None = None, *, force_go: bool = False) -> dict:
     now = now or datetime.now().astimezone()
     by_id: dict[str, dict] = {}
     usage_dir = home / ".local" / "state" / "omarchy" / "agents" / "usage"
@@ -671,7 +820,7 @@ def collect(home: Path, now: datetime | None = None) -> dict:
             "models": [],
         }
     by_id["grok"] = grok_agent(home, now)
-    by_id["opencode"] = opencode_agent(home, now)
+    by_id["opencode"] = attach_go(opencode_agent(home, now), home, now, force=force_go)
     ordered = [by_id[key] for key in CORE_IDS]
     extras = [by_id[key] for key in sorted(by_id) if key not in CORE_IDS]
     agents = ordered + extras
@@ -684,7 +833,7 @@ def collect(home: Path, now: datetime | None = None) -> dict:
         "tooltip": summary["lines"],
         "agents": agents,
         "brain": brain_status(home),
-        "note": "Open the panel for what 1config is. The timer reads this machine only. u asks Omarchy to refresh provider limits.",
+        "note": "OpenCode Go is the plan on opencode.ai: rolling, weekly, monthly. The dollar credit balance stays on the console. u refreshes Claude, Codex, and Fireworks, and reads Go again.",
     }
 
 
@@ -797,6 +946,21 @@ def self_test() -> None:
         )
         connection.commit()
         connection.close()
+        cache_dir = home / ".local" / "state" / "1config"
+        cache_dir.mkdir(parents=True)
+        (cache_dir / "opencode-go.json").write_text(
+            json.dumps(
+                {
+                    "fetchedAt": now.isoformat(),
+                    "usage": {
+                        "rolling": {"status": "ok", "percent": 0, "resetsAt": "2026-10-09T20:00:00Z"},
+                        "weekly": {"status": "ok", "percent": 1, "resetsAt": "2026-10-12T00:00:00Z"},
+                        "monthly": {"status": "ok", "percent": 40, "resetsAt": "2026-10-24T14:13:49Z"},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         payload = collect(home, now)
     claude = payload["agents"][0]
     grok = payload["agents"][1]
@@ -819,6 +983,14 @@ def self_test() -> None:
     assert opencode["days"][-1]["cost"] == 1.25, opencode["days"]
     assert opencode["days"][0]["date"] == "2026-10-03", opencode["days"]
     assert sum(day["tokens"] for day in opencode["days"]) == 21
+    assert opencode["name"] == "OpenCode Go", opencode["name"]
+    assert opencode["headline"] == "40%", opencode
+    assert [item["label"] for item in opencode["limits"]] == ["Rolling", "Weekly", "Monthly"]
+    assert opencode["limits"][0]["detail"] == "Starts on first use", opencode["limits"]
+    assert opencode["limits"][1]["usedPct"] == 1, opencode["limits"]
+    assert opencode["limits"][2]["usedPct"] == 40, opencode["limits"]
+    blocked = go_windows({"rolling": {"status": "rate-limited", "percent": 99, "resetsAt": ""}})
+    assert blocked[0]["usedPct"] == 100 and blocked[0]["detail"] == "", blocked
     assert payload["bar"]["label"] == "Claude 50%", payload["bar"]
     brain = payload["brain"]
     assert brain["present"] is False, brain
@@ -842,7 +1014,7 @@ def main(argv: list[str]) -> int:
     if "--self-test" in argv:
         self_test()
         return 0
-    json.dump(collect(Path.home()), sys.stdout)
+    json.dump(collect(Path.home(), force_go="--refresh-go" in argv), sys.stdout)
     sys.stdout.write("\n")
     return 0
 

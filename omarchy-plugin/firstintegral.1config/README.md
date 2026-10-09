@@ -4,7 +4,7 @@ Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1c
 
 Left click opens a card under the bar icon. Right click re-reads local files. Spend is the default. `g` opens the map. `s` returns to spend. `h` and `l` cycle the six parts. Click a part in the list under the map.
 
-The bar shows the ring only. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`). An accent dot pulses on the bar when a limit is at 80% or more.
+The bar shows the ring only, at the bar's own icon size. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`). An accent dot pulses on the bar when a limit is at 80% or more.
 
 The panel keeps the thin accent frame, the small-caps headers, and a slow sweep on the map. The square grid and the scanlines are gone. Colours come from the current Omarchy theme. The sweep runs only while the map is open.
 
@@ -12,9 +12,10 @@ The panel keeps the thin accent frame, the small-caps headers, and a slow sweep 
 |---|---|
 | Claude, Codex, Fireworks, any other `~/.local/state/omarchy/agents/usage/*.json` | Omarchy's own usage records. Today tokens, 7-day message counts, limit percent and reset. |
 | Grok | `~/.grok/sessions/**/usage.json` turn totals for today and 7 days, plus the latest `creditUsagePercent` Grok already wrote to `~/.grok/logs/unified.jsonl`. |
-| OpenCode | `step-finish` rows in `~/.local/share/opencode/opencode.db`. Seven day rows and one row per model, each with tokens and dollars. Same records as `opencode stats`. A database with no `part` table falls back to session token sums. |
+| OpenCode Go | `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key already in `auth.json`. Three windows: rolling, weekly, monthly. Cached ten minutes. A rolling window at 0% reads "Starts on first use". |
+| OpenCode on this machine | `step-finish` rows in `~/.local/share/opencode/opencode.db`. Seven day rows and one row per model, each with tokens and dollars. Same records as `opencode stats`. A database with no `part` table falls back to session token sums. |
 
-The timer does not call a provider. In the panel, `u` runs `omarchy-agent-usage-update --limits-only`, which is Omarchy's collector and does contact the providers you are already signed into. `r` only re-reads disk.
+The Go read is the one network call, and only when that cache is older than ten minutes. The prepaid dollar balance on the console is a separate wallet and is not on this route. In the panel, `u` runs `omarchy-agent-usage-update --limits-only` and forces the Go read again. `r` re-reads disk and uses the Go cache if it is still fresh.
 
 The side pane also reads the checkout, still without printing paths: short commit, branch, dirty bit, how many of the three rules symlinks resolve, whether `claude` / `grok` / `opencode` are on `PATH`, and whether the last boot slip was `CLEAN`. The six parts are Rules, Install, Permissions, Hooks, Scaffolds, and Usage.
 

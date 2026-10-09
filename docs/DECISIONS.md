@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — OpenCode Go windows, larger type, smaller ring
+
+**Decision:** The OpenCode card leads with the Go plan from `GET https://opencode.ai/zen/go/v1/usage`: rolling, weekly, and monthly, each with a percent, a bar, and a reset. Rolling at 0% says "Starts on first use". The key already in `auth.json` is sent as a bearer header and is not stored in the ten-minute cache. Local day and model rows stay under those three bars. The request uses a curl user agent because Cloudflare rejects Python's default client. Panel type moves up one step (caption to body-small, body-small to body, body to subtitle) and the wide letter-spacing comes in. The bar ring draws at `Style.bar.iconCanvas` instead of 72% of the icon slot.
+
+**Why:** The console overview is those three windows. Local step dollars are this machine only, so they never matched the page. The page's `$44.90` credit balance is the Zen wallet. `GET /zen/v1/balance` is 404, and that balance is not on the Go usage route. The old caption size plus letter-spacing was hard to read. The ring was larger than the other bar icons.
+
+**Rejected:** Scraping the console session cookie for the dollar balance. Inventing a credit figure. Leaving the Go read for the `u` key only, so the card stayed empty until that key. Polling the plan on every timer tick.
+
 ## 2026-10-09 — Ring only on the bar, open week for OpenCode
 
 **Decision:** The bar face is the ring and nothing else. The hottest plan stays in the tooltip and in the panel header. The card is about 640 by 820. The map drops the square grid, the scanlines, the tick ring, the corner brackets, and the boxed part list. Part names sit on the orbit with clear space, and the list under the map is plain lines. OpenCode spend is seven day rows (today first in the label, oldest day at the top of the run-up) plus one row per model. Each row is a name, a bar scaled to the busiest day or model, and the tokens and dollars on the right. Limit rows for the other tools use the same shape: label, percent, bar, time until reset.
