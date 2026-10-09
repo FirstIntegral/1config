@@ -55,130 +55,107 @@ Item {
   Item {
     id: halo
     width: parent.width
-    height: Style.space(292)
+    height: Style.space(48)
 
-    Repeater {
-      model: 18
-      Rectangle {
-        required property int index
-        readonly property bool bright: index % 3 === 0
-        width: bright ? 2 : 1
-        height: halo.height * (0.30 + (index % 5) * 0.045)
-        x: halo.width / 2 - width / 2
-        y: halo.height / 2 - Style.space(22) - height
-        transformOrigin: Item.Bottom
-        rotation: index * 20 + root.spin
-        antialiasing: true
-        opacity: (bright ? 0.85 : 0.4) * (root.verdict === "clear" ? 1 : 0.72)
-        gradient: Gradient {
-          orientation: Gradient.Vertical
-          GradientStop { position: 0.0; color: root.alpha(root.ray, 0.0) }
-          GradientStop { position: 0.55; color: root.alpha(root.ray, 0.04) }
-          GradientStop { position: 1.0; color: root.alpha(root.ray, bright ? 0.7 : 0.28) }
-        }
-      }
-    }
-
-    Repeater {
-      model: 9
-      Rectangle {
-        required property int index
-        width: 1
-        height: halo.height * 0.22
-        x: halo.width / 2 - width / 2
-        y: halo.height / 2 - Style.space(22) - height
-        transformOrigin: Item.Bottom
-        rotation: index * 40 - root.spin * 0.65
-        antialiasing: true
-        opacity: 0.55
-        gradient: Gradient {
-          orientation: Gradient.Vertical
-          GradientStop { position: 0.0; color: root.alpha(root.ray, 0.0) }
-          GradientStop { position: 1.0; color: root.alpha(root.ray, 0.45) }
-        }
-      }
-    }
-
-    Rectangle {
-      id: glow
-      property real glowAlpha: 0.2
-      width: Style.space(148)
+    Item {
+      id: markBox
+      width: Style.space(40)
       height: width
-      radius: width / 2
-      anchors.horizontalCenter: parent.horizontalCenter
       anchors.verticalCenter: parent.verticalCenter
-      anchors.verticalCenterOffset: -Style.space(22)
-      color: "transparent"
-      border.width: 1
-      border.color: root.alpha(root.ray, glow.glowAlpha)
-    }
+      clip: true
 
-    SequentialAnimation {
-      running: root.active && root.visible
-      loops: Animation.Infinite
-      NumberAnimation {
-        target: glow
-        property: "glowAlpha"
-        to: 0.72
-        duration: 1700
-        easing.type: Easing.InOutSine
+      Repeater {
+        model: 8
+        Rectangle {
+          required property int index
+          width: 1
+          height: Style.space(14)
+          x: markBox.width / 2 - width / 2
+          y: markBox.height / 2 - height
+          transformOrigin: Item.Bottom
+          rotation: index * 45 + root.spin
+          antialiasing: true
+          opacity: 0.8
+          gradient: Gradient {
+            orientation: Gradient.Vertical
+            GradientStop { position: 0.0; color: root.alpha(root.ray, 0.0) }
+            GradientStop { position: 1.0; color: root.alpha(root.ray, 0.75) }
+          }
+        }
       }
-      NumberAnimation {
-        target: glow
-        property: "glowAlpha"
-        to: 0.12
-        duration: 1700
-        easing.type: Easing.InOutSine
-      }
-    }
 
-    Rectangle {
-      id: core
-      width: Style.space(108)
-      height: width
-      radius: width / 2
-      anchors.centerIn: glow
-      color: root.alpha(root.background, 0.88)
-      border.width: 1
-      border.color: root.alpha(root.ray, 0.7)
-
-      Loader {
-        id: coreMark
-        anchors.centerIn: parent
-        width: Style.space(58)
+      Rectangle {
+        id: core
+        property real glowAlpha: 0.45
+        width: Style.space(26)
         height: width
-        source: Qt.resolvedUrl("RingMark.qml")
-        onLoaded: {
-          item.width = Qt.binding(function() { return coreMark.width })
-          item.height = Qt.binding(function() { return coreMark.height })
-          item.color = Qt.binding(function() { return root.ray })
-          item.family = root.monoFamily
+        radius: width / 2
+        anchors.centerIn: parent
+        color: root.alpha(root.background, 0.92)
+        border.width: 1
+        border.color: root.alpha(root.ray, core.glowAlpha)
+
+        Loader {
+          id: coreMark
+          anchors.centerIn: parent
+          width: Style.space(16)
+          height: width
+          source: Qt.resolvedUrl("RingMark.qml")
+          onLoaded: {
+            item.width = Qt.binding(function() { return coreMark.width })
+            item.height = Qt.binding(function() { return coreMark.height })
+            item.color = Qt.binding(function() { return root.ray })
+            item.family = root.monoFamily
+          }
+        }
+      }
+
+      SequentialAnimation {
+        running: root.active && root.visible
+        loops: Animation.Infinite
+        NumberAnimation {
+          target: core
+          property: "glowAlpha"
+          to: 0.9
+          duration: 1700
+          easing.type: Easing.InOutSine
+        }
+        NumberAnimation {
+          target: core
+          property: "glowAlpha"
+          to: 0.28
+          duration: 1700
+          easing.type: Easing.InOutSine
         }
       }
     }
 
-    Text {
-      id: verdictText
-      anchors.top: core.bottom
-      anchors.topMargin: Style.space(12)
-      anchors.horizontalCenter: parent.horizontalCenter
-      text: root.verdictWord()
-      color: root.ray
-      font.family: root.proseFamily
-      font.pixelSize: Style.font.display
-      font.bold: true
-      font.letterSpacing: 1.4
-    }
+    Column {
+      anchors.left: markBox.right
+      anchors.leftMargin: Style.space(8)
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: 0
 
-    Text {
-      anchors.top: verdictText.bottom
-      anchors.topMargin: Style.space(2)
-      anchors.horizontalCenter: parent.horizontalCenter
-      text: root.tally("ok") + " clear    " + root.tally("warn") + " warn    " + root.tally("fail") + " fault"
-      color: root.foreground
-      opacity: 0.72
-      font.family: root.monoFamily
-      font.pixelSize: Style.font.bodySmall
+      Text {
+        width: parent.width
+        text: root.verdictWord()
+        color: root.ray
+        font.family: root.proseFamily
+        font.pixelSize: Style.font.heading
+        font.bold: true
+        font.letterSpacing: 0.8
+        elide: Text.ElideRight
+      }
+      Text {
+        width: parent.width
+        text: root.tally("ok") + " clear   " + root.tally("warn") + " warn   " + root.tally("fail") + " fault"
+        color: root.foreground
+        opacity: 0.72
+        font.family: root.monoFamily
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
+      }
     }
   }
 
@@ -199,7 +176,7 @@ Item {
     Column {
       id: listCol
       width: flick.width
-      spacing: Style.space(16)
+      spacing: Style.space(8)
 
       Text {
         visible: !root.vitals || root.vitals.length === 0
@@ -217,7 +194,7 @@ Item {
           id: groupCol
           required property var modelData
           width: listCol.width
-          spacing: Style.space(8)
+          spacing: Style.space(4)
 
           Item {
             width: parent.width
@@ -246,8 +223,8 @@ Item {
             id: board
             width: parent.width
             readonly property int count: (groupCol.modelData.items || []).length
-            readonly property int cellH: Style.space(78)
-            readonly property int gap: Style.space(8)
+            readonly property int cellH: Style.space(32)
+            readonly property int gap: Style.space(4)
             implicitHeight: count === 0 ? 0 : Math.ceil(count / 2) * cellH + Math.max(0, Math.ceil(count / 2) - 1) * gap
             height: implicitHeight
 
@@ -263,7 +240,7 @@ Item {
                 height: board.cellH
                 x: (index % 2) * (cellW + board.gap)
                 y: Math.floor(index / 2) * (board.cellH + board.gap)
-                radius: Style.space(10)
+                radius: Style.space(6)
                 color: root.alpha(root.foreground, card.state === "ok" ? 0.045 : 0.07)
                 border.width: 1
                 border.color: root.alpha(root.tone(card.state), card.state === "ok" ? 0.28 : 0.8)
@@ -272,50 +249,50 @@ Item {
                   width: Style.space(3)
                   radius: width / 2
                   anchors.left: parent.left
-                  anchors.leftMargin: Style.space(8)
-                  anchors.top: parent.top
-                  anchors.topMargin: Style.space(14)
-                  anchors.bottom: parent.bottom
-                  anchors.bottomMargin: Style.space(14)
+                  anchors.leftMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                  height: parent.height * 0.55
                   color: root.tone(card.state)
                   opacity: card.state === "ok" ? 0.4 : 1
                 }
 
-                Column {
-                  anchors.left: parent.left
+                Text {
+                  id: stateText
                   anchors.right: parent.right
+                  anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
-                  anchors.leftMargin: Style.space(20)
-                  anchors.rightMargin: Style.space(10)
-                  spacing: Style.space(2)
-
-                  Text {
-                    width: parent.width
-                    text: String(card.modelData.name || "")
-                    color: root.foreground
-                    elide: Text.ElideRight
-                    font.family: root.proseFamily
-                    font.pixelSize: Style.font.title
-                    font.bold: true
-                  }
-                  Text {
-                    width: parent.width
-                    text: String(card.modelData.detail || "")
-                    color: card.state === "ok" ? root.foreground : root.tone(card.state)
-                    opacity: card.state === "ok" ? 0.7 : 1
-                    elide: Text.ElideRight
-                    font.family: root.monoFamily
-                    font.pixelSize: Style.font.body
-                  }
-                  Text {
-                    width: parent.width
-                    text: card.state === "ok" ? "CLEAR" : (card.state === "warn" ? "WARN" : "FAULT")
-                    color: root.tone(card.state)
-                    opacity: card.state === "ok" ? 0.55 : 0.95
-                    font.family: root.monoFamily
-                    font.pixelSize: Style.font.bodySmall
-                    font.letterSpacing: 0.6
-                  }
+                  text: card.state === "ok" ? "CLEAR" : (card.state === "warn" ? "WARN" : "FAULT")
+                  color: root.tone(card.state)
+                  opacity: card.state === "ok" ? 0.55 : 0.95
+                  font.family: root.monoFamily
+                  font.pixelSize: Style.font.bodySmall
+                  font.letterSpacing: 0.4
+                }
+                Text {
+                  id: nameText
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(16)
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Math.max(Style.space(88), (parent.width - stateText.implicitWidth - Style.space(36)) * 0.46)
+                  text: String(card.modelData.name || "")
+                  color: root.foreground
+                  elide: Text.ElideRight
+                  font.family: root.proseFamily
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                }
+                Text {
+                  anchors.left: nameText.right
+                  anchors.leftMargin: Style.space(6)
+                  anchors.right: stateText.left
+                  anchors.rightMargin: Style.space(6)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: String(card.modelData.detail || "")
+                  color: card.state === "ok" ? root.foreground : root.tone(card.state)
+                  opacity: card.state === "ok" ? 0.7 : 1
+                  elide: Text.ElideRight
+                  font.family: root.monoFamily
+                  font.pixelSize: Style.font.bodySmall
                 }
               }
             }

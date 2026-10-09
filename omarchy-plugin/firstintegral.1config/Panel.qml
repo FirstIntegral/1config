@@ -25,12 +25,12 @@ Panel {
   readonly property string proseFamily: "sans-serif"
   readonly property string monoFamily: Style.font.family
 
-  property string mode: "usage"
+  property string mode: "vitals"
   property bool showQuiet: false
-  property bool showModels: true
+  property bool showModels: false
 
   function open() {
-    root.mode = "usage"
+    root.mode = "vitals"
     root.showQuiet = false
     root.controller.show()
   }
@@ -598,7 +598,9 @@ Panel {
                   if (slip && slip !== "unknown") bits.push(slip)
                   if (clock) bits.push(clock)
                   var msg = root.service ? String(root.service.message || "") : ""
-                  if (msg) bits.push(msg)
+                  var usageError = root.service && root.service.state === "error"
+                  if (root.mode !== "vitals" && msg) bits.push(msg)
+                  else if (usageError && msg) bits.push(msg)
                   return bits.join("  ·  ")
                 }
                 color: (root.brain.verdict === "fault" || root.brain.dirty === true) ? root.accent : root.contentForeground
@@ -656,6 +658,7 @@ Panel {
             }
             Row {
               id: statRow
+              visible: root.mode === "usage"
               spacing: Style.space(12)
               Stat {
                 value: {
@@ -770,7 +773,7 @@ Panel {
                 width: parent.width
                 text: root.service && root.service.note
                   ? String(root.service.note)
-                  : "Each tool is its own box. a shows quiet tools. By model shows or hides the model boxes."
+                  : "Each tool is its own box. a shows quiet tools. By model starts off."
                 color: root.contentForeground
                 opacity: 0.8
                 font.family: root.proseFamily
@@ -852,17 +855,18 @@ Panel {
           spacing: Style.space(6)
           Repeater {
             model: [
-              { k: "esc", t: "close" },
-              { k: "r", t: "re-read" },
-              { k: "u", t: "limits" },
-              { k: "v", t: "vitals" },
-              { k: "s", t: "spend" },
-              { k: "a", t: "all" },
-              { k: "m", t: "models" }
+              { k: "esc", t: "close", spend: false },
+              { k: "r", t: "re-read", spend: false },
+              { k: "s", t: "spend", spend: false },
+              { k: "v", t: "vitals", spend: false },
+              { k: "u", t: "limits", spend: true },
+              { k: "a", t: "all", spend: true },
+              { k: "m", t: "models", spend: true }
             ]
             Rectangle {
               id: chip
               required property var modelData
+              visible: !modelData.spend || root.mode === "usage"
               implicitWidth: chipRow.implicitWidth + Style.space(12)
               implicitHeight: chipRow.implicitHeight + Style.space(6)
               radius: Style.space(4)

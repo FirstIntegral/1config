@@ -2,6 +2,16 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-10 — Vitals open first
+
+**Policy:** omarchy_panel_open=vitals-at-icon
+
+**Decision:** Every open starts on vitals, still under the bar icon, `centerOnBar` off. Spend is the other segment, key `s`. On the vitals page the limit figure, the quiet toggle, the model toggle, and the limits key are hidden. By model starts off. The ring on that page is a small mark at the left of the verdict line, with short rays clipped to that strip. Each check is one line: name, result, state, two columns.
+
+**Why:** The click is for whether the brain is correct. Spend is still one key away. The tall ray wheel and the three-line tiles pushed the last checks off the card. The limit percent on that page was a usage figure on a page that is not about usage.
+
+**Rejected:** Keeping spend as the page a click opens. Leaving By model on. Keeping the centred wheel. Hiding spend entirely.
+
 ## 2026-10-09 — Vitals replace the map
 
 **Decision:** The orbit map is gone (`BrainMap.qml` deleted). `v` opens a vitals board (`g` still lands there). Spend stays the view a click opens, under the icon, same card size. Each tile is one local check with a state of ok, warn, or fail, and a short result that is not a path. The checks are the checkout files, a clean tree, `origin` listed in `BRAIN_REMOTE`, local `HEAD` against `origin/main` with no fetch, the three rules symlinks, `permissions.json`, the hook scripts, the scaffolds, the boot slip, both installed cron guards, the boot autostart file, `claude` / `grok` / `opencode`, TeX, Lean, commit signing, and whether the installed plugin copy matches. Any fail makes the verdict `fault` and pulses the bar dot. Any warn, with no fail, is `warn` and does not pulse. The ring sits in rays that animate only while this view is open. Colours stay on the theme. Urgent is the fault colour.
@@ -52,7 +62,7 @@ ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs 
 
 ## 2026-10-09 — 1config panel opens on spend, under the icon
 
-**Policy:** omarchy_panel_open=usage-at-icon
+**Policy:** omarchy_panel_open superseded-by 2026-10-10 — Vitals open first
 
 **Decision:** The card is about 440 by 560 and anchors under the `1c` bar icon. `centerOnBar` stays off. Every open starts on the spend list. `g` still opens the map, stacked above a short explanation because the card is no longer wide enough for a side-by-side pane. Numerals in the header use the body size so the row fits.
 

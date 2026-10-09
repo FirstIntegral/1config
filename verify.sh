@@ -1455,11 +1455,12 @@ if [ ! -f "$PLUGIN/BrainMap.qml" ] \
 else
   bad "1config panel still has the map, or vitals are missing"
 fi
-if grep -q 'property string mode: "usage"' "$PLUGIN/Panel.qml" \
+if grep -q 'property string mode: "vitals"' "$PLUGIN/Panel.qml" \
+   && grep -q 'showModels: false' "$PLUGIN/Panel.qml" \
    && ! grep -q 'centerOnBar: true' "$PLUGIN/Panel.qml"; then
-  ok "1config panel opens on usage under the icon"
+  ok "1config panel opens on vitals under the icon, models off"
 else
-  bad "1config panel still centred or still defaults to the map"
+  bad "1config panel still centred, still opens on spend, or models start on"
 fi
 if [ -f "$AGENTS_HOME/logo.svg" ] && grep -q 'logo.svg' "$AGENTS_HOME/README.md" \
    && grep -q 'RingMark' "$PLUGIN/BarWidget.qml" && [ -f "$PLUGIN/RingMark.qml" ]; then

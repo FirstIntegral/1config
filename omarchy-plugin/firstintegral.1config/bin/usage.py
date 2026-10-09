@@ -1267,7 +1267,7 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, 
         "tooltip": lines,
         "agents": agents,
         "brain": brain,
-        "note": "Each tool is its own box. Tools with no usage stay hidden until you ask. By model shows or hides the model boxes. OpenCode Go is rolling, weekly, and monthly. v opens vitals. u refreshes Claude and Codex, and reads Go again.",
+        "note": "Each tool is its own box. Tools with no usage stay hidden until you ask. By model starts off. m shows the model boxes. OpenCode Go is rolling, weekly, and monthly. s is spend. u refreshes Claude and Codex, and reads Go again.",
     }
 
 

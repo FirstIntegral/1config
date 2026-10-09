@@ -2,13 +2,13 @@
 
 Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). The bar face is the ring. The panel is spend, and vitals for whether this checkout is actually correct.
 
-Left click opens a card under the bar icon. Right click re-reads local files. Spend is the default. `v` opens vitals. `g` does the same. `s` returns to spend.
+Left click opens a card under the bar icon, on vitals. Right click re-reads local files. `s` opens spend. `v` and `g` return to vitals.
 
 The bar shows the ring only, at the bar's own icon size. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`) and starts with the brain verdict. An accent dot pulses on the bar when a limit is at 80% or more, and when a vital is a fault.
 
-The panel keeps the thin accent frame. Vitals puts the ring in a field of rays, with one tile per live check. The rays run only while that view is open. Spend uses the proportional face for words and monospace for numbers, with no small-caps. Colours come from the current Omarchy theme. A fault uses the urgent colour. A warn stays on the accent. Clear is the calm ray.
+The panel keeps the thin accent frame. On vitals the ring is a small mark at the left of the verdict, with short rays clipped to that strip. Each check is one line, two columns. That page does not show the limit, the model rows, or the quiet toggle. Spend uses the proportional face for words and monospace for numbers, with no small-caps. Colours come from the current Omarchy theme. A fault uses the urgent colour. A warn stays on the accent.
 
-The spend list is six tools, in this order, with anything actually used pulled to the front: Claude, Grok, OpenAI, OpenCode, Codex, Cursor. Each used tool is its own light box. Inside it, each limit, each day, and each model is its own lighter box. "By model" sits next to the quiet toggle and starts on. `m` is the same switch. A tool with no tokens, no plan window, and no model rows stays off that list. The button under the title (`a`) shows those quiet tools at the end, one short box each. No install says "Not on this machine". An install with no ledger says "No usage record on this machine". An empty ledger says "No usage this week". Records that are not in that six, including the Omarchy fireworks file, are not shown.
+The spend list is six tools, in this order, with anything actually used pulled to the front: Claude, Grok, OpenAI, OpenCode, Codex, Cursor. Each used tool is its own light box. Inside it, each limit, each day, and each model is its own lighter box. "By model" sits next to the quiet toggle and starts off. `m` is the same switch. A tool with no tokens, no plan window, and no model rows stays off that list. The button under the title (`a`) shows those quiet tools at the end, one short box each. No install says "Not on this machine". An install with no ledger says "No usage record on this machine". An empty ledger says "No usage this week". Records that are not in that six, including the Omarchy fireworks file, are not shown.
 
 | Card | Where the numbers come from |
 |---|---|
