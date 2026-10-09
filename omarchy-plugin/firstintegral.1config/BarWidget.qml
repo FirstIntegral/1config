@@ -24,7 +24,14 @@ BarWidget {
 
   function open() {
     if (root.service) root.service.refresh()
-    if (panelLoader.item) panelLoader.item.open()
+    var panel = panelLoader.item
+    if (!panel) return
+    // Set the page here. Panel.open() is not the only way the shell shows
+    // the card, and a derived function does not always replace the base one.
+    panel.mode = "vitals"
+    panel.showQuiet = false
+    if (panel.controller) panel.controller.show()
+    else panel.open()
   }
   function close() { if (panelLoader.item) panelLoader.item.close() }
   function togglePanel() {

@@ -1457,6 +1457,8 @@ else
 fi
 if grep -q 'property string mode: "vitals"' "$PLUGIN/Panel.qml" \
    && grep -q 'showModels: false' "$PLUGIN/Panel.qml" \
+   && grep -q 'onOpenedChanged: if (root.opened) root.mode = "vitals"' "$PLUGIN/Panel.qml" \
+   && grep -q 'panel.mode = "vitals"' "$PLUGIN/BarWidget.qml" \
    && ! grep -q 'centerOnBar: true' "$PLUGIN/Panel.qml"; then
   ok "1config panel opens on vitals under the icon, models off"
 else

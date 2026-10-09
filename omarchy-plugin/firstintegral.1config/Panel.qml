@@ -34,6 +34,8 @@ Panel {
     root.showQuiet = false
     root.controller.show()
   }
+  // Any show path, including the base Panel open, lands on vitals.
+  onOpenedChanged: if (root.opened) root.mode = "vitals"
   function close() { root.controller.hide() }
   function toggle() {
     if (root.opened) root.close()
