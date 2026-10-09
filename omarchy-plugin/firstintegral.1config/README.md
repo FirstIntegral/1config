@@ -4,7 +4,7 @@ Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1c
 
 Left click opens a small card under the bar icon. Right click re-reads local files. Spend is the default. `g` opens the map. `s` returns to spend. `h` and `l` cycle the six parts. Click a part, or a card in the side pane.
 
-The bar shows the hottest plan percentage on disk (the self-test fixture produces `C 50%`), or today's token total when no plan figure exists. An accent dot pulses on the bar when a limit is at 80% or more.
+The bar shows a ring mark and the hottest plan in words (the self-test fixture produces `Claude 50%`), or today's token total when no plan figure exists. An accent dot pulses on the bar when a limit is at 80% or more.
 
 The panel follows the brain HUD look (thin accent frame, grid, scanlines, corner brackets, a slow sweep, small-caps headers, large numerals). Colours come from the current Omarchy theme. The sweep runs only while the map is open.
 
@@ -12,7 +12,7 @@ The panel follows the brain HUD look (thin accent frame, grid, scanlines, corner
 |---|---|
 | Claude, Codex, Fireworks, any other `~/.local/state/omarchy/agents/usage/*.json` | Omarchy's own usage records. Today tokens, 7-day message counts, limit percent and reset. |
 | Grok | `~/.grok/sessions/**/usage.json` turn totals for today and 7 days, plus the latest `creditUsagePercent` Grok already wrote to `~/.grok/logs/unified.jsonl`. |
-| OpenCode | Read-only sum of token columns in `~/.local/share/opencode/opencode.db` for today and 7 days. |
+| OpenCode | `step-finish` rows in `~/.local/share/opencode/opencode.db`: token total and dollar cost for today and 7 days. Same records as `opencode stats`. A database with no `part` table falls back to session token sums. |
 
 The timer does not call a provider. In the panel, `u` runs `omarchy-agent-usage-update --limits-only`, which is Omarchy's collector and does contact the providers you are already signed into. `r` only re-reads disk.
 

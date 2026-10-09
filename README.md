@@ -1,5 +1,9 @@
 # 1config
 
+<p align="center">
+  <img src="logo.svg" width="220" alt="1config. One circle, three tools, one machine.">
+</p>
+
 Canonical AI-terminal brain for **Claude Code**, **Grok**, and **OpenCode**. One rules file, one permission policy, one setup script. Lives at `~/.agents/`. Also called the global brain. The trigger `global_brain_update` edits this repo.
 
 License: [MIT](LICENSE). Use it, including commercially. Keep the copyright notice: Brusk Kawa Abdalla and `github:FirstIntegral/1config`. That notice is the credit.

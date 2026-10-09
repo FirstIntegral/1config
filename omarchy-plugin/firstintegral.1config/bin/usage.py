@@ -21,12 +21,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-SHORT = {
-    "claude": "C",
-    "grok": "G",
-    "opencode": "O",
-    "codex": "X",
-    "fireworks": "F",
+FACE = {
+    "claude": "Claude",
+    "grok": "Grok",
+    "opencode": "OpenCode",
+    "codex": "Codex",
+    "fireworks": "Fireworks",
 }
 
 CORE_IDS = ("claude", "grok", "opencode")
@@ -70,6 +70,38 @@ def as_percent(value: object, *, fraction_if_unit: bool) -> float | None:
     if fraction_if_unit and number <= 1:
         number *= 100
     return round(number, 1)
+
+
+def format_cost(amount: float | None) -> str:
+    if amount is None:
+        return "—"
+    number = float(amount)
+    sign = "-" if number < 0 else ""
+    number = abs(number)
+    if number == 0:
+        return "$0"
+    if number < 0.01:
+        text = f"{number:.4f}".rstrip("0").rstrip(".")
+        return sign + "$" + text
+    return sign + f"${number:.2f}"
+
+
+def as_float(value: object) -> float:
+    if isinstance(value, bool) or value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def clean_model(value: object) -> str:
+    text = str(value or "").strip()
+    if not text or "@" in text or any(ord(ch) < 32 for ch in text):
+        return ""
+    return "".join(ch for ch in text if ch.isalnum() or ch in "-_.")[:48]
 
 
 def format_tokens(count: int | None) -> str:
@@ -240,19 +272,21 @@ def epoch_ms(moment: datetime) -> int:
     return int(moment.timestamp() * 1000)
 
 
-def opencode_agent(home: Path, now: datetime) -> dict:
-    db_path = home / ".local" / "share" / "opencode" / "opencode.db"
-    empty = {
+def _opencode_empty() -> dict:
+    return {
         "id": "opencode",
         "name": "OpenCode",
-        "source": "opencode-db",
-        "sourceLabel": "OpenCode local database",
+        "source": "opencode-steps",
+        "sourceLabel": "OpenCode step records",
         "ready": False,
         "status": "No OpenCode database on this machine",
         "todayTokens": 0,
         "todayLabel": "0",
         "weekTokens": 0,
         "weekLabel": "0",
+        "todayCost": None,
+        "weekCost": None,
+        "costLabel": "",
         "todayPrompts": 0,
         "todaySessions": 0,
         "weekTurns": 0,
@@ -260,8 +294,82 @@ def opencode_agent(home: Path, now: datetime) -> dict:
         "limits": [],
         "models": [],
     }
-    if not db_path.is_file():
-        return empty
+
+
+def _opencode_card(today_tokens: int, week_tokens: int, today_cost: float | None, week_cost: float | None, turns: int, models: list[dict]) -> dict:
+    card = _opencode_empty()
+    card["ready"] = True
+    card["status"] = ""
+    card["todayTokens"] = today_tokens
+    card["todayLabel"] = format_tokens(today_tokens)
+    card["weekTokens"] = week_tokens
+    card["weekLabel"] = format_tokens(week_tokens)
+    card["todayCost"] = None if today_cost is None else round(today_cost, 4)
+    card["weekCost"] = None if week_cost is None else round(week_cost, 4)
+    if today_cost is not None or week_cost is not None:
+        card["costLabel"] = f"today {format_cost(today_cost)} · 7d {format_cost(week_cost)}"
+    card["weekTurns"] = turns
+    card["models"] = models
+    return card
+
+
+def _opencode_from_steps(connection: sqlite3.Connection, now: datetime) -> dict | None:
+    tables = {row[0] for row in connection.execute("select name from sqlite_master where type='table'")}
+    if "part" not in tables:
+        return None
+    week_start = epoch_ms(now - timedelta(days=7))
+    today_start = epoch_ms(now.replace(hour=0, minute=0, second=0, microsecond=0))
+    join = "left join message m on m.id = p.message_id" if "message" in tables else ""
+    model_sql = (
+        "coalesce(json_extract(m.data, '$.model.modelID'), json_extract(m.data, '$.modelID'))"
+        if "message" in tables
+        else "null"
+    )
+    query = f"""
+        select
+          p.time_created,
+          json_extract(p.data, '$.cost'),
+          json_extract(p.data, '$.tokens.total'),
+          json_extract(p.data, '$.tokens.input'),
+          json_extract(p.data, '$.tokens.output'),
+          json_extract(p.data, '$.tokens.reasoning'),
+          json_extract(p.data, '$.tokens.cache.read'),
+          json_extract(p.data, '$.tokens.cache.write'),
+          {model_sql}
+        from part p
+        {join}
+        where p.time_created >= ?
+          and json_extract(p.data, '$.type') = 'step-finish'
+    """
+    rows = connection.execute(query, (week_start,)).fetchall()
+    today_tokens = 0
+    week_tokens = 0
+    today_cost = 0.0
+    week_cost = 0.0
+    models: dict[str, int] = defaultdict(int)
+    for created, cost, total, inp, out, reasoning, cache_read, cache_write, model in rows:
+        tokens = int(as_float(total) or (as_float(inp) + as_float(out) + as_float(reasoning) + as_float(cache_read) + as_float(cache_write)))
+        price = as_float(cost)
+        week_tokens += tokens
+        week_cost += price
+        if int(created or 0) >= today_start:
+            today_tokens += tokens
+            today_cost += price
+        name = clean_model(model)
+        if name:
+            models[name] += tokens
+    top = sorted(models.items(), key=lambda item: item[1], reverse=True)[:3]
+    return _opencode_card(
+        today_tokens,
+        week_tokens,
+        today_cost,
+        week_cost,
+        len(rows),
+        [{"id": name, "tokens": tokens, "label": format_tokens(tokens)} for name, tokens in top],
+    )
+
+
+def _opencode_from_sessions(connection: sqlite3.Connection, now: datetime) -> dict:
     week_start = epoch_ms(now - timedelta(days=7))
     today_start = epoch_ms(now.replace(hour=0, minute=0, second=0, microsecond=0))
     query = """
@@ -275,38 +383,32 @@ def opencode_agent(home: Path, now: datetime) -> dict:
         from session
         where time_updated >= ?
     """
+    week = connection.execute(query, (week_start,)).fetchone()
+    today = connection.execute(query, (today_start,)).fetchone()
+
+    def total(row: tuple) -> int:
+        return sum(int(part or 0) for part in row[:5])
+
+    return _opencode_card(total(today), total(week), None, None, int(week[5] or 0), [])
+
+
+def opencode_agent(home: Path, now: datetime) -> dict:
+    db_path = home / ".local" / "share" / "opencode" / "opencode.db"
+    empty = _opencode_empty()
+    if not db_path.is_file():
+        return empty
     try:
         connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
-            week = connection.execute(query, (week_start,)).fetchone()
-            today = connection.execute(query, (today_start,)).fetchone()
+            from_steps = _opencode_from_steps(connection, now)
+            if from_steps is not None:
+                return from_steps
+            return _opencode_from_sessions(connection, now)
         finally:
             connection.close()
     except sqlite3.Error:
         empty["status"] = "OpenCode database could not be read"
         return empty
-    def total(row: tuple) -> int:
-        return sum(int(part or 0) for part in row[:5])
-    week_tokens = total(week)
-    today_tokens = total(today)
-    return {
-        "id": "opencode",
-        "name": "OpenCode",
-        "source": "opencode-db",
-        "sourceLabel": "OpenCode local database",
-        "ready": True,
-        "status": "",
-        "todayTokens": today_tokens,
-        "todayLabel": format_tokens(today_tokens),
-        "weekTokens": week_tokens,
-        "weekLabel": format_tokens(week_tokens),
-        "todayPrompts": 0,
-        "todaySessions": int(today[5] or 0),
-        "weekTurns": int(week[5] or 0),
-        "updatedAt": "",
-        "limits": [],
-        "models": [],
-    }
 
 
 def bar_summary(agents: list[dict]) -> dict:
@@ -337,10 +439,10 @@ def bar_summary(agents: list[dict]) -> dict:
             line += " · " + str(agent["status"])
         lines.append(line)
     if hottest is not None:
-        short = SHORT.get(hottest[1], hottest[1][:1].upper() or "?")
-        label = f"{short} {round(hottest[0])}%"
+        name = FACE.get(hottest[1], str(hottest[1] or "AI"))
+        label = f"{name} {round(hottest[0])}%"
     else:
-        label = format_tokens(today)
+        label = "today " + format_tokens(today)
     return {"label": label, "alarm": alarm, "todayTokens": today, "lines": lines}
 
 
@@ -605,6 +707,26 @@ def self_test() -> None:
             "insert into session values (10, 4, 0, 1, 0, ?)",
             (epoch_ms(now - timedelta(hours=1)),),
         )
+        connection.execute("create table message (id text, data text)")
+        connection.execute("create table part (time_created integer, message_id text, data text)")
+        connection.execute(
+            "insert into message values ('m1', ?)",
+            (json.dumps({"model": {"modelID": "demo", "providerID": "opencode"}}),),
+        )
+        step = {
+            "type": "step-finish",
+            "cost": 1.25,
+            "tokens": {"total": 21, "input": 10, "output": 5, "reasoning": 1, "cache": {"read": 4, "write": 1}},
+        }
+        old = {"type": "step-finish", "cost": 9, "tokens": {"total": 99}}
+        connection.execute(
+            "insert into part values (?, 'm1', ?)",
+            (epoch_ms(now - timedelta(hours=1)), json.dumps(step)),
+        )
+        connection.execute(
+            "insert into part values (?, 'm1', ?)",
+            (epoch_ms(now - timedelta(days=8)), json.dumps(old)),
+        )
         connection.commit()
         connection.close()
         payload = collect(home, now)
@@ -616,8 +738,11 @@ def self_test() -> None:
     assert grok["todayTokens"] == 7, grok
     assert grok["weekTokens"] == 7, grok
     assert grok["limits"][0]["usedPct"] == 25, grok
-    assert opencode["todayTokens"] == 15, opencode
-    assert payload["bar"]["label"] == "C 50%", payload["bar"]
+    assert opencode["todayTokens"] == 21, opencode
+    assert opencode["weekTokens"] == 21, opencode
+    assert opencode["weekCost"] == 1.25, opencode
+    assert opencode["models"][0]["id"] == "demo", opencode
+    assert payload["bar"]["label"] == "Claude 50%", payload["bar"]
     brain = payload["brain"]
     assert brain["present"] is False, brain
     assert brain["links"] == 0, brain

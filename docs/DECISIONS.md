@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Ring mark, plain bar name, OpenCode step cost
+
+**Decision:** The mark is one circle, the numeral 1, and three nodes. It is drawn in the bar and the panel header (`RingMark.qml`, theme colour) and shipped as `logo.svg` for the GitHub README. The bar text is the tool's name plus the percent (`Grok 42%`), or `today` plus a token total when no plan figure exists. The card is about 560 by 720. OpenCode usage is the sum of `step-finish` parts in the local database (tokens and dollars) over today and 7 days, which is what `opencode stats` reads. Session rollups stay only as a fallback when that table is absent.
+
+**Why:** `1c G 42%` did not say which tool or what the mark was. A session's token columns cover the whole session, so a 7-day filter on `time_updated` counts old turns and misses cost. The step rows are the usage.
+
+**Rejected:** A picture of a piece of jewellery. Letter codes on the bar. Calling `opencode stats` on the timer (it is a full process; the database read is the same numbers).
+
 ## 2026-10-09 — 1config panel opens on spend, under the icon
 
 **Policy:** omarchy_panel_open=usage-at-icon

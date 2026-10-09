@@ -103,8 +103,8 @@ Panel {
   readonly property real screenW: panel.screenW > 0 ? panel.screenW : 1600
   readonly property real screenH: panel.screenH > 0 ? panel.screenH : 1025
   // Drops from the bar icon. Wide enough for one usage card, short enough to leave the desktop.
-  readonly property int cardWidth: Math.round(Math.min(Style.space(440), Math.max(Style.space(320), 0.28 * screenW)))
-  readonly property int cardHeight: Math.round(Math.min(Style.space(560), Math.max(Style.space(360), 0.52 * screenH)))
+  readonly property int cardWidth: Math.round(Math.min(Style.space(560), Math.max(Style.space(360), 0.34 * screenW)))
+  readonly property int cardHeight: Math.round(Math.min(Style.space(720), Math.max(Style.space(420), 0.62 * screenH)))
 
   component SectionHeader: Item {
     id: sh
@@ -258,10 +258,12 @@ Panel {
       Text {
         width: parent.width
         text: "today " + String(card.agent.todayLabel || "—") + "   ·   7d " + String(card.agent.weekLabel || "—")
+          + (card.agent.costLabel ? "   ·   " + String(card.agent.costLabel) : "")
         color: root.contentForeground
         opacity: 0.85
         font.family: root.monoFamily
         font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
       }
       Repeater {
         model: card.agent.limits || []
@@ -404,9 +406,22 @@ Panel {
               id: titleLine
               width: parent.width
               spacing: Style.space(8)
+            Loader {
+              id: titleMark
+              width: Style.space(28)
+              height: width
+              anchors.verticalCenter: parent.verticalCenter
+              source: Qt.resolvedUrl("RingMark.qml")
+              onLoaded: {
+                item.width = Qt.binding(function() { return titleMark.width })
+                item.height = Qt.binding(function() { return titleMark.height })
+                item.color = Qt.binding(function() { return root.accent })
+                item.family = root.monoFamily
+              }
+            }
             Column {
               id: titleCol
-              width: Math.max(Style.space(80), titleLine.width - switchBox.implicitWidth - Style.space(8))
+              width: Math.max(Style.space(80), titleLine.width - switchBox.implicitWidth - titleMark.width - Style.space(16))
               spacing: Style.space(2)
               Text {
                 text: "1config"

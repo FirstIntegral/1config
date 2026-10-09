@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="320" viewBox="0 0 280 320" role="img" aria-label="1config mark">
+  <rect width="280" height="320" rx="28" fill="#0d1117"/>
+  <circle cx="140" cy="128" r="72" fill="none" stroke="#39d3e0" stroke-width="1.6"/>
+  <circle cx="140" cy="56" r="4.5" fill="#39d3e0"/>
+  <circle cx="202.4" cy="164" r="4.5" fill="#39d3e0"/>
+  <circle cx="77.6" cy="164" r="4.5" fill="#39d3e0"/>
+  <text x="140" y="140" text-anchor="middle" fill="#e6edf3" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="64" font-weight="300">1</text>
+  <text x="140" y="222" text-anchor="middle" fill="#8b949e" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11" letter-spacing="1.4">CLAUDE · GROK · OPENCODE</text>
+  <text x="140" y="250" text-anchor="middle" fill="#e6edf3" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="16" font-weight="700" letter-spacing="4">1CONFIG</text>
+  <text x="140" y="276" text-anchor="middle" fill="#8b949e" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11" letter-spacing="1.2">ONE CONFIG · ONE MACHINE</text>
+</svg>

@@ -1456,6 +1456,12 @@ if grep -q 'property string mode: "usage"' "$PLUGIN/Panel.qml" \
 else
   bad "1config panel still centred or still defaults to the map"
 fi
+if [ -f "$AGENTS_HOME/logo.svg" ] && grep -q 'logo.svg' "$AGENTS_HOME/README.md" \
+   && grep -q 'RingMark' "$PLUGIN/BarWidget.qml" && [ -f "$PLUGIN/RingMark.qml" ]; then
+  ok "1config ring mark is on the bar and the README"
+else
+  bad "1config ring mark missing from the bar or the README"
+fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then
   bad "setup.sh does not install firstintegral.1config"

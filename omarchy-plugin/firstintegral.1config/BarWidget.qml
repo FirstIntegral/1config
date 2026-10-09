@@ -20,7 +20,7 @@ BarWidget {
     ? Color.urgent
     : (root.alarming ? Color.accent : root.normalForeground)
 
-  readonly property var verticalLines: root.vertical ? ["1c", root.label] : []
+  readonly property var verticalLines: root.vertical ? [root.label] : []
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
 
@@ -81,10 +81,11 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     foreground: root.paint
-    text: root.vertical ? "" : "1c " + root.label
-    labelVisible: !root.vertical
-    hasVisualContent: root.vertical ? root.verticalLines.length > 0 : true
-    fixedHeight: root.vertical ? root.verticalLines.length * Style.bar.iconSlot : -1
+    text: ""
+    labelVisible: false
+    hasVisualContent: true
+    fixedWidth: root.vertical ? -1 : faceRow.implicitWidth + scaledHorizontalMargin * 2
+    fixedHeight: root.vertical ? (root.verticalLines.length + 1) * Style.bar.iconSlot : -1
     horizontalMargin: 8.5
     tooltipText: root.service ? root.service.tooltipText() : "1config"
     onPressed: function(b) {
@@ -93,9 +94,49 @@ BarWidget {
       } else root.togglePanel()
     }
 
+    Row {
+      id: faceRow
+      visible: !root.vertical
+      anchors.centerIn: parent
+      spacing: Style.space(5)
+      Loader {
+        id: barMark
+        width: Style.space(14)
+        height: width
+        anchors.verticalCenter: parent.verticalCenter
+        source: Qt.resolvedUrl("RingMark.qml")
+        onLoaded: {
+          item.width = Qt.binding(function() { return barMark.width })
+          item.height = Qt.binding(function() { return barMark.height })
+          item.color = Qt.binding(function() { return root.paint })
+          item.family = button.fontFamily
+        }
+      }
+      Text {
+        text: root.label
+        color: root.paint
+        font.family: button.fontFamily
+        font.pixelSize: button.fontSize
+        renderType: Text.NativeRendering
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
     Column {
       visible: root.vertical
       anchors.fill: parent
+      Loader {
+        id: verticalMark
+        width: parent.width
+        height: Style.bar.iconSlot
+        source: Qt.resolvedUrl("RingMark.qml")
+        onLoaded: {
+          item.width = Qt.binding(function() { return verticalMark.width })
+          item.height = Qt.binding(function() { return verticalMark.height })
+          item.color = Qt.binding(function() { return root.paint })
+          item.family = button.fontFamily
+        }
+      }
       Repeater {
         model: root.verticalLines
         OpticalGlyph {
