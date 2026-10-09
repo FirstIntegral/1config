@@ -2,9 +2,17 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Ring only on the bar, open week for OpenCode
+
+**Decision:** The bar face is the ring and nothing else. The hottest plan stays in the tooltip and in the panel header. The card is about 640 by 820. The map drops the square grid, the scanlines, the tick ring, the corner brackets, and the boxed part list. Part names sit on the orbit with clear space, and the list under the map is plain lines. OpenCode spend is seven day rows (today first in the label, oldest day at the top of the run-up) plus one row per model. Each row is a name, a bar scaled to the busiest day or model, and the tokens and dollars on the right. Limit rows for the other tools use the same shape: label, percent, bar, time until reset.
+
+**Why:** `Grok 42%` beside the ring, and a second `1config` label, made the icon hard to read. The 18 px grid and the stacked boxes crowded the map. OpenCode had the numbers, but they were one caption line, so the week did not read. Omarchy's agents panel already shows a week as rows with the figure on the right. OpenCode has no plan percent on disk. The day rows are that same picture, drawn from `step-finish`.
+
+**Rejected:** Putting the word `1config` back on the bar. Keeping the grid at a wider pitch. Calling `opencode stats` on the timer. Inventing an OpenCode plan percent.
+
 ## 2026-10-09 — Ring mark, plain bar name, OpenCode step cost
 
-**Decision:** The mark is one circle, the numeral 1, and three nodes. It is drawn in the bar and the panel header (`RingMark.qml`, theme colour) and shipped as `logo.svg` for the GitHub README. The bar text is the tool's name plus the percent (`Grok 42%`), or `today` plus a token total when no plan figure exists. The card is about 560 by 720. OpenCode usage is the sum of `step-finish` parts in the local database (tokens and dollars) over today and 7 days, which is what `opencode stats` reads. Session rollups stay only as a fallback when that table is absent.
+**Decision:** The mark is one circle, the numeral 1, and three nodes. It is drawn in the bar and the panel header (`RingMark.qml`, theme colour) and shipped as `logo.svg` for the GitHub README. OpenCode usage is the sum of `step-finish` parts in the local database (tokens and dollars) over today and 7 days, which is what `opencode stats` reads. Session rollups stay only as a fallback when that table is absent. The bar-text half (a name and a percent on the face) and the 560 by 720 card are replaced by the ADR above, "Ring only on the bar, open week for OpenCode".
 
 **Why:** `1c G 42%` did not say which tool or what the mark was. A session's token columns cover the whole session, so a 7-day filter on `time_updated` counts old turns and misses cost. The step rows are the usage.
 

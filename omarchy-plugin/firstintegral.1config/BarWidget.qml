@@ -5,22 +5,19 @@ import Quickshell.Io
 import qs.Ui
 import qs.Commons
 
-// Bar face for 1config. Shows the hottest plan percentage, or today's token
-// total when no plan figure is on disk. Data lives in Service.qml.
+// Bar face for 1config. The ring only. The percent stays in the tooltip
+// and in the panel. Data lives in Service.qml.
 BarWidget {
   id: root
   moduleName: "firstintegral.1config"
 
   readonly property var service: bar && bar.shell ? bar.shell.serviceFor("firstintegral.1config") : null
-  readonly property string label: service ? service.barLabel : "…"
   readonly property bool alarming: service ? service.alarming === true : false
   readonly property bool failed: service ? service.state === "error" : false
   readonly property color normalForeground: bar ? bar.barForeground : Color.foreground
   readonly property color paint: root.failed && !(service && service.ready)
     ? Color.urgent
     : (root.alarming ? Color.accent : root.normalForeground)
-
-  readonly property var verticalLines: root.vertical ? [root.label] : []
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
 
@@ -84,9 +81,9 @@ BarWidget {
     text: ""
     labelVisible: false
     hasVisualContent: true
-    fixedWidth: root.vertical ? -1 : faceRow.implicitWidth + scaledHorizontalMargin * 2
-    fixedHeight: root.vertical ? (root.verticalLines.length + 1) * Style.bar.iconSlot : -1
-    horizontalMargin: 8.5
+    fixedWidth: root.vertical ? -1 : Style.bar.iconSlot
+    fixedHeight: root.vertical ? Style.bar.iconSlot : -1
+    horizontalMargin: 0
     tooltipText: root.service ? root.service.tooltipText() : "1config"
     onPressed: function(b) {
       if (b === Qt.RightButton) {
@@ -94,60 +91,17 @@ BarWidget {
       } else root.togglePanel()
     }
 
-    Row {
-      id: faceRow
-      visible: !root.vertical
+    Loader {
+      id: barMark
       anchors.centerIn: parent
-      spacing: Style.space(5)
-      Loader {
-        id: barMark
-        width: Style.space(14)
-        height: width
-        anchors.verticalCenter: parent.verticalCenter
-        source: Qt.resolvedUrl("RingMark.qml")
-        onLoaded: {
-          item.width = Qt.binding(function() { return barMark.width })
-          item.height = Qt.binding(function() { return barMark.height })
-          item.color = Qt.binding(function() { return root.paint })
-          item.family = button.fontFamily
-        }
-      }
-      Text {
-        text: root.label
-        color: root.paint
-        font.family: button.fontFamily
-        font.pixelSize: button.fontSize
-        renderType: Text.NativeRendering
-        anchors.verticalCenter: parent.verticalCenter
-      }
-    }
-
-    Column {
-      visible: root.vertical
-      anchors.fill: parent
-      Loader {
-        id: verticalMark
-        width: parent.width
-        height: Style.bar.iconSlot
-        source: Qt.resolvedUrl("RingMark.qml")
-        onLoaded: {
-          item.width = Qt.binding(function() { return verticalMark.width })
-          item.height = Qt.binding(function() { return verticalMark.height })
-          item.color = Qt.binding(function() { return root.paint })
-          item.family = button.fontFamily
-        }
-      }
-      Repeater {
-        model: root.verticalLines
-        OpticalGlyph {
-          required property string modelData
-          width: button.width
-          height: Style.bar.iconSlot
-          text: modelData
-          fontFamily: button.fontFamily
-          fontSize: button.fontSize
-          color: root.paint
-        }
+      width: Math.round(Style.bar.iconSlot * 0.72)
+      height: width
+      source: Qt.resolvedUrl("RingMark.qml")
+      onLoaded: {
+        item.width = Qt.binding(function() { return barMark.width })
+        item.height = Qt.binding(function() { return barMark.height })
+        item.color = Qt.binding(function() { return root.paint })
+        item.family = button.fontFamily
       }
     }
   }

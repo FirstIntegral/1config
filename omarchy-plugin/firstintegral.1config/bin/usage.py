@@ -30,6 +30,7 @@ FACE = {
 }
 
 CORE_IDS = ("claude", "grok", "opencode")
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def parse_time(value: object) -> datetime | None:
@@ -293,10 +294,56 @@ def _opencode_empty() -> dict:
         "updatedAt": "",
         "limits": [],
         "models": [],
+        "days": [],
+        "todayCostLabel": "",
+        "weekCostLabel": "",
     }
 
 
-def _opencode_card(today_tokens: int, week_tokens: int, today_cost: float | None, week_cost: float | None, turns: int, models: list[dict]) -> dict:
+def _week_slots(now: datetime) -> list[dict]:
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    slots = []
+    for offset in range(6, -1, -1):
+        day = start - timedelta(days=offset)
+        slots.append(
+            {
+                "date": day.strftime("%Y-%m-%d"),
+                "label": "Today" if offset == 0 else WEEKDAYS[day.weekday()],
+                "tokens": 0,
+                "cost": 0.0,
+                "today": offset == 0,
+            }
+        )
+    return slots
+
+
+def _finish_days(slots: list[dict]) -> list[dict]:
+    finished = []
+    for slot in slots:
+        cost = float(slot["cost"])
+        finished.append(
+            {
+                "date": slot["date"],
+                "label": slot["label"],
+                "tokens": int(slot["tokens"]),
+                "tokenLabel": format_tokens(int(slot["tokens"])),
+                "cost": round(cost, 4),
+                "costLabel": format_cost(cost) if cost or slot["today"] else "",
+                "today": bool(slot["today"]),
+            }
+        )
+    return finished
+
+
+def _opencode_card(
+    today_tokens: int,
+    week_tokens: int,
+    today_cost: float | None,
+    week_cost: float | None,
+    turns: int,
+    models: list[dict],
+    days: list[dict] | None = None,
+) -> dict:
     card = _opencode_empty()
     card["ready"] = True
     card["status"] = ""
@@ -308,8 +355,11 @@ def _opencode_card(today_tokens: int, week_tokens: int, today_cost: float | None
     card["weekCost"] = None if week_cost is None else round(week_cost, 4)
     if today_cost is not None or week_cost is not None:
         card["costLabel"] = f"today {format_cost(today_cost)} · 7d {format_cost(week_cost)}"
+    card["todayCostLabel"] = "" if today_cost is None else format_cost(today_cost)
+    card["weekCostLabel"] = "" if week_cost is None else format_cost(week_cost)
     card["weekTurns"] = turns
     card["models"] = models
+    card["days"] = days or []
     return card
 
 
@@ -346,26 +396,44 @@ def _opencode_from_steps(connection: sqlite3.Connection, now: datetime) -> dict 
     week_tokens = 0
     today_cost = 0.0
     week_cost = 0.0
-    models: dict[str, int] = defaultdict(int)
+    models: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    slots = _week_slots(now)
+    by_date = {slot["date"]: slot for slot in slots}
     for created, cost, total, inp, out, reasoning, cache_read, cache_write, model in rows:
         tokens = int(as_float(total) or (as_float(inp) + as_float(out) + as_float(reasoning) + as_float(cache_read) + as_float(cache_write)))
         price = as_float(cost)
         week_tokens += tokens
         week_cost += price
+        created_at = datetime.fromtimestamp(int(created or 0) / 1000, tz=now.tzinfo)
+        slot = by_date.get(created_at.strftime("%Y-%m-%d"))
+        if slot is not None:
+            slot["tokens"] += tokens
+            slot["cost"] += price
         if int(created or 0) >= today_start:
             today_tokens += tokens
             today_cost += price
         name = clean_model(model)
         if name:
-            models[name] += tokens
-    top = sorted(models.items(), key=lambda item: item[1], reverse=True)[:3]
+            models[name][0] += tokens
+            models[name][1] += price
+    top = sorted(models.items(), key=lambda item: item[1][0], reverse=True)[:6]
     return _opencode_card(
         today_tokens,
         week_tokens,
         today_cost,
         week_cost,
         len(rows),
-        [{"id": name, "tokens": tokens, "label": format_tokens(tokens)} for name, tokens in top],
+        [
+            {
+                "id": name,
+                "tokens": int(parts[0]),
+                "label": format_tokens(int(parts[0])),
+                "cost": round(parts[1], 4),
+                "costLabel": format_cost(parts[1]) if parts[1] else "",
+            }
+            for name, parts in top
+        ],
+        _finish_days(slots),
     )
 
 
@@ -742,6 +810,15 @@ def self_test() -> None:
     assert opencode["weekTokens"] == 21, opencode
     assert opencode["weekCost"] == 1.25, opencode
     assert opencode["models"][0]["id"] == "demo", opencode
+    assert opencode["models"][0]["cost"] == 1.25, opencode
+    assert opencode["weekCostLabel"] == "$1.25", opencode
+    assert len(opencode["days"]) == 7, opencode["days"]
+    assert opencode["days"][-1]["today"] is True, opencode["days"]
+    assert opencode["days"][-1]["label"] == "Today", opencode["days"]
+    assert opencode["days"][-1]["tokens"] == 21, opencode["days"]
+    assert opencode["days"][-1]["cost"] == 1.25, opencode["days"]
+    assert opencode["days"][0]["date"] == "2026-10-03", opencode["days"]
+    assert sum(day["tokens"] for day in opencode["days"]) == 21
     assert payload["bar"]["label"] == "Claude 50%", payload["bar"]
     brain = payload["brain"]
     assert brain["present"] is False, brain

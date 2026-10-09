@@ -6,7 +6,7 @@ import qs.Ui
 
 // 1config brain HUD. The map is what this repo is. Usage is one part of it.
 // Design tokens follow Projects/skills/brain-hud-design (the brwsk.brain look):
-// theme colours only, accent for signal, grid painted once, sweep only while open.
+// theme colours only, accent for signal, sweep only while the map is open.
 Panel {
   id: root
   moduleName: "firstintegral.1config"
@@ -81,6 +81,29 @@ Panel {
     var max = Math.max(0, usageFlick.contentHeight - usageFlick.height)
     usageFlick.contentY = Math.max(0, Math.min(max, usageFlick.contentY + dy))
   }
+  function resetsIn(iso) {
+    var text = String(iso || "")
+    if (!text) return ""
+    var ms = Date.parse(text)
+    if (!isFinite(ms)) return ""
+    var left = ms - Date.now()
+    if (!(left > 0)) return ""
+    var minutes = Math.floor(left / 60000)
+    var hours = Math.floor(minutes / 60)
+    var days = Math.floor(hours / 24)
+    if (days > 0) return "Resets in " + days + "d " + (hours % 24) + "h"
+    if (hours > 0) return "Resets in " + hours + "h " + (minutes % 60) + "m"
+    return "Resets in " + Math.max(1, minutes) + "m"
+  }
+  function peakOf(rows, field) {
+    var peak = 1
+    var list = rows || []
+    for (var i = 0; i < list.length; i++) {
+      var n = Number(list[i][field]) || 0
+      if (n > peak) peak = n
+    }
+    return peak
+  }
   function handleTextKey(t) {
     if (t === "r" || t === "R") root.refresh()
     else if (t === "u" || t === "U") root.refreshLimits()
@@ -103,8 +126,8 @@ Panel {
   readonly property real screenW: panel.screenW > 0 ? panel.screenW : 1600
   readonly property real screenH: panel.screenH > 0 ? panel.screenH : 1025
   // Drops from the bar icon. Wide enough for one usage card, short enough to leave the desktop.
-  readonly property int cardWidth: Math.round(Math.min(Style.space(560), Math.max(Style.space(360), 0.34 * screenW)))
-  readonly property int cardHeight: Math.round(Math.min(Style.space(720), Math.max(Style.space(420), 0.62 * screenH)))
+  readonly property int cardWidth: Math.round(Math.min(Style.space(640), Math.max(Style.space(400), 0.38 * screenW)))
+  readonly property int cardHeight: Math.round(Math.min(Style.space(820), Math.max(Style.space(480), 0.68 * screenH)))
 
   component SectionHeader: Item {
     id: sh
@@ -191,139 +214,235 @@ Panel {
 
   component Meter: Item {
     id: meter
-    property real value: 0
+    property real ratio: 0
     property bool hot: false
-    implicitHeight: Style.space(4)
+    property bool today: false
+    implicitHeight: Math.max(Style.space(5), 5)
     Rectangle {
       anchors.fill: parent
       radius: height / 2
-      color: root.tint(0.12)
+      color: root.tint(0.14)
     }
     Rectangle {
-      width: Math.max(0, Math.min(1, meter.value / 100)) * parent.width
+      width: Math.max(0, Math.min(1, meter.ratio)) * parent.width
       height: parent.height
       radius: height / 2
-      color: meter.hot ? root.accent : root.tint(0.55)
+      color: meter.hot ? root.accent : (meter.today ? root.contentForeground : root.tint(0.55))
     }
   }
 
-  component UsageCard: Rectangle {
+  component ShareRow: Item {
+    id: share
+    property string name: ""
+    property string value: ""
+    property real ratio: 0
+    property bool today: false
+    property bool hot: false
+    implicitHeight: Math.max(shareName.implicitHeight, shareValue.implicitHeight) + Style.space(8)
+    Text {
+      id: shareName
+      width: Style.space(168)
+      text: share.name
+      color: share.today ? root.contentForeground : root.tint(0.72)
+      font.family: root.monoFamily
+      font.pixelSize: Style.font.bodySmall
+      font.bold: share.today
+      elide: Text.ElideRight
+      anchors.verticalCenter: parent.verticalCenter
+    }
+    Text {
+      id: shareValue
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      text: share.value
+      color: share.today || share.hot ? root.contentForeground : root.tint(0.72)
+      font.family: root.monoFamily
+      font.pixelSize: Style.font.caption
+      font.bold: share.today
+    }
+    Meter {
+      anchors.left: shareName.right
+      anchors.right: shareValue.left
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(12)
+      anchors.verticalCenter: parent.verticalCenter
+      ratio: share.ratio
+      today: share.today
+      hot: share.hot
+    }
+  }
+
+  component UsageCard: Column {
     id: card
     required property var modelData
     readonly property var agent: modelData || ({})
+    readonly property var dayRows: agent.days || []
+    readonly property var modelRows: agent.models || []
+    readonly property real dayPeak: root.peakOf(dayRows, "tokens")
+    readonly property real modelPeak: root.peakOf(modelRows, "tokens")
     width: parent ? parent.width : implicitWidth
-    implicitHeight: cardBody.implicitHeight + Style.space(16)
-    radius: Style.space(6)
-    color: root.tint(0.02)
-    border.width: 1
-    border.color: root.tint(0.07)
-    Column {
-      id: cardBody
-      x: Style.space(10)
-      y: Style.space(8)
-      width: parent.width - Style.space(20)
-      spacing: Style.space(4)
-      Row {
-        width: parent.width
-        spacing: Style.space(8)
-        Text {
-          text: String(card.agent.name || card.agent.id || "")
-          color: root.contentForeground
-          font.family: root.monoFamily
-          font.pixelSize: Style.font.body
-          font.capitalization: Font.SmallCaps
-          font.letterSpacing: 1.2
-          font.bold: true
-        }
-        Text {
-          text: {
-            var bits = []
-            var limits = card.agent.limits || []
-            for (var i = 0; i < limits.length; i++) {
-              var used = Number(limits[i].usedPct)
-              if (!isNaN(used)) bits.push(Math.round(used) + "%")
-            }
-            return bits.join("  ")
-          }
-          color: {
-            var hot = false
-            var limits = card.agent.limits || []
-            for (var i = 0; i < limits.length; i++) if (Number(limits[i].usedPct) >= 80) hot = true
-            return hot ? root.accent : root.contentForeground
-          }
-          font.family: root.monoFamily
-          font.pixelSize: Style.font.body
-        }
+    spacing: Style.space(12)
+
+    Item {
+      width: parent.width
+      implicitHeight: cardName.implicitHeight
+      Text {
+        id: cardName
+        text: String(card.agent.name || card.agent.id || "")
+        color: root.contentForeground
+        font.family: root.monoFamily
+        font.pixelSize: Style.font.body
+        font.capitalization: Font.SmallCaps
+        font.letterSpacing: 1.2
+        font.bold: true
+        anchors.left: parent.left
+        anchors.right: cardTotal.left
+        anchors.rightMargin: Style.space(12)
+        elide: Text.ElideRight
       }
       Text {
-        width: parent.width
-        text: "today " + String(card.agent.todayLabel || "—") + "   ·   7d " + String(card.agent.weekLabel || "—")
-          + (card.agent.costLabel ? "   ·   " + String(card.agent.costLabel) : "")
+        id: cardTotal
+        anchors.right: parent.right
+        anchors.verticalCenter: cardName.verticalCenter
+        text: String(card.agent.weekCostLabel || "")
         color: root.contentForeground
-        opacity: 0.85
         font.family: root.monoFamily
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
+        font.pixelSize: Style.font.body
+        font.bold: true
       }
-      Repeater {
-        model: card.agent.limits || []
-        delegate: Column {
-          required property var modelData
-          width: cardBody.width
-          spacing: Style.space(2)
+    }
+
+    Text {
+      visible: card.dayRows.length === 0 && String(card.agent.weekLabel || "—") !== "—"
+      width: parent.width
+      text: "today " + String(card.agent.todayLabel || "—") + "    ·    7d " + String(card.agent.weekLabel || "—")
+      color: root.contentForeground
+      opacity: 0.7
+      font.family: root.monoFamily
+      font.pixelSize: Style.font.caption
+    }
+
+    Repeater {
+      model: card.agent.limits || []
+      delegate: Column {
+        required property var modelData
+        width: card.width
+        spacing: Style.space(6)
+        Item {
+          width: parent.width
+          implicitHeight: limitName.implicitHeight
           Text {
-            width: parent.width
+            id: limitName
             text: String(modelData.label || "Limit")
-              + (modelData.resetsAt ? "  ·  " + String(modelData.resetsAt).slice(0, 16) : "")
             color: root.contentForeground
-            opacity: 0.55
             font.family: root.monoFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.bodySmall
+            anchors.left: parent.left
+            anchors.right: limitPct.left
+            anchors.rightMargin: Style.space(12)
             elide: Text.ElideRight
           }
-          Meter {
-            width: parent.width
-            value: Number(modelData.usedPct) || 0
-            hot: Number(modelData.usedPct) >= 80
+          Text {
+            id: limitPct
+            anchors.right: parent.right
+            text: Math.round(Number(modelData.usedPct) || 0) + "%"
+            color: Number(modelData.usedPct) >= 80 ? root.accent : root.contentForeground
+            font.family: root.monoFamily
+            font.pixelSize: Style.font.bodySmall
+            font.bold: true
           }
         }
-      }
-      Text {
-        visible: String(card.agent.status || "") !== ""
-        width: parent.width
-        text: String(card.agent.status || "")
-        color: Color.urgent
-        font.family: root.proseFamily
-        renderType: Text.NativeRendering
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
-      Text {
-        visible: (card.agent.models || []).length > 0
-        width: parent.width
-        text: {
-          var bits = []
-          var models = card.agent.models || []
-          for (var i = 0; i < models.length; i++)
-            bits.push(String(models[i].id) + " " + String(models[i].label || ""))
-          return bits.join("  ·  ")
+        Meter {
+          width: parent.width
+          ratio: (Number(modelData.usedPct) || 0) / 100
+          hot: Number(modelData.usedPct) >= 80
         }
+        Text {
+          visible: text !== ""
+          width: parent.width
+          text: root.resetsIn(modelData.resetsAt)
+          color: root.contentForeground
+          opacity: 0.55
+          font.family: root.monoFamily
+          font.pixelSize: Style.font.caption
+        }
+      }
+    }
+
+    Column {
+      visible: card.dayRows.length > 0
+      width: parent.width
+      spacing: Style.space(2)
+      Text {
+        text: "This week"
         color: root.contentForeground
         opacity: 0.55
         font.family: root.monoFamily
         font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
+        font.capitalization: Font.SmallCaps
+        font.letterSpacing: 1.4
       }
+      Repeater {
+        model: card.dayRows
+        delegate: ShareRow {
+          required property var modelData
+          width: card.width
+          name: String(modelData.label || "")
+          value: {
+            var bits = [String(modelData.tokenLabel || "0")]
+            if (modelData.costLabel) bits.push(String(modelData.costLabel))
+            return bits.join("   ")
+          }
+          ratio: (Number(modelData.tokens) || 0) / card.dayPeak
+          today: modelData.today === true
+        }
+      }
+    }
+
+    Column {
+      visible: card.modelRows.length > 0
+      width: parent.width
+      spacing: Style.space(2)
       Text {
-        width: parent.width
-        text: String(card.agent.sourceLabel || "")
+        text: "By model"
         color: root.contentForeground
-        opacity: 0.4
-        font.family: root.proseFamily
-        renderType: Text.NativeRendering
+        opacity: 0.55
+        font.family: root.monoFamily
         font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
+        font.capitalization: Font.SmallCaps
+        font.letterSpacing: 1.4
       }
+      Repeater {
+        model: card.modelRows
+        delegate: ShareRow {
+          required property var modelData
+          width: card.width
+          name: String(modelData.id || "")
+          value: {
+            var bits = [String(modelData.label || "")]
+            if (modelData.costLabel) bits.push(String(modelData.costLabel))
+            return bits.join("   ")
+          }
+          ratio: (Number(modelData.tokens) || 0) / card.modelPeak
+        }
+      }
+    }
+
+    Text {
+      visible: String(card.agent.status || "") !== ""
+      width: parent.width
+      text: String(card.agent.status || "")
+      color: Color.urgent
+      font.family: root.proseFamily
+      renderType: Text.NativeRendering
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+    }
+
+    Rectangle {
+      width: parent.width
+      height: 1
+      color: root.tint(0.08)
     }
   }
 
@@ -376,23 +495,13 @@ Panel {
           glow.addColorStop(1, css(ac, 0))
           ctx.fillStyle = glow
           ctx.fillRect(0, 0, W, Math.min(H, 140))
-          ctx.lineWidth = 1
-          ctx.strokeStyle = css(fg, 0.035)
-          ctx.beginPath()
-          var step = 18
-          for (var x = 0.5; x < W; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, H) }
-          for (var y = 0.5; y < H; y += step) { ctx.moveTo(0, y); ctx.lineTo(W, y) }
-          ctx.stroke()
-          ctx.strokeStyle = css(fg, 0.018)
-          ctx.beginPath()
-          for (var s = 1.5; s < H; s += 3) { ctx.moveTo(0, s); ctx.lineTo(W, s) }
-          ctx.stroke()
         }
       }
 
       Column {
         anchors.fill: parent
-        spacing: Style.space(8)
+        anchors.margins: Style.space(18)
+        spacing: Style.space(16)
 
         Item {
           id: header
@@ -535,7 +644,7 @@ Panel {
               }
               Stat {
                 value: root.service ? String(root.service.barLabel || "—") : "…"
-                label: "spend"
+                label: "limit"
                 hot: root.service ? root.service.alarming === true : false
                 family: root.monoFamily
                 tone: root.contentForeground
@@ -564,19 +673,15 @@ Panel {
           Column {
             anchors.fill: parent
             visible: root.mode === "map"
-            spacing: Style.space(8)
-            Rectangle {
+            spacing: Style.space(18)
+            Item {
               id: mapFrame
               width: parent.width
-              height: Math.max(Style.space(140), parent.height * 0.46)
-              radius: Style.space(6)
-              color: root.tint(0.02)
-              border.width: 1
-              border.color: root.tint(0.07)
+              height: Math.max(Style.space(260), parent.height * 0.62)
               Loader {
                 id: mapLoader
                 anchors.fill: parent
-                anchors.margins: Style.space(4)
+                anchors.margins: Style.space(8)
                 source: Qt.resolvedUrl("BrainMap.qml")
                 onLoaded: {
                   var map = item
@@ -592,14 +697,10 @@ Panel {
                 }
               }
             }
-            Rectangle {
+            Item {
               id: detailPane
               width: parent.width
-              height: Math.max(Style.space(80), parent.height - mapFrame.height - Style.space(8))
-              radius: Style.space(6)
-              color: root.tint(0.02)
-              border.width: 1
-              border.color: root.tint(0.07)
+              height: Math.max(Style.space(120), parent.height - mapFrame.height - Style.space(18))
               Flickable {
                 id: detailFlick
                 anchors.fill: parent
@@ -611,7 +712,7 @@ Panel {
                 Column {
                   id: detailCol
                   width: detailFlick.width
-                  spacing: Style.space(8)
+                  spacing: Style.space(14)
                   SectionHeader {
                     width: parent.width
                     label: root.selectedPillar() ? String(root.selectedPillar().name || "") : "What this is"
@@ -651,49 +752,41 @@ Panel {
                   Column {
                     width: parent.width
                     visible: !root.selectedPillar()
-                    spacing: Style.space(6)
+                    spacing: Style.space(16)
                     Repeater {
                       model: root.pillars
-                      Rectangle {
-                        id: partCard
+                      Item {
+                        id: partRow
                         required property var modelData
                         width: detailCol.width
-                        implicitHeight: partCol.implicitHeight + Style.space(12)
-                        radius: Style.space(5)
-                        color: partMouse.containsMouse ? root.accentA(0.12) : root.accentA(0.05)
-                        border.width: 1
-                        border.color: root.accentA(0.30)
+                        implicitHeight: partCol.implicitHeight
                         Rectangle {
                           width: Style.space(2)
+                          height: partName.implicitHeight
                           anchors.left: parent.left
-                          anchors.top: parent.top
-                          anchors.bottom: parent.bottom
-                          anchors.margins: 1
-                          color: root.accentA(0.8)
+                          anchors.top: partName.top
+                          color: partMouse.containsMouse ? root.accent : root.tint(0.25)
                         }
                         Column {
                           id: partCol
                           anchors.left: parent.left
                           anchors.right: parent.right
-                          anchors.leftMargin: Style.space(10)
-                          anchors.rightMargin: Style.space(10)
-                          anchors.top: parent.top
-                          anchors.topMargin: Style.space(6)
-                          spacing: Style.space(2)
+                          anchors.leftMargin: Style.space(12)
+                          spacing: Style.space(3)
                           Text {
+                            id: partName
                             width: parent.width
-                            text: String(partCard.modelData.name || "")
-                            color: root.accent
+                            text: String(partRow.modelData.name || "")
+                            color: partMouse.containsMouse ? root.accent : root.contentForeground
                             font.family: root.monoFamily
-                            font.pixelSize: Style.font.caption
+                            font.pixelSize: Style.font.body
                             font.bold: true
-                            font.capitalization: Font.SmallCaps
-                            font.letterSpacing: 1.2
                           }
                           Text {
                             width: parent.width
-                            text: String(partCard.modelData.blurb || "")
+                            text: String(partRow.modelData.blurb || "")
                             color: root.contentForeground
+                            opacity: 0.75
                             font.family: root.proseFamily
                             renderType: Text.NativeRendering
                             font.pixelSize: Style.font.bodySmall
@@ -705,7 +798,7 @@ Panel {
                           anchors.fill: parent
                           hoverEnabled: true
                           cursorShape: Qt.PointingHandCursor
-                          onClicked: root.selectedId = String(partCard.modelData.id || "")
+                          onClicked: root.selectedId = String(partRow.modelData.id || "")
                         }
                       }
                     }
@@ -748,7 +841,7 @@ Panel {
             Column {
               id: usageCol
               width: usageFlick.width
-              spacing: Style.space(8)
+              spacing: Style.space(18)
               SectionHeader {
                 width: parent.width
                 label: "Spend on this machine"

@@ -26,7 +26,7 @@ Item {
 
   readonly property real cx: width / 2
   readonly property real cy: height / 2
-  readonly property real orbitR: Math.max(30, Math.min(width / 2 - 78, height / 2 - 36))
+  readonly property real orbitR: Math.max(48, Math.min(width / 2 - 108, height / 2 - 56))
   readonly property int nodeCount: 1 + (pillars ? pillars.length : 0)
 
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
@@ -56,10 +56,6 @@ Item {
     ctx.strokeText(text, x, y)
     ctx.fillStyle = color
     ctx.fillText(text, x, y)
-  }
-
-  function spaced(word) {
-    return String(word || "").toUpperCase().split("").join(String.fromCharCode(8202))
   }
 
   Timer {
@@ -99,34 +95,10 @@ Item {
       var ac = field.ac
       var hasSel = root.selectedId !== ""
 
-      ctx.strokeStyle = root.css(ac, 0.45)
-      ctx.lineWidth = 1.2
-      var c = 10
-      var m = 1.5
-      ctx.beginPath()
-      ctx.moveTo(m, m + c); ctx.lineTo(m, m); ctx.lineTo(m + c, m)
-      ctx.moveTo(W - m - c, m); ctx.lineTo(W - m, m); ctx.lineTo(W - m, m + c)
-      ctx.moveTo(W - m, H - m - c); ctx.lineTo(W - m, H - m); ctx.lineTo(W - m - c, H - m)
-      ctx.moveTo(m + c, H - m); ctx.lineTo(m, H - m); ctx.lineTo(m, H - m - c)
-      ctx.stroke()
-
       ctx.lineWidth = 1
-      ctx.strokeStyle = root.css(fg, 0.06)
+      ctx.strokeStyle = root.css(fg, 0.10)
       ctx.beginPath()
       ctx.arc(X, Y, orbit, 0, Math.PI * 2)
-      ctx.stroke()
-
-      ctx.strokeStyle = root.css(fg, 0.08)
-      ctx.beginPath()
-      var ticks = 72
-      var tickR = orbit * 0.62
-      for (var t = 0; t < ticks; t++) {
-        var ang = t / ticks * Math.PI * 2
-        var longTick = t % 6 === 0
-        var inner = tickR - (longTick ? 5 : 2)
-        ctx.moveTo(X + Math.cos(ang) * inner, Y + Math.sin(ang) * inner)
-        ctx.lineTo(X + Math.cos(ang) * tickR, Y + Math.sin(ang) * tickR)
-      }
       ctx.stroke()
 
       var count = root.nodeCount
@@ -134,9 +106,9 @@ Item {
         var end = root.nodeAt(e)
         var dim = hasSel && end.id !== root.selectedId
         var lit = hasSel && end.id === root.selectedId
-        var base = dim ? 0.04 : (lit ? 0.78 : 0.26)
+        var base = dim ? 0.08 : (lit ? 0.78 : 0.22)
         var col = end.hot || lit ? ac : fg
-        var layers = dim ? [[1, 1]] : [[5, 0.10], [2.5, 0.22], [1, 1]]
+        var layers = lit && !dim ? [[4, 0.12], [1.5, 1]] : [[1, 1]]
         for (var l = 0; l < layers.length; l++) {
           ctx.lineWidth = layers[l][0]
           ctx.strokeStyle = root.css(col, base * layers[l][1])
@@ -147,7 +119,7 @@ Item {
         }
       }
 
-      ctx.font = "bold 10px " + root.monoFamily
+      ctx.font = "11px " + root.monoFamily
       ctx.textBaseline = "middle"
       for (var i = 0; i < count; i++) {
         var node = root.nodeAt(i)
@@ -201,13 +173,15 @@ Item {
           ctx.strokeStyle = root.css(fg, 0.6)
           ctx.stroke()
         }
-        var label = root.spaced(node.lead ? "1config" : node.name)
-        var ux = node.lead ? 0 : node.x / (orbit || 1)
-        var uy = node.lead ? 1 : node.y / (orbit || 1)
-        var lx = nx + ux * (node.r + 14)
-        var ly = ny + uy * (node.r + 14)
-        ctx.textAlign = node.lead || Math.abs(ux) < 0.35 ? "center" : (ux > 0 ? "left" : "right")
-        root.haloText(ctx, label, lx, ly, root.css(tone, (node.lead ? 0.9 : 0.72) * (node.lead ? 1 : fade)))
+        if (!node.lead) {
+          var label = node.name
+          var ux = node.x / (orbit || 1)
+          var uy = node.y / (orbit || 1)
+          var lx = nx + ux * (node.r + 22)
+          var ly = ny + uy * (node.r + 22)
+          ctx.textAlign = Math.abs(ux) < 0.35 ? "center" : (ux > 0 ? "left" : "right")
+          root.haloText(ctx, label, lx, ly, root.css(tone, 0.82 * fade))
+        }
       }
     }
   }
@@ -266,40 +240,6 @@ Item {
       border.width: 1
       border.color: root.accent
       opacity: (1 - wave) * 0.55
-    }
-  }
-
-  Row {
-    anchors.left: parent.left
-    anchors.bottom: parent.bottom
-    anchors.margins: Style.space(8)
-    spacing: Style.space(8)
-    Repeater {
-      model: [
-        { mark: "●", text: "brain" },
-        { mark: "⬡", text: "part" },
-        { mark: "◎", text: "attention" }
-      ]
-      Row {
-        required property var modelData
-        spacing: Style.space(3)
-        Text {
-          text: modelData.mark
-          color: root.accent
-          opacity: 0.75
-          font.family: root.monoFamily
-          font.pixelSize: Style.font.caption
-        }
-        Text {
-          text: modelData.text
-          color: root.foreground
-          opacity: 0.55
-          font.family: root.monoFamily
-          font.pixelSize: Style.font.caption
-          font.capitalization: Font.SmallCaps
-          font.letterSpacing: 1
-        }
-      }
     }
   }
 

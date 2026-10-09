@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "firstintegral.1config",
   "name": "1config",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Brusk Kawa Abdalla",
   "license": "MIT",
-  "description": "1config on the Omarchy bar. Open the panel for what this brain is. The face shows local AI usage.",
+  "description": "1config on the Omarchy bar. The face is the ring. Open the panel for what this brain is and for local AI usage.",
   "kinds": ["service", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {

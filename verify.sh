@@ -1462,6 +1462,14 @@ if [ -f "$AGENTS_HOME/logo.svg" ] && grep -q 'logo.svg' "$AGENTS_HOME/README.md"
 else
   bad "1config ring mark missing from the bar or the README"
 fi
+if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
+   && grep -q 'Style.bar.iconSlot' "$PLUGIN/BarWidget.qml" \
+   && ! grep -q 'var step = 18' "$PLUGIN/Panel.qml" \
+   && grep -q 'This week' "$PLUGIN/Panel.qml"; then
+  ok "1config bar is the ring only, and the week is rows"
+else
+  bad "1config bar still has a label, or the grid, or no week rows"
+fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then
   bad "setup.sh does not install firstintegral.1config"
