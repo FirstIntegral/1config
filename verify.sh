@@ -1433,6 +1433,57 @@ else
   bad "SETUP.md missing distro portability section"
 fi
 
+echo "[omarchy plugin]"
+PLUGIN="$AGENTS_HOME/omarchy-plugin/firstintegral.1config"
+if python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert m["id"]=="firstintegral.1config" and m["schemaVersion"]==1 and "bar-widget" in m["kinds"] and "service" in m["kinds"]' "$PLUGIN/manifest.json"; then
+  ok "firstintegral.1config manifest"
+else
+  bad "firstintegral.1config manifest invalid"
+fi
+if PYTHONDONTWRITEBYTECODE=1 python3 "$PLUGIN/bin/usage.py" --self-test >/dev/null; then
+  ok "usage.py self-test"
+else
+  bad "usage.py self-test failed"
+fi
+if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
+   || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then
+  bad "setup.sh does not install firstintegral.1config"
+else
+  ok "setup.sh installs firstintegral.1config"
+fi
+if command -v omarchy-plugin-validate >/dev/null 2>&1; then
+  if omarchy-plugin-validate "$PLUGIN" >/dev/null; then
+    ok "omarchy-plugin-validate firstintegral.1config"
+  else
+    bad "omarchy-plugin-validate firstintegral.1config"
+  fi
+else
+  info "omarchy-plugin-validate not on this machine — skipped"
+fi
+if [ -d "$HOME/.config/omarchy/plugins" ]; then
+  if diff -rq "$PLUGIN" "$HOME/.config/omarchy/plugins/firstintegral.1config" >/dev/null; then
+    ok "installed 1config plugin matches the brain copy"
+  else
+    bad "installed 1config plugin missing or drifted (run setup.sh)"
+  fi
+  if [ -f "$HOME/.config/omarchy/shell.json" ]; then
+    if grep -q '"id": "firstintegral.1config"' "$HOME/.config/omarchy/shell.json"; then
+      ok "shell.json bar lists firstintegral.1config"
+    else
+      bad "shell.json bar missing firstintegral.1config"
+    fi
+  else
+    info "no shell.json — bar placement skipped"
+  fi
+else
+  info "no Omarchy plugins dir — install copy not required here"
+fi
+if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup-infographic.svg"; then
+  bad "infographic missing firstintegral.1config"
+else
+  ok "infographic shows firstintegral.1config"
+fi
+
 echo "[infographic]"
 if [ -f "$AGENTS_HOME/setup-infographic.svg" ] && grep -q 'setup-infographic.svg' "$SETUP"; then
   ok "setup-infographic.svg present and referenced by SETUP.md"

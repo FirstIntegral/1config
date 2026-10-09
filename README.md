@@ -60,6 +60,8 @@ cd ~/Projects/omarchy-dots && ./apply.sh --dry-run && ./apply.sh
 
 From then on the boot dashboard keeps it in sync automatically: `~/Projects/omarchy-dots/sync.sh` runs at every login (fetch → ff-only pull → drift-check `~/.config` vs pack → auto-apply). Non-Omarchy boxes show a gray `–` skip row and never touch it. Playbook: that repo's `README.md`.
 
+`setup.sh` also installs 1config's own bar plugin, `omarchy-plugin/firstintegral.1config/`, into `~/.config/omarchy/plugins/` when that directory exists. The widget shows this machine's AI usage: Claude, Codex, and Fireworks from Omarchy's records, Grok from its local session ledger and last credits snapshot, OpenCode from its local database. The timer does not call a provider. NixFred's Burn Bar and Infomarchy are the plugins that do this job as separate products; this one stays inside 1config. Ubuntu skips the copy.
+
 ## Existing machine — pull latest
 
 Works on Omarchy **and** Ubuntu. Same commands:

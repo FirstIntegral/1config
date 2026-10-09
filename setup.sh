@@ -771,6 +771,82 @@ else
   log "WARNING: boot-dashboard/ missing — skip autostart"
 fi
 
+# --- omarchy plugin: 1config usage ------------------------------------------
+echo "[omarchy-plugin] firstintegral.1config"
+PLUGIN_SRC="$AGENTS_HOME/omarchy-plugin/firstintegral.1config"
+PLUGIN_DST="$HOME/.config/omarchy/plugins/firstintegral.1config"
+if [ -d "$HOME/.config/omarchy/plugins" ] && [ -f "$PLUGIN_SRC/manifest.json" ]; then
+  case "$PLUGIN_DST" in
+    "$HOME/.config/omarchy/plugins/firstintegral.1config") ;;
+    *) die "refusing unexpected plugin destination: $PLUGIN_DST" ;;
+  esac
+  chmod +x "$PLUGIN_SRC/bin/usage.py"
+  rm -rf "$PLUGIN_DST"
+  mkdir -p "$PLUGIN_DST"
+  cp -a "$PLUGIN_SRC"/. "$PLUGIN_DST"/
+  if command -v omarchy-plugin-validate >/dev/null 2>&1; then
+    omarchy-plugin-validate "$PLUGIN_DST" || die "firstintegral.1config failed omarchy-plugin-validate"
+  fi
+  log "copied $PLUGIN_DST"
+  python3 - "$HOME/.config/omarchy/shell.json" <<'PY'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+if not path.is_file():
+    print("  no shell.json — plugin copied, bar not edited")
+    raise SystemExit(0)
+text = path.read_text()
+if '"id": "firstintegral.1config"' in text:
+    print("  bar already has firstintegral.1config")
+    raise SystemExit(0)
+lines = text.splitlines(keepends=True)
+anchor = None
+for needle in ('"id": "brwsk.brain"', '"id": "brwsk.vigil"'):
+    for i, line in enumerate(lines):
+        if needle in line:
+            anchor = i
+            break
+    if anchor is not None and needle == '"id": "brwsk.brain"':
+        break
+insert_at = None
+if anchor is not None:
+    for j in range(anchor, len(lines)):
+        if lines[j].strip() == "},":
+            insert_at = j + 1
+            break
+if insert_at is None:
+    for i, line in enumerate(lines):
+        if '"right"' in line and "[" in line:
+            insert_at = i + 1
+            break
+if insert_at is None:
+    print("  shell.json has no bar.layout.right — plugin copied, bar not edited")
+    raise SystemExit(0)
+nxt = ""
+k = insert_at
+while k < len(lines) and lines[k].strip() == "":
+    k += 1
+if k < len(lines):
+    nxt = lines[k].strip()
+if nxt.startswith("]"):
+    entry = '        {\n          "id": "firstintegral.1config"\n        }\n'
+else:
+    entry = '        {\n          "id": "firstintegral.1config"\n        },\n'
+lines.insert(insert_at, entry)
+path.write_text("".join(lines))
+print(f"  inserted firstintegral.1config at line {insert_at + 1}")
+PY
+  if command -v omarchy-shell >/dev/null 2>&1; then
+    if omarchy-shell shell rescanPlugins >/dev/null 2>&1; then
+      log "shell rescanned plugins"
+    else
+      log "note     shell rescan skipped (shell not up)"
+    fi
+  fi
+else
+  log "no Omarchy plugins dir — skip firstintegral.1config"
+fi
+
 # --- inventory refresh (machine-local, gitignored) --------------------------
 echo "[inventory] refresh inventory.local.md (not committed — versions differ per machine)"
 INV_REFRESH="$UPD_SRC/refresh-inventory.py"

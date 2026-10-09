@@ -475,6 +475,16 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 - mise-managed tools are skipped by `update-apps.sh`: the login-resolved (`env -i bash -lc`) binary is under `~/.local/share/mise/` or is a wrapper delegating to `mise x` (those wrappers set `MISE_MINIMUM_RELEASE_AGE=0`, so mise cadence = every invocation). Direct CDN/`update` calls for them only hit shadowed bins or interactive "managed by a package manager" prompts. The updater still refreshes the inventory.
 - Updater, standalone setup, and normal sync share `.update.lock`; sync holds it through verification, commit, and push so inventory cannot change after the gate.
 
+### 7d. Omarchy plugin `firstintegral.1config`
+
+Source: `omarchy-plugin/firstintegral.1config/` (`manifest.json`, `Service.qml`, `BarWidget.qml`, `Panel.qml`, `bin/usage.py`). Id `firstintegral.1config`. Kinds `service` and `bar-widget`.
+
+On a machine with `~/.config/omarchy/plugins/`, `setup.sh` deletes and recopies that directory (Omarchy's validator rejects symlinks inside a plugin), runs `omarchy-plugin-validate` when the command exists, and inserts `{ "id": "firstintegral.1config" }` into `bar.layout.right` of `~/.config/omarchy/shell.json` when the id is absent. Insertion keeps the rest of the file's bytes. It prefers the slot after `brwsk.brain`, else after `brwsk.vigil`, else the start of `right`. It does not remove other widgets. A missing plugins directory (Ubuntu, or Omarchy before the shell exists) skips the copy. `verify.sh` runs `usage.py --self-test` everywhere, validates the source when `omarchy-plugin-validate` exists, and on an Omarchy shell checks the installed copy matches and the bar id is present.
+
+The timer runs `bin/usage.py`, which only reads local files: Omarchy's `~/.local/state/omarchy/agents/usage/*.json`, Grok `usage.json` turn totals plus the last credits line in `~/.grok/logs/unified.jsonl`, and a read-only sum of token columns in the OpenCode sqlite database. Panel key `u` is the one path that runs `omarchy-agent-usage-update --limits-only`. That command is Omarchy's, and it contacts providers. The timer does not.
+
+This is the Omarchy surface of 1config. Claude, Grok, and OpenCode do not each get a plugin. `brwsk.brain` stays the grokbot-brain tracker and is not this widget. NixFred's Burn Bar and Infomarchy are the prior art; they are not vendored.
+
 ## 8. Manual recreation (or just `bash ~/.agents/setup.sh`)
 
 0. Distro packages if missing (setup.sh `[0]` prints the line). Ubuntu: `sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full`. Omarchy: `omarchy pkg add python util-linux cronie git gnupg gnome-keyring texlive-meta`. Enable the cron daemon (`cron` on Ubuntu, `cronie` on Omarchy/Arch).

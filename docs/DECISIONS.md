@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — 1config ships its own Omarchy usage plugin
+
+**Decision:** `omarchy-plugin/firstintegral.1config/` is part of this repo. `setup.sh` copies it into `~/.config/omarchy/plugins/firstintegral.1config/` when that directory's parent exists, and inserts the widget id into the live `shell.json` right section if it is absent. The collector reads Omarchy's existing usage records (Claude, Codex, Fireworks), Grok's local session ledger and last credits snapshot, and OpenCode's local sqlite database. The refresh timer does not call a provider. Panel key `u` may run `omarchy-agent-usage-update --limits-only`. Ubuntu skips the copy. The widget is not `brwsk.brain`.
+
+**Why:** NixFred's Burn Bar (`github:nixfred/burnbar`) and Infomarchy (`github:nixfred/infomarchy`) are the Omarchy plugins that put this machine's AI usage on the desktop. Burn Bar is a large cockpit (pace advice, local GPU, Jetson ssh) and a separate project. Omarchy's own `omarchy.agents` widget already draws Claude, Codex, and Fireworks, and it does not read Grok or OpenCode ledgers. 1config is the thing that ties those three tools together, so the bar widget belongs in this repo and only adds the reads Omarchy does not do. Copying Burn Bar in would freeze someone else's UI and its network behavior inside the brain.
+
+**Rejected:** `omarchy plugin add` of burnbar or infomarchy as the 1config answer. Vendoring either repo. A provider call on the timer. Putting the widget in omarchy-dots (that pack does not install plugins, and the live `shell.json` is already a local edit because `brwsk.brain` is on the bar). Reusing the `brwsk.brain` id.
+
 ## 2026-10-09 — Claude reads project AGENTS.md; the hook is a fallback
 
 **Decision:** Keep `hooks/load-project-agents.sh`, and make it print nothing when Claude Code will load the project `AGENTS.md` itself. That is Claude 2.1.277 or newer, instruction mode unset or `claude-md-or-agents-md`, and no `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` in the working directory or a parent. `~/.claude/CLAUDE.md` is excluded from that check. Mode `claude-md-and-agents-md` also loads the file, so the hook stays quiet. The hook still prints for an older or unknown Claude, for mode `claude-md` or `managed-only` or any unknown mode, and for the default mode when a suppressing file is present. The user symlink stays. No line cap and no context-percent meter on `AGENTS.md`. The Omarchy skill stays out of this file. The rules file stays one file.

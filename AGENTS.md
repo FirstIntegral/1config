@@ -143,6 +143,12 @@ Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md
   - PATH: `~/.elan/bin`. Paper `build.sh` prepends it. Do not symlink into `~/.local/bin`.
   - Allowlisted. The install hook is the only install path. `leanlab` (PyPI) is unrelated — do not install it.
 
+## Omarchy plugin — `firstintegral.1config`
+
+1config's own Omarchy bar widget lives at `omarchy-plugin/firstintegral.1config/`. On a machine with `~/.config/omarchy/plugins/`, `setup.sh` copies it there (Omarchy rejects symlinks inside a plugin) and adds the id to `bar.layout.right` in `~/.config/omarchy/shell.json` when it is missing. Ubuntu has no such directory, so setup skips the copy. The same rules file is what all three tools read; the widget is the Omarchy surface.
+
+The bar shows local AI usage. Claude, Codex, and Fireworks come from Omarchy's usage records. Grok comes from `~/.grok/sessions/**/usage.json` plus the last credits snapshot Grok already wrote. OpenCode comes from a read-only sum of its local database. The timer does not call a provider. Panel key `u` runs `omarchy-agent-usage-update --limits-only`, which does. This is not `brwsk.brain` (that plugin belongs to grokbot-brain) and it is not a vendored copy of NixFred's Burn Bar or Infomarchy.
+
 ---
 
 ## Detached runs get a staleness watch — HARD RULE
