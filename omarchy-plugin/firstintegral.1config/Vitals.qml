@@ -176,7 +176,7 @@ Item {
     Column {
       id: listCol
       width: flick.width
-      spacing: Style.space(8)
+      spacing: Style.space(14)
 
       Text {
         visible: !root.vitals || root.vitals.length === 0
@@ -194,14 +194,14 @@ Item {
           id: groupCol
           required property var modelData
           width: listCol.width
-          spacing: Style.space(4)
+          spacing: Style.space(6)
 
           Item {
             width: parent.width
             implicitHeight: groupName.implicitHeight
             Rectangle {
               width: Style.space(3)
-              height: Math.round(groupName.font.pixelSize * 0.85)
+              height: Math.round(groupName.font.pixelSize * 0.72)
               radius: 1
               color: root.accent
               anchors.verticalCenter: groupName.verticalCenter
@@ -212,10 +212,10 @@ Item {
               anchors.leftMargin: Style.space(10)
               text: String(groupCol.modelData.name || "")
               color: root.foreground
-              opacity: 0.8
               font.family: root.proseFamily
-              font.pixelSize: Style.font.body
+              font.pixelSize: Style.font.heading
               font.bold: true
+              font.letterSpacing: 0.3
             }
           }
 
