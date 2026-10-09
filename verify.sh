@@ -1148,6 +1148,82 @@ PY
 else
   note "no claude settings.json — skip hook check"
 fi
+if grep -q '2.1.277' "$CANON" && grep -q '2.1.277' "$SETUP" \
+   && grep -q 'load-project-agents.sh' "$CANON" && grep -q 'load-project-agents.sh' "$SETUP" \
+   && grep -q 'native AGENTS.md · hook fallback' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "Claude native AGENTS.md documented; hook is the fallback"
+else
+  bad "Claude native AGENTS.md docs or figure caption drifted"
+fi
+if grep -q '2.1.219' "$CANON" "$SETUP"; then
+  bad "stale Claude 2.1.219 claim still in AGENTS.md or SETUP.md"
+else
+  ok "stale Claude 2.1.219 claim is gone"
+fi
+LOADER="$HOOKS/load-project-agents.sh"
+hook_case() {
+  local label="$1" cwd="$2" expect="$3"
+  shift 3
+  local out
+  out="$(cd "$cwd" && env "$@" bash "$LOADER" 2>/dev/null || true)"
+  if [ "$expect" = quiet ]; then
+    if [ -z "$out" ]; then ok "$label"; else bad "$label printed output"; fi
+  elif printf '%s' "$out" | grep -q -- "$expect"; then
+    ok "$label"
+  else
+    bad "$label missing [$expect]"
+  fi
+}
+hook_base="$(mktemp -d)"
+printf 'HOOK_MARKER_PLAIN\n' > "$hook_base/AGENTS.md"
+hook_case "2.1.295 default mode is quiet" "$hook_base" quiet \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
+hook_case "2.1.277 boundary is quiet" "$hook_base" quiet \
+  AGENTS_CLAUDE_VERSION=2.1.277 AGENTS_INSTRUCTION_MODE=
+hook_case "2.1.276 still injects" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION=2.1.276 AGENTS_INSTRUCTION_MODE=
+hook_case "unknown version still injects" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION= AGENTS_INSTRUCTION_MODE=
+hook_case "claude-md mode injects" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=claude-md
+hook_case "managed-only mode injects" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=managed-only
+hook_case "unknown mode injects" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=nope
+printf 'suppress\n' > "$hook_base/CLAUDE.md"
+hook_case "project CLAUDE.md makes the hook inject" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
+hook_case "and-mode stays quiet beside CLAUDE.md" "$hook_base" quiet \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=claude-md-and-agents-md
+rm -f "$hook_base/CLAUDE.md"
+mkdir -p "$hook_base/.claude"
+printf 'suppress\n' > "$hook_base/.claude/CLAUDE.md"
+hook_case ".claude/CLAUDE.md makes the hook inject" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
+rm -rf "$hook_base/.claude"
+printf 'suppress\n' > "$hook_base/CLAUDE.local.md"
+hook_case "CLAUDE.local.md makes the hook inject" "$hook_base" HOOK_MARKER_PLAIN \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
+rm -f "$hook_base/CLAUDE.local.md"
+mkdir -p "$hook_base/parent/child"
+printf 'HOOK_MARKER_CHILD\n' > "$hook_base/parent/child/AGENTS.md"
+printf 'suppress\n' > "$hook_base/parent/CLAUDE.md"
+hook_case "parent CLAUDE.md makes the hook inject" "$hook_base/parent/child" HOOK_MARKER_CHILD \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
+if [ -d "$HOME/.cache" ]; then
+  hook_home="$(mktemp -d "$HOME/.cache/agents-hook.XXXXXX")"
+else
+  hook_home="$(mktemp -d)"
+fi
+printf 'HOOK_MARKER_HOME\n' > "$hook_home/AGENTS.md"
+hook_case "user ~/.claude/CLAUDE.md does not suppress" "$hook_home" quiet \
+  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
+hook_case "real settings, pinned 2.1.295, is quiet" "$hook_base" quiet \
+  AGENTS_CLAUDE_VERSION=2.1.295
+empty="$(mktemp -d)"
+hook_case "no AGENTS.md stays quiet on old Claude" "$empty" quiet \
+  AGENTS_CLAUDE_VERSION=2.1.200 AGENTS_INSTRUCTION_MODE=
+rm -rf "$hook_base" "$hook_home" "$empty"
 
 # --- claude PreToolUse heredoc-rewrite hook --------------------------------
 echo "[claude heredoc-rewrite hook]"

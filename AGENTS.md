@@ -8,7 +8,7 @@ This is the ONE global rules file. It is symlinked to every tool's expected path
 
 Edit here (or via any of those paths — same bytes). Applies to Grok, OpenCode, and Claude Code alike.
 
-Project-level: `<repo>/AGENTS.md` is the ONLY project rules file. Grok/OpenCode read it natively; Claude Code gets it via a SessionStart hook (`~/.agents/hooks/load-project-agents.sh`). **Never create a project CLAUDE.md** — stubs were retired 2026-07-26.
+Project-level: `<repo>/AGENTS.md` is the ONLY project rules file. Grok and OpenCode read it natively. Claude Code 2.1.277 and later also reads it, unless a `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` sits in the project or a parent directory. `~/.claude/CLAUDE.md` is the user file and does not count. `hooks/load-project-agents.sh` prints the project file only when that native read will not happen (older Claude, instruction mode `claude-md` or `managed-only`, or one of those three files is present). **Never create a project CLAUDE.md** — it hides `AGENTS.md` from Claude's native reader.
 
 Fresh machine (Omarchy or Ubuntu): clone this repo to `~/.agents/` and run `bash ~/.agents/setup.sh` — recreates symlinks, tool configs, and the cron guards (idempotent). Existing box: `git pull && bash ~/.agents/setup.sh`. Human report + opinionated defaults: `README.md`. Full spec: `SETUP.md`. Runtime archives land under `~/.agents/backups/` only when needed — do not treat that folder as source of truth.
 
@@ -127,7 +127,7 @@ Whenever anything is added to or changed in this setup:
 4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
 5. Same for memory: shared markdown only, identical for all three (see Memory policy). Tool-internal stores stay disabled everywhere.
 
-Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok/OpenCode, SessionStart hook in Claude; permissions → `permissions.json` fan-out (above).
+Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok, OpenCode, and Claude Code 2.1.277+ (the SessionStart hook prints it only when Claude will not); permissions → `permissions.json` fan-out (above).
 
 ---
 
@@ -257,7 +257,7 @@ When the user says **`create_project`** (starting a new project), always set up 
 
 | File | Audience | Maintenance |
 |------|----------|-------------|
-| `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code loads it via SessionStart hook — never create a project CLAUDE.md). Committed by default — **except** `~/Projects/sites/*` (see Sites rule). |
+| `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code 2.1.277+ reads it natively — never create a project CLAUDE.md). Committed by default — **except** `~/Projects/sites/*` (see Sites rule). |
 | `session_transcript.md` | **human ONLY** | Append-only narrative log of each work session, newest at bottom. Written for the user to read back. AI agents NEVER read it (Transcript privacy HARD RULE). |
 | `session_compact.md` | **AI handoff** | Concise state: current status, where we left off, next steps, key decisions, open issues. Always records the active **model + effort**. **Rewrite** (not append) at end of session / major milestone / before context compaction. |
 | `docs/DECISIONS.md` | all AI tools | ADR log: decision + why + rejected alternatives, appended in the same turn a choice is made. Versioned (committed in repos). |

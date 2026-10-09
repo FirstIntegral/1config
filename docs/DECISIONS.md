@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Claude reads project AGENTS.md; the hook is a fallback
+
+**Decision:** Keep `hooks/load-project-agents.sh`, and make it print nothing when Claude Code will load the project `AGENTS.md` itself. That is Claude 2.1.277 or newer, instruction mode unset or `claude-md-or-agents-md`, and no `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` in the working directory or a parent. `~/.claude/CLAUDE.md` is excluded from that check. Mode `claude-md-and-agents-md` also loads the file, so the hook stays quiet. The hook still prints for an older or unknown Claude, for mode `claude-md` or `managed-only` or any unknown mode, and for the default mode when a suppressing file is present. The user symlink stays. No line cap and no context-percent meter on `AGENTS.md`. The Omarchy skill stays out of this file. The rules file stays one file.
+
+**Why:** On 2.1.295 the native reader and the SessionStart hook both delivered the same project file, and the two copies are not deduped. A project `CLAUDE.md` makes the native reader ignore `AGENTS.md`, so deleting the hook would drop project rules there and on Claude before 2.1.277. The file is about 1.4% of a 1,000,000-token window, under the 3% headroom that closed the line-cap debate. The Omarchy skill is already discovered by all three tools. A side file the model might open is not loaded by any of them.
+
+**Rejected:** Deleting the hook. A version check with no suppressor check. Pasting the Omarchy skill into `AGENTS.md`. Splitting the rules file into on-demand markdown. A verify failure at 3% of the window.
+
 ## 2026-10-09 — Oracles, policy keys, kill tokens, brain checkpoint refuse
 
 **Decision:** Four mechanical laws. No line cap on `AGENTS.md`.

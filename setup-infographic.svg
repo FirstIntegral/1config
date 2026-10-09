@@ -48,7 +48,7 @@
   <circle cx="958" cy="152" r="5" fill="#39d3e0"/>
   <text x="642" y="162" font-size="15" font-weight="bold" fill="#e6edf3">CLAUDE CODE</text>
   <text x="642" y="186" font-size="13" fill="#79c0ff">~/.claude/CLAUDE.md (global symlink)</text>
-  <text x="642" y="210" font-size="12" fill="#3fb950">project AGENTS.md via SessionStart hook ✓</text>
+  <text x="642" y="210" font-size="12" fill="#3fb950">native AGENTS.md · hook fallback ✓</text>
   <text x="642" y="230" font-size="12" fill="#8b949e">auto-memory <tspan fill="#d29922">DISABLED</tspan> · stubs only</text>
   <text x="642" y="250" font-size="12" fill="#8b949e">heredoc-rewrite PreToolUse hook</text>
 
