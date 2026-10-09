@@ -1467,11 +1467,16 @@ if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
    && grep -q 'Style.bar.iconCanvas' "$PLUGIN/BarWidget.qml" \
    && ! grep -q 'var step = 18' "$PLUGIN/Panel.qml" \
    && grep -q 'This week' "$PLUGIN/Panel.qml" \
+   && grep -q 'showQuiet' "$PLUGIN/Panel.qml" \
+   && grep -q 'By model' "$PLUGIN/Panel.qml" \
    && grep -q 'zen/go/v1/usage' "$PLUGIN/bin/usage.py" \
-   && grep -q 'Starts on first use' "$PLUGIN/bin/usage.py"; then
-  ok "1config bar is the ring only, the week is rows, and Go windows are read"
+   && grep -q 'Starts on first use' "$PLUGIN/bin/usage.py" \
+   && grep -q 'Not on this machine' "$PLUGIN/bin/usage.py" \
+   && ! grep -q 'Fireworks' "$PLUGIN/bin/usage.py" \
+   && ! grep -q 'Fireworks' "$PLUGIN/Panel.qml"; then
+  ok "1config bar is the ring only, the week is boxes, and Go windows are read"
 else
-  bad "1config bar still has a label, or the grid, or no week rows, or no Go usage URL"
+  bad "1config bar still has a label, or the grid, or no week boxes, or no Go usage URL, or no quiet toggle"
 fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then

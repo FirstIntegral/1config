@@ -6,14 +6,18 @@ Left click opens a card under the bar icon. Right click re-reads local files. Sp
 
 The bar shows the ring only, at the bar's own icon size. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`). An accent dot pulses on the bar when a limit is at 80% or more.
 
-The panel keeps the thin accent frame, the small-caps headers, and a slow sweep on the map. The square grid and the scanlines are gone. Colours come from the current Omarchy theme. The sweep runs only while the map is open.
+The panel keeps the thin accent frame and a slow sweep on the map. Spend uses the proportional face for words and monospace for numbers, with no small-caps. The square grid and the scanlines are gone. Colours come from the current Omarchy theme. The sweep runs only while the map is open.
+
+The spend list is six tools, in this order, with anything actually used pulled to the front: Claude, Grok, OpenAI, OpenCode, Codex, Cursor. Each used tool is its own box. Inside it, each limit, each day, and each model is its own box. A tool with no tokens, no plan window, and no model rows stays off that list. The button under the title (`a`) shows those quiet tools at the end, one short box each. No install says "Not on this machine". An install with no ledger says "No usage record on this machine". An empty ledger says "No usage this week". Records that are not in that six, including the Omarchy fireworks file, are not shown.
 
 | Card | Where the numbers come from |
 |---|---|
-| Claude, Codex, Fireworks, any other `~/.local/state/omarchy/agents/usage/*.json` | Omarchy's own usage records. Today tokens, 7-day message counts, limit percent and reset. |
-| Grok | `~/.grok/sessions/**/usage.json` turn totals for today and 7 days, plus the latest `creditUsagePercent` Grok already wrote to `~/.grok/logs/unified.jsonl`. |
+| Claude, Codex | Omarchy's own usage records. Today tokens, 7-day message counts, limit percent and reset, and `modelUsage` when that file has it. |
+| Grok | `~/.grok/sessions/**/usage.json` turn totals for today and 7 days, plus the latest `creditUsagePercent` Grok already wrote to `~/.grok/logs/unified.jsonl`. Up to six models. |
+| OpenAI | Not installed here. The quiet toggle says "Not on this machine" and does not invent a number. |
+| Cursor | `cursor-agent` can be on `PATH`. There is no usage ledger for it yet, so the quiet toggle says "No usage record on this machine". |
 | OpenCode Go | `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key already in `auth.json`. Three windows: rolling, weekly, monthly. Cached ten minutes. A rolling window at 0% reads "Starts on first use". |
-| OpenCode on this machine | `step-finish` rows in `~/.local/share/opencode/opencode.db`. Seven day rows and one row per model, each with tokens and dollars. Same records as `opencode stats`. A database with no `part` table falls back to session token sums. |
+| OpenCode on this machine | `step-finish` rows in `~/.local/share/opencode/opencode.db`. Seven day boxes and one box per model, each with tokens and dollars. Same records as `opencode stats`. A database with no `part` table falls back to session token sums. |
 
 The Go read is the one network call, and only when that cache is older than ten minutes. The prepaid dollar balance on the console is a separate wallet and is not on this route. In the panel, `u` runs `omarchy-agent-usage-update --limits-only` and forces the Go read again. `r` re-reads disk and uses the Go cache if it is still fresh.
 

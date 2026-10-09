@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Spend boxes, six tools, quiet ones hidden
+
+**Decision:** The spend view uses the proportional face for words and monospace for figures, at the shell heading and title sizes, with no small-caps. Each used tool is a bordered box. Each limit, each day, and each model is a bordered box inside it. The roster is Claude, Grok, OpenAI, OpenCode, Codex, and Cursor, with used tools first. A tool counts as used when it has tokens, a plan window, a model row, or a day with a count. The others stay off the list until `a` or the button shows them at the end, as a short box. No ledger and no install says "Not on this machine". An install with no ledger we can read says "No usage record on this machine". A ledger that is empty says "No usage this week", unless the record already has a status. OpenAI has neither an install nor a ledger here. Cursor has the `cursor-agent` binary and no ledger, so it takes the middle sentence. Neither card invents a number. An Omarchy usage file outside the roster is dropped.
+
+**Why:** One mono run of rows, with letter-spaced small-caps, made the week and the model list hard to separate. The fireworks record is empty on this machine and is not one of the tools that should sit on the card. A tool that is not installed should not take a full usage card, and it should not disappear from the roster either.
+
+**Rejected:** Leaving every Omarchy usage file on the card. Hiding OpenAI and Cursor completely, so a later install would need a code change before the card could name them. Inventing a zero-usage chart for a tool that has no ledger. Keeping small-caps and only raising the pixel size again.
+
 ## 2026-10-09 — OpenCode Go windows, larger type, smaller ring
 
 **Decision:** The OpenCode card leads with the Go plan from `GET https://opencode.ai/zen/go/v1/usage`: rolling, weekly, and monthly, each with a percent, a bar, and a reset. Rolling at 0% says "Starts on first use". The key already in `auth.json` is sent as a bearer header and is not stored in the ten-minute cache. Local day and model rows stay under those three bars. The request uses a curl user agent because Cloudflare rejects Python's default client. Panel type moves up one step (caption to body-small, body-small to body, body to subtitle) and the wide letter-spacing comes in. The bar ring draws at `Style.bar.iconCanvas` instead of 72% of the icon slot.

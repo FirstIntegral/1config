@@ -28,9 +28,11 @@ Panel {
 
   property string mode: "usage"
   property string selectedId: ""
+  property bool showQuiet: false
 
   function open() {
     root.mode = "usage"
+    root.showQuiet = false
     root.controller.show()
   }
   function close() { root.controller.hide() }
@@ -104,11 +106,32 @@ Panel {
     }
     return peak
   }
+  function quietCountOf(all) {
+    var n = 0
+    var list = all || []
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].used === false) n++
+    }
+    return n
+  }
+  function filterSpend(all, showAll) {
+    var list = all || []
+    if (showAll) return list
+    var kept = []
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i] || list[i].used === false) continue
+      kept.push(list[i])
+    }
+    return kept
+  }
+  readonly property int quietCount: quietCountOf(root.agents)
+  readonly property var spendAgents: filterSpend(root.agents, root.showQuiet)
   function handleTextKey(t) {
     if (t === "r" || t === "R") root.refresh()
     else if (t === "u" || t === "U") root.refreshLimits()
     else if (t === "g" || t === "G") root.mode = "map"
     else if (t === "s" || t === "S") root.mode = "usage"
+    else if (t === "a" || t === "A") root.showQuiet = !root.showQuiet
     else if (t === "h" || t === "H") root.cycle(-1)
     else if (t === "l" || t === "L") root.cycle(1)
   }
@@ -126,7 +149,7 @@ Panel {
   readonly property real screenW: panel.screenW > 0 ? panel.screenW : 1600
   readonly property real screenH: panel.screenH > 0 ? panel.screenH : 1025
   // Drops from the bar icon. Wide enough for one usage card, short enough to leave the desktop.
-  readonly property int cardWidth: Math.round(Math.min(Style.space(640), Math.max(Style.space(400), 0.38 * screenW)))
+  readonly property int cardWidth: Math.round(Math.min(Style.space(760), Math.max(Style.space(440), 0.46 * screenW)))
   readonly property int cardHeight: Math.round(Math.min(Style.space(820), Math.max(Style.space(480), 0.68 * screenH)))
 
   component SectionHeader: Item {
@@ -217,7 +240,7 @@ Panel {
     property real ratio: 0
     property bool hot: false
     property bool today: false
-    implicitHeight: Math.max(Style.space(8), 8)
+    implicitHeight: Math.max(Style.space(10), 10)
     Rectangle {
       anchors.fill: parent
       radius: height / 2
@@ -231,218 +254,306 @@ Panel {
     }
   }
 
-  component ShareRow: Item {
-    id: share
-    property string name: ""
-    property string value: ""
-    property real ratio: 0
-    property bool today: false
-    property bool hot: false
-    implicitHeight: Math.max(shareName.implicitHeight, shareValue.implicitHeight) + Style.space(8)
-    Text {
-      id: shareName
-      width: Style.space(168)
-      text: share.name
-      color: share.today ? root.contentForeground : root.tint(0.72)
-      font.family: root.monoFamily
-      font.pixelSize: Style.font.body
-      font.bold: share.today
-      elide: Text.ElideRight
-      anchors.verticalCenter: parent.verticalCenter
-    }
-    Text {
-      id: shareValue
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      text: share.value
-      color: share.today || share.hot ? root.contentForeground : root.tint(0.72)
-      font.family: root.monoFamily
-      font.pixelSize: Style.font.bodySmall
-      font.bold: share.today
-    }
-    Meter {
-      anchors.left: shareName.right
-      anchors.right: shareValue.left
-      anchors.leftMargin: Style.space(10)
-      anchors.rightMargin: Style.space(12)
-      anchors.verticalCenter: parent.verticalCenter
-      ratio: share.ratio
-      today: share.today
-      hot: share.hot
-    }
-  }
-
-  component UsageCard: Column {
+  component UsageCard: Item {
     id: card
     required property var modelData
     readonly property var agent: modelData || ({})
+    readonly property bool quiet: agent.used === false
     readonly property var dayRows: agent.days || []
     readonly property var modelRows: agent.models || []
     readonly property real dayPeak: root.peakOf(dayRows, "tokens")
     readonly property real modelPeak: root.peakOf(modelRows, "tokens")
     width: parent ? parent.width : implicitWidth
-    spacing: Style.space(12)
+    implicitHeight: cardBox.implicitHeight
+    height: implicitHeight
 
-    Item {
-      width: parent.width
-      implicitHeight: cardName.implicitHeight
-      Text {
-        id: cardName
-        text: String(card.agent.name || card.agent.id || "")
-        color: root.contentForeground
-        font.family: root.monoFamily
-        font.pixelSize: Style.font.subtitle
-        font.capitalization: Font.SmallCaps
-        font.letterSpacing: 0.4
-        font.bold: true
-        anchors.left: parent.left
-        anchors.right: cardTotal.left
-        anchors.rightMargin: Style.space(12)
-        elide: Text.ElideRight
-      }
-      Text {
-        id: cardTotal
-        anchors.right: parent.right
-        anchors.verticalCenter: cardName.verticalCenter
-        text: String(card.agent.headline || card.agent.weekCostLabel || "")
-        color: root.contentForeground
-        font.family: root.monoFamily
-        font.pixelSize: Style.font.subtitle
-        font.bold: true
-      }
+    function rowValue(row) {
+      var bits = [String(row.tokenLabel || row.label || "0")]
+      if (row.costLabel) bits.push(String(row.costLabel))
+      return bits.join("   ")
     }
 
-    Text {
-      visible: card.dayRows.length === 0 && String(card.agent.weekLabel || "—") !== "—"
-      width: parent.width
-      text: "today " + String(card.agent.todayLabel || "—") + "    ·    7d " + String(card.agent.weekLabel || "—")
-      color: root.contentForeground
-      opacity: 0.7
-      font.family: root.monoFamily
-      font.pixelSize: Style.font.bodySmall
-    }
+    Rectangle {
+      id: cardBox
+      width: card.width
+      implicitHeight: cardCol.implicitHeight + Style.space(32)
+      height: implicitHeight
+      radius: Style.space(10)
+      color: root.tint(card.quiet ? 0.03 : 0.055)
+      border.width: 1
+      border.color: root.tint(card.quiet ? 0.10 : 0.18)
 
-    Repeater {
-      model: card.agent.limits || []
-      delegate: Column {
-        required property var modelData
-        width: card.width
-        spacing: Style.space(6)
+      Column {
+        id: cardCol
+        x: Style.space(16)
+        y: Style.space(16)
+        width: cardBox.width - Style.space(32)
+        spacing: Style.space(12)
+
         Item {
           width: parent.width
-          implicitHeight: limitName.implicitHeight
+          implicitHeight: cardName.implicitHeight
           Text {
-            id: limitName
-            text: String(modelData.label || "Limit")
+            id: cardName
+            text: String(card.agent.name || card.agent.id || "")
             color: root.contentForeground
-            font.family: root.monoFamily
-            font.pixelSize: Style.font.body
+            opacity: card.quiet ? 0.55 : 1
+            font.family: root.proseFamily
+            font.pixelSize: Style.font.heading
+            font.bold: true
             anchors.left: parent.left
-            anchors.right: limitPct.left
+            anchors.right: cardTotal.left
             anchors.rightMargin: Style.space(12)
             elide: Text.ElideRight
           }
           Text {
-            id: limitPct
+            id: cardTotal
             anchors.right: parent.right
-            text: Math.round(Number(modelData.usedPct) || 0) + "% used"
-            color: Number(modelData.usedPct) >= 80 ? root.accent : root.contentForeground
+            anchors.verticalCenter: cardName.verticalCenter
+            visible: !card.quiet && text !== ""
+            text: String(card.agent.headline || card.agent.weekCostLabel || "")
+            color: root.contentForeground
             font.family: root.monoFamily
-            font.pixelSize: Style.font.body
+            font.pixelSize: Style.font.heading
             font.bold: true
           }
         }
-        Meter {
-          width: parent.width
-          ratio: (Number(modelData.usedPct) || 0) / 100
-          hot: Number(modelData.usedPct) >= 80
-        }
+
         Text {
-          visible: text !== ""
+          visible: card.quiet
           width: parent.width
-          text: String(modelData.detail || "") !== "" ? String(modelData.detail) : root.resetsIn(modelData.resetsAt)
+          text: String(card.agent.status || (card.agent.present ? "No usage this week" : "Not on this machine"))
           color: root.contentForeground
-          opacity: 0.55
-          font.family: root.monoFamily
-          font.pixelSize: Style.font.bodySmall
+          opacity: 0.7
+          font.family: root.proseFamily
+          font.pixelSize: Style.font.title
+          wrapMode: Text.WordWrap
         }
-      }
-    }
 
-    Column {
-      visible: card.dayRows.length > 0
-      width: parent.width
-      spacing: Style.space(2)
-      Text {
-        text: "This week"
-        color: root.contentForeground
-        opacity: 0.55
-        font.family: root.monoFamily
-        font.pixelSize: Style.font.bodySmall
-        font.capitalization: Font.SmallCaps
-        font.letterSpacing: 0.3
-      }
-      Repeater {
-        model: card.dayRows
-        delegate: ShareRow {
-          required property var modelData
-          width: card.width
-          name: String(modelData.label || "")
-          value: {
-            var bits = [String(modelData.tokenLabel || "0")]
-            if (modelData.costLabel) bits.push(String(modelData.costLabel))
-            return bits.join("   ")
+        Rectangle {
+          visible: !card.quiet && card.dayRows.length === 0 && String(card.agent.weekLabel || "—") !== "—"
+          width: parent.width
+          implicitHeight: summaryCol.implicitHeight + Style.space(20)
+          height: implicitHeight
+          radius: Style.space(8)
+          color: root.tint(0.04)
+          border.width: 1
+          border.color: root.tint(0.10)
+          Column {
+            id: summaryCol
+            x: Style.space(12)
+            y: Style.space(10)
+            width: parent.width - Style.space(24)
+            spacing: Style.space(4)
+            Text {
+              width: parent.width
+              text: "Today"
+              color: root.contentForeground
+              opacity: 0.6
+              font.family: root.proseFamily
+              font.pixelSize: Style.font.subtitle
+            }
+            Text {
+              width: parent.width
+              text: String(card.agent.todayLabel || "—") + "     ·     7 days  " + String(card.agent.weekLabel || "—")
+              color: root.contentForeground
+              font.family: root.monoFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
           }
-          ratio: (Number(modelData.tokens) || 0) / card.dayPeak
-          today: modelData.today === true
         }
-      }
-    }
 
-    Column {
-      visible: card.modelRows.length > 0
-      width: parent.width
-      spacing: Style.space(2)
-      Text {
-        text: "By model"
-        color: root.contentForeground
-        opacity: 0.55
-        font.family: root.monoFamily
-        font.pixelSize: Style.font.bodySmall
-        font.capitalization: Font.SmallCaps
-        font.letterSpacing: 0.3
-      }
-      Repeater {
-        model: card.modelRows
-        delegate: ShareRow {
-          required property var modelData
-          width: card.width
-          name: String(modelData.id || "")
-          value: {
-            var bits = [String(modelData.label || "")]
-            if (modelData.costLabel) bits.push(String(modelData.costLabel))
-            return bits.join("   ")
+        Repeater {
+          model: card.quiet ? [] : (card.agent.limits || [])
+          delegate: Rectangle {
+            required property var modelData
+            width: cardCol.width
+            implicitHeight: limitCol.implicitHeight + Style.space(20)
+            height: implicitHeight
+            radius: Style.space(8)
+            color: root.tint(0.04)
+            border.width: 1
+            border.color: root.tint(0.10)
+            Column {
+              id: limitCol
+              x: Style.space(12)
+              y: Style.space(10)
+              width: parent.width - Style.space(24)
+              spacing: Style.space(6)
+              Item {
+                width: parent.width
+                implicitHeight: limitName.implicitHeight
+                Text {
+                  id: limitName
+                  text: String(modelData.label || "Limit")
+                  color: root.contentForeground
+                  font.family: root.proseFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                  anchors.left: parent.left
+                  anchors.right: limitPct.left
+                  anchors.rightMargin: Style.space(12)
+                  elide: Text.ElideRight
+                }
+                Text {
+                  id: limitPct
+                  anchors.right: parent.right
+                  text: Math.round(Number(modelData.usedPct) || 0) + "% used"
+                  color: Number(modelData.usedPct) >= 80 ? root.accent : root.contentForeground
+                  font.family: root.monoFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                }
+              }
+              Meter {
+                width: parent.width
+                implicitHeight: Math.max(Style.space(10), 10)
+                ratio: (Number(modelData.usedPct) || 0) / 100
+                hot: Number(modelData.usedPct) >= 80
+              }
+              Text {
+                visible: text !== ""
+                width: parent.width
+                text: String(modelData.detail || "") !== "" ? String(modelData.detail) : root.resetsIn(modelData.resetsAt)
+                color: root.contentForeground
+                opacity: 0.7
+                font.family: root.proseFamily
+                font.pixelSize: Style.font.subtitle
+              }
+            }
           }
-          ratio: (Number(modelData.tokens) || 0) / card.modelPeak
+        }
+
+        Column {
+          visible: !card.quiet && card.dayRows.length > 0
+          width: parent.width
+          spacing: Style.space(8)
+          Text {
+            text: "This week"
+            color: root.contentForeground
+            font.family: root.proseFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+          }
+          Repeater {
+            model: card.dayRows
+            delegate: Rectangle {
+              required property var modelData
+              width: cardCol.width
+              implicitHeight: dayCol.implicitHeight + Style.space(16)
+              height: implicitHeight
+              radius: Style.space(8)
+              color: modelData.today === true ? root.tint(0.07) : root.tint(0.035)
+              border.width: 1
+              border.color: root.tint(modelData.today === true ? 0.18 : 0.10)
+              Column {
+                id: dayCol
+                x: Style.space(12)
+                y: Style.space(8)
+                width: parent.width - Style.space(24)
+                spacing: Style.space(6)
+                Item {
+                  width: parent.width
+                  implicitHeight: dayName.implicitHeight
+                  Text {
+                    id: dayName
+                    text: String(modelData.label || "")
+                    color: root.contentForeground
+                    font.family: root.proseFamily
+                    font.pixelSize: Style.font.title
+                    font.bold: modelData.today === true
+                    anchors.left: parent.left
+                    anchors.right: dayValue.left
+                    anchors.rightMargin: Style.space(12)
+                    elide: Text.ElideRight
+                  }
+                  Text {
+                    id: dayValue
+                    anchors.right: parent.right
+                    text: card.rowValue(modelData)
+                    color: root.contentForeground
+                    font.family: root.monoFamily
+                    font.pixelSize: Style.font.subtitle
+                    font.bold: true
+                  }
+                }
+                Meter {
+                  width: parent.width
+                  ratio: (Number(modelData.tokens) || 0) / card.dayPeak
+                  today: modelData.today === true
+                }
+              }
+            }
+          }
+        }
+
+        Column {
+          visible: !card.quiet && card.modelRows.length > 0
+          width: parent.width
+          spacing: Style.space(8)
+          Text {
+            text: "By model"
+            color: root.contentForeground
+            font.family: root.proseFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+          }
+          Repeater {
+            model: card.modelRows
+            delegate: Rectangle {
+              required property var modelData
+              width: cardCol.width
+              implicitHeight: modelCol.implicitHeight + Style.space(18)
+              height: implicitHeight
+              radius: Style.space(8)
+              color: root.tint(0.04)
+              border.width: 1
+              border.color: root.tint(0.12)
+              Column {
+                id: modelCol
+                x: Style.space(12)
+                y: Style.space(10)
+                width: parent.width - Style.space(24)
+                spacing: Style.space(6)
+                Text {
+                  width: parent.width
+                  text: String(modelData.id || "")
+                  color: root.contentForeground
+                  font.family: root.proseFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                  elide: Text.ElideRight
+                }
+                Text {
+                  width: parent.width
+                  horizontalAlignment: Text.AlignRight
+                  text: card.rowValue(modelData)
+                  color: root.contentForeground
+                  font.family: root.monoFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                }
+                Meter {
+                  width: parent.width
+                  implicitHeight: Math.max(Style.space(10), 10)
+                  ratio: (Number(modelData.tokens) || 0) / card.modelPeak
+                }
+              }
+            }
+          }
+        }
+
+        Text {
+          visible: !card.quiet && String(card.agent.status || "") !== ""
+          width: parent.width
+          text: String(card.agent.status || "")
+          color: Color.urgent
+          font.family: root.proseFamily
+          font.pixelSize: Style.font.subtitle
+          wrapMode: Text.WordWrap
         }
       }
-    }
-
-    Text {
-      visible: String(card.agent.status || "") !== ""
-      width: parent.width
-      text: String(card.agent.status || "")
-      color: Color.urgent
-      font.family: root.proseFamily
-      renderType: Text.NativeRendering
-      font.pixelSize: Style.font.bodySmall
-      wrapMode: Text.WordWrap
-    }
-
-    Rectangle {
-      width: parent.width
-      height: 1
-      color: root.tint(0.08)
     }
   }
 
@@ -808,7 +919,7 @@ Panel {
                     visible: root.selectedId === "usage"
                     spacing: Style.space(8)
                     Repeater {
-                      model: root.agents
+                      model: root.spendAgents
                       UsageCard { width: detailCol.width }
                     }
                   }
@@ -842,27 +953,61 @@ Panel {
               id: usageCol
               width: usageFlick.width
               spacing: Style.space(18)
-              SectionHeader {
+              Text {
                 width: parent.width
-                label: "Spend on this machine"
-                count: root.pad2(root.agents.length)
-                tone: root.contentForeground
-                family: root.monoFamily
+                text: "Spend"
+                color: root.contentForeground
+                font.family: root.proseFamily
+                font.pixelSize: Style.font.display
+                font.bold: true
               }
               Text {
                 width: parent.width
                 text: root.service && root.service.note
                   ? String(root.service.note)
-                  : "OpenCode Go is rolling, weekly, and monthly. u refreshes the other providers and reads Go again."
+                  : "Each tool is its own box. a shows tools with no usage on this machine."
                 color: root.contentForeground
-                opacity: 0.7
+                opacity: 0.8
                 font.family: root.proseFamily
-                renderType: Text.NativeRendering
-                font.pixelSize: Style.font.body
+                font.pixelSize: Style.font.title
+                wrapMode: Text.WordWrap
+              }
+              Rectangle {
+                visible: root.quietCount > 0
+                width: Math.min(parent.width, quietLabel.implicitWidth + Style.space(36))
+                implicitHeight: quietLabel.implicitHeight + Style.space(16)
+                height: implicitHeight
+                radius: Style.space(8)
+                color: root.showQuiet ? root.accentA(0.18) : root.tint(0.06)
+                border.width: 1
+                border.color: root.showQuiet ? root.accentA(0.75) : root.tint(0.20)
+                Text {
+                  id: quietLabel
+                  anchors.centerIn: parent
+                  text: root.showQuiet ? "Used only" : ("Show " + root.quietCount + " not in use")
+                  color: root.contentForeground
+                  font.family: root.proseFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.showQuiet = !root.showQuiet
+                }
+              }
+              Text {
+                visible: root.ready && root.spendAgents.length === 0
+                width: parent.width
+                text: "No usage on this machine this week."
+                color: root.contentForeground
+                opacity: 0.75
+                font.family: root.proseFamily
+                font.pixelSize: Style.font.title
                 wrapMode: Text.WordWrap
               }
               Repeater {
-                model: root.agents
+                model: root.spendAgents
                 UsageCard { width: usageCol.width }
               }
             }
@@ -880,6 +1025,7 @@ Panel {
               { k: "u", t: "limits" },
               { k: "g", t: "map" },
               { k: "s", t: "spend" },
+              { k: "a", t: "all" },
               { k: "h/l", t: "cycle" }
             ]
             Rectangle {
@@ -904,7 +1050,11 @@ Panel {
                   font.bold: true
                 }
                 Text {
-                  text: chip.modelData.k === "r" && root.service && root.service.loading ? "sync…" : chip.modelData.t
+                  text: {
+                    if (chip.modelData.k === "r" && root.service && root.service.loading) return "sync…"
+                    if (chip.modelData.k === "a") return root.showQuiet ? "used" : "quiet"
+                    return chip.modelData.t
+                  }
                   color: root.contentForeground
                   opacity: 0.8
                   font.family: root.monoFamily

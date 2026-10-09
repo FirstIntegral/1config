@@ -27,15 +27,18 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-FACE = {
-    "claude": "Claude",
-    "grok": "Grok",
-    "opencode": "OpenCode",
-    "codex": "Codex",
-    "fireworks": "Fireworks",
-}
-
-CORE_IDS = ("claude", "grok", "opencode")
+# Fixed roster. Anything else in the Omarchy usage directory is ignored.
+# Order is the display order. Used tools are pulled in front of this list.
+ROSTER = (
+    ("claude", "Claude", ("claude",), (".claude",)),
+    ("grok", "Grok", ("grok",), (".grok",)),
+    ("openai", "OpenAI", ("openai",), (".openai", ".config/openai")),
+    ("opencode", "OpenCode", ("opencode",), (".local/share/opencode", ".config/opencode")),
+    ("codex", "Codex", ("codex",), (".codex",)),
+    ("cursor", "Cursor", ("cursor", "cursor-agent"), (".cursor", ".config/Cursor", ".config/cursor")),
+)
+ROSTER_IDS = {item[0] for item in ROSTER}
+FACE = {item[0]: item[1] for item in ROSTER}
 WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 GO_USAGE_URL = "https://opencode.ai/zen/go/v1/usage"
 GO_TTL = timedelta(minutes=10)
@@ -135,7 +138,126 @@ def int_or_zero(value: object) -> int:
     return int(value)
 
 
-def omarchy_agent(path: Path) -> dict | None:
+def _bucket_tokens(bucket: object) -> int:
+    if isinstance(bucket, bool) or bucket is None:
+        return 0
+    if isinstance(bucket, (int, float)):
+        return int(bucket)
+    if not isinstance(bucket, dict):
+        return 0
+    if "total" in bucket:
+        return int_or_zero(bucket.get("total"))
+    return (
+        int_or_zero(bucket.get("inputTokens"))
+        + int_or_zero(bucket.get("outputTokens"))
+        + int_or_zero(bucket.get("cacheReadInputTokens"))
+        + int_or_zero(bucket.get("cacheCreationInputTokens"))
+    )
+
+
+def _models_from_records(data: dict) -> list[dict]:
+    totals: dict[str, int] = {}
+    usage = data.get("modelUsage")
+    if isinstance(usage, dict):
+        for raw_id, bucket in usage.items():
+            name = clean_model(raw_id)
+            if not name:
+                continue
+            totals[name] = totals.get(name, 0) + _bucket_tokens(bucket)
+    today = data.get("todayTokensByModel")
+    if isinstance(today, dict):
+        for raw_id, bucket in today.items():
+            name = clean_model(raw_id)
+            if not name or name in totals:
+                continue
+            totals[name] = _bucket_tokens(bucket)
+    ranked = sorted(totals.items(), key=lambda item: item[1], reverse=True)
+    return [
+        {"id": name, "tokens": tokens, "label": format_tokens(tokens)}
+        for name, tokens in ranked[:6]
+        if tokens > 0
+    ]
+
+
+def _home_has_dir(home: Path, rels: tuple[str, ...]) -> bool:
+    for rel in rels:
+        path = home.joinpath(*Path(rel).parts)
+        try:
+            if path.is_dir():
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _has_bin(which, names: tuple[str, ...]) -> bool:
+    for name in names:
+        try:
+            found = which(name)
+        except OSError:
+            continue
+        if found:
+            return True
+    return False
+
+
+def agent_used(agent: dict) -> bool:
+    if int_or_zero(agent.get("todayTokens")) > 0:
+        return True
+    if int_or_zero(agent.get("weekTokens")) > 0:
+        return True
+    if int_or_zero(agent.get("weekTurns")) > 0:
+        return True
+    if agent.get("limits"):
+        return True
+    if agent.get("models"):
+        return True
+    for day in agent.get("days") or []:
+        if isinstance(day, dict) and int_or_zero(day.get("tokens")) > 0:
+            return True
+    return False
+
+
+def _blank_agent(agent_id: str, name: str) -> dict:
+    return {
+        "id": agent_id,
+        "name": name,
+        "source": "none",
+        "sourceLabel": "",
+        "ready": False,
+        "present": False,
+        "used": False,
+        "status": "",
+        "todayTokens": 0,
+        "todayLabel": "0",
+        "weekTokens": None,
+        "weekLabel": "—",
+        "todayPrompts": 0,
+        "todaySessions": 0,
+        "updatedAt": "",
+        "limits": [],
+        "models": [],
+        "days": [],
+    }
+
+
+def _mark_agent(agent: dict, name: str, present: bool) -> dict:
+    used = agent_used(agent)
+    agent["used"] = used
+    agent["present"] = bool(present) or used
+    if not (agent.get("id") == "opencode" and agent.get("plan")):
+        agent["name"] = name
+    if not used and not agent.get("status"):
+        if not agent["present"]:
+            agent["status"] = "Not on this machine"
+        elif agent.get("source") == "none":
+            agent["status"] = "No usage record on this machine"
+        else:
+            agent["status"] = "No usage this week"
+    return agent
+
+
+def omarchy_agent(path: Path, now: datetime) -> dict | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -176,7 +298,8 @@ def omarchy_agent(path: Path) -> dict | None:
         "todaySessions": int_or_zero(data.get("todaySessions")),
         "updatedAt": str(data.get("updatedAt") or "")[:40],
         "limits": limits,
-        "models": [],
+        "models": _models_from_records(data),
+        "days": _message_days(data.get("recentDays"), now),
     }
 
 
@@ -231,7 +354,7 @@ def grok_agent(home: Path, now: datetime) -> dict:
         if used is not None:
             limits.append({"label": "Credits", "usedPct": used, "resetsAt": resets})
         measured = str(billing.get("ts") or "")[:40]
-    top = sorted(models.items(), key=lambda item: item[1], reverse=True)[:3]
+    top = sorted(models.items(), key=lambda item: item[1], reverse=True)[:6]
     status = ""
     if not root.is_dir() and not limits:
         status = "No Grok session ledger on this machine"
@@ -453,6 +576,27 @@ def _week_slots(now: datetime) -> list[dict]:
     return slots
 
 
+def _message_days(recent: object, now: datetime) -> list[dict]:
+    counts: dict[str, int] = {}
+    if isinstance(recent, list):
+        for day in recent:
+            if not isinstance(day, dict):
+                continue
+            counts[str(day.get("date") or "")[:10]] = int_or_zero(day.get("messageCount"))
+    if not any(counts.values()):
+        return []
+    slots = _week_slots(now)
+    for slot in slots:
+        slot["tokens"] = counts.get(slot["date"], 0)
+    finished = _finish_days(slots)
+    for row in finished:
+        count = int(row["tokens"])
+        row["tokenLabel"] = (format_tokens(count) + " msgs") if count else "0"
+        row["cost"] = 0
+        row["costLabel"] = ""
+    return finished
+
+
 def _finish_days(slots: list[dict]) -> list[dict]:
     finished = []
     for slot in slots:
@@ -621,6 +765,8 @@ def bar_summary(agents: list[dict]) -> dict:
     today = 0
     lines = []
     for agent in agents:
+        if agent.get("used") is False:
+            continue
         today += int_or_zero(agent.get("todayTokens"))
         limit_bits = []
         for limit in agent.get("limits") or []:
@@ -691,7 +837,7 @@ PILLARS = (
         "id": "usage",
         "name": "Usage",
         "blurb": "OpenCode Go windows come from opencode.ai. The other tools are read on this machine.",
-        "points": ["Claude", "Grok", "OpenCode", "Codex", "Fireworks"],
+        "points": ["Claude", "Grok", "OpenAI", "OpenCode", "Codex", "Cursor"],
     },
 )
 
@@ -792,38 +938,27 @@ def attach_go(card: dict, home: Path, now: datetime, *, force: bool) -> dict:
     return card
 
 
-def collect(home: Path, now: datetime | None = None, *, force_go: bool = False) -> dict:
+def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, which=None) -> dict:
     now = now or datetime.now().astimezone()
+    finder = shutil.which if which is None else which
     by_id: dict[str, dict] = {}
+    loaded: set[str] = set()
     usage_dir = home / ".local" / "state" / "omarchy" / "agents" / "usage"
     if usage_dir.is_dir():
         for path in sorted(usage_dir.glob("*.json")):
-            agent = omarchy_agent(path)
-            if agent is not None:
-                by_id[agent["id"]] = agent
-    if "claude" not in by_id:
-        by_id["claude"] = {
-            "id": "claude",
-            "name": "Claude",
-            "source": "omarchy",
-            "sourceLabel": "Omarchy usage record",
-            "ready": False,
-            "status": "No Claude usage record yet",
-            "todayTokens": 0,
-            "todayLabel": "0",
-            "weekTokens": None,
-            "weekLabel": "—",
-            "todayPrompts": 0,
-            "todaySessions": 0,
-            "updatedAt": "",
-            "limits": [],
-            "models": [],
-        }
+            agent = omarchy_agent(path, now)
+            if agent is None or agent["id"] not in ROSTER_IDS:
+                continue
+            by_id[agent["id"]] = agent
+            loaded.add(agent["id"])
     by_id["grok"] = grok_agent(home, now)
     by_id["opencode"] = attach_go(opencode_agent(home, now), home, now, force=force_go)
-    ordered = [by_id[key] for key in CORE_IDS]
-    extras = [by_id[key] for key in sorted(by_id) if key not in CORE_IDS]
-    agents = ordered + extras
+    roster: list[dict] = []
+    for agent_id, name, bins, rels in ROSTER:
+        agent = by_id.get(agent_id) or _blank_agent(agent_id, name)
+        present = agent_id in loaded or _home_has_dir(home, rels) or _has_bin(finder, bins)
+        roster.append(_mark_agent(agent, name, present))
+    agents = [item for item in roster if item["used"]] + [item for item in roster if not item["used"]]
     summary = bar_summary(agents)
     return {
         "schemaVersion": 1,
@@ -833,7 +968,7 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False) 
         "tooltip": summary["lines"],
         "agents": agents,
         "brain": brain_status(home),
-        "note": "OpenCode Go is the plan on opencode.ai: rolling, weekly, monthly. The dollar credit balance stays on the console. u refreshes Claude, Codex, and Fireworks, and reads Go again.",
+        "note": "Each tool is its own box. Tools with no usage stay hidden until you ask. OpenCode Go is rolling, weekly, and monthly. u refreshes Claude and Codex, and reads Go again.",
     }
 
 
@@ -861,6 +996,14 @@ def self_test() -> None:
                     "usageStatusText": "",
                     "updatedAt": "2026-10-09T14:00:00Z",
                     "limits": [{"label": "Weekly (7-day)", "percent": 0.5, "resetsAt": "2026-10-16T00:00:00Z"}],
+                    "modelUsage": {
+                        "claude-opus": {
+                            "inputTokens": 60,
+                            "outputTokens": 40,
+                            "cacheReadInputTokens": 0,
+                            "cacheCreationInputTokens": 0,
+                        }
+                    },
                     "recentDays": [{"date": "2026-10-09", "messageCount": 4}],
                 }
             ),
@@ -948,6 +1091,18 @@ def self_test() -> None:
         connection.close()
         cache_dir = home / ".local" / "state" / "1config"
         cache_dir.mkdir(parents=True)
+        (usage / "fireworks.json").write_text(
+            json.dumps(
+                {
+                    "id": "fireworks",
+                    "name": "Skip",
+                    "ready": True,
+                    "todayTotalTokens": 500,
+                    "limits": [{"label": "Monthly", "percent": 0.9, "resetsAt": "2026-10-16T00:00:00Z"}],
+                }
+            ),
+            encoding="utf-8",
+        )
         (cache_dir / "opencode-go.json").write_text(
             json.dumps(
                 {
@@ -961,7 +1116,7 @@ def self_test() -> None:
             ),
             encoding="utf-8",
         )
-        payload = collect(home, now)
+        payload = collect(home, now, which=lambda _name: None)
     claude = payload["agents"][0]
     grok = payload["agents"][1]
     opencode = payload["agents"][2]
@@ -992,6 +1147,25 @@ def self_test() -> None:
     blocked = go_windows({"rolling": {"status": "rate-limited", "percent": 99, "resetsAt": ""}})
     assert blocked[0]["usedPct"] == 100 and blocked[0]["detail"] == "", blocked
     assert payload["bar"]["label"] == "Claude 50%", payload["bar"]
+    assert [item["id"] for item in payload["agents"]] == [
+        "claude",
+        "grok",
+        "opencode",
+        "openai",
+        "codex",
+        "cursor",
+    ], [item["id"] for item in payload["agents"]]
+    assert claude["models"][0]["id"] == "claude-opus", claude["models"]
+    assert claude["models"][0]["tokens"] == 100, claude["models"]
+    assert claude["days"][-1]["tokenLabel"] == "4 msgs", claude["days"]
+    assert payload["agents"][3]["used"] is False, payload["agents"][3]
+    assert payload["agents"][3]["present"] is False, payload["agents"][3]
+    assert payload["agents"][3]["status"] == "Not on this machine", payload["agents"][3]
+    assert payload["agents"][4]["used"] is False and payload["agents"][4]["status"] == "Not on this machine"
+    assert payload["agents"][5]["used"] is False and payload["agents"][5]["status"] == "Not on this machine"
+    cursor_only = _mark_agent(_blank_agent("cursor", "Cursor"), "Cursor", True)
+    assert cursor_only["status"] == "No usage record on this machine", cursor_only
+    assert "fireworks" not in [item["id"] for item in payload["agents"]]
     brain = payload["brain"]
     assert brain["present"] is False, brain
     assert brain["links"] == 0, brain
@@ -1003,6 +1177,8 @@ def self_test() -> None:
         "scaffolds",
         "usage",
     ], brain
+    usage_pillar = next(item for item in brain["pillars"] if item["id"] == "usage")
+    assert usage_pillar["points"] == ["Claude", "Grok", "OpenAI", "OpenCode", "Codex", "Cursor"], usage_pillar
     assert "global brain" in brain["about"][0], brain
     blob = json.dumps(payload)
     for banned in ("/tmp", "Bearer", "sk-", "usage.json", "@"):
