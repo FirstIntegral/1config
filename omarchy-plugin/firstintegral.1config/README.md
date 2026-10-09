@@ -8,7 +8,7 @@ The bar shows the ring only, at the bar's own icon size. The tooltip still names
 
 The panel keeps the thin accent frame. On vitals the ring is a small mark at the left of the verdict, with short rays clipped to that strip. Each check is one line, two columns. That page does not show the limit, the model rows, or the quiet toggle. Spend uses the proportional face for words and monospace for numbers, with no small-caps. Colours come from the current Omarchy theme. A fault uses the urgent colour. A warn stays on the accent.
 
-The spend list is six tools, in this order, with anything actually used pulled to the front: Claude, Grok, OpenAI, OpenCode, Codex, Cursor. Each used tool is its own light box. Inside it, each limit, each day, and each model is its own lighter box. "By model" sits next to the quiet toggle and starts off. `m` is the same switch. A tool with no tokens, no plan window, and no model rows stays off that list. The button under the title (`a`) shows those quiet tools at the end, one short box each. No install says "Not on this machine". An install with no ledger says "No usage record on this machine". An empty ledger says "No usage this week". Records that are not in that six, including the Omarchy fireworks file, are not shown.
+The spend list is six tools, in this order, with anything actually used pulled to the front: Claude, Grok, OpenAI, OpenCode, Codex, Cursor. Each used tool is its own light box. Inside it, today and the 7-day total are one line, and each limit and each model is its own lighter box. There is no box per weekday. "By model" sits next to the quiet toggle and starts off. `m` is the same switch. A tool with no tokens, no plan window, and no model rows stays off that list. The button under the title (`a`) shows those quiet tools at the end, one short box each. No install says "Not on this machine". An install with no ledger says "No usage record on this machine". An empty ledger says "No usage this week". Records that are not in that six, including the Omarchy fireworks file, are not shown.
 
 | Card | Where the numbers come from |
 |---|---|
@@ -17,7 +17,7 @@ The spend list is six tools, in this order, with anything actually used pulled t
 | OpenAI | Not installed here. The quiet toggle says "Not on this machine" and does not invent a number. |
 | Cursor | `cursor-agent` can be on `PATH`. There is no usage ledger for it yet, so the quiet toggle says "No usage record on this machine". |
 | OpenCode Go | `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key already in `auth.json`. Three windows: rolling, weekly, monthly. Cached ten minutes. A rolling window at 0% reads "Starts on first use". |
-| OpenCode on this machine | `step-finish` rows in `~/.local/share/opencode/opencode.db`. Seven day boxes and one box per model, each with tokens and dollars. Same records as `opencode stats`. A database with no `part` table falls back to session token sums. |
+| OpenCode on this machine | `step-finish` rows in `~/.local/share/opencode/opencode.db`. One line for today and the 7-day total, and one box per model, each with tokens and dollars. Same records as `opencode stats`. A database with no `part` table falls back to session token sums. |
 
 The Go read is the one network call, and only when that cache is older than ten minutes. The prepaid dollar balance on the console is a separate wallet and is not on this route. In the panel, `u` runs `omarchy-agent-usage-update --limits-only` and forces the Go read again. `r` re-reads disk and uses the Go cache if it is still fresh.
 

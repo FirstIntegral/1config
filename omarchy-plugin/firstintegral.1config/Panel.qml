@@ -169,7 +169,6 @@ Panel {
     id: meter
     property real ratio: 0
     property bool hot: false
-    property bool today: false
     implicitHeight: Math.max(Style.space(10), 10)
     Rectangle {
       anchors.fill: parent
@@ -180,7 +179,7 @@ Panel {
       width: Math.max(0, Math.min(1, meter.ratio)) * parent.width
       height: parent.height
       radius: height / 2
-      color: meter.hot ? root.accent : (meter.today ? root.contentForeground : root.tint(0.55))
+      color: meter.hot ? root.accent : root.tint(0.55)
     }
   }
 
@@ -189,9 +188,7 @@ Panel {
     required property var modelData
     readonly property var agent: modelData || ({})
     readonly property bool quiet: agent.used === false
-    readonly property var dayRows: agent.days || []
     readonly property var modelRows: agent.models || []
-    readonly property real dayPeak: root.peakOf(dayRows, "tokens")
     readonly property real modelPeak: root.peakOf(modelRows, "tokens")
     width: parent ? parent.width : implicitWidth
     implicitHeight: cardBox.implicitHeight
@@ -261,7 +258,7 @@ Panel {
         }
 
         Rectangle {
-          visible: !card.quiet && card.dayRows.length === 0 && String(card.agent.weekLabel || "—") !== "—"
+          visible: !card.quiet
           width: parent.width
           implicitHeight: summaryCol.implicitHeight + Style.space(20)
           height: implicitHeight
@@ -350,69 +347,6 @@ Panel {
                 opacity: 0.7
                 font.family: root.proseFamily
                 font.pixelSize: Style.font.subtitle
-              }
-            }
-          }
-        }
-
-        Column {
-          visible: !card.quiet && card.dayRows.length > 0
-          width: parent.width
-          spacing: Style.space(8)
-          Text {
-            text: "This week"
-            color: root.contentForeground
-            font.family: root.proseFamily
-            font.pixelSize: Style.font.title
-            font.bold: true
-          }
-          Repeater {
-            model: card.dayRows
-            delegate: Rectangle {
-              required property var modelData
-              width: cardCol.width
-              implicitHeight: dayCol.implicitHeight + Style.space(16)
-              height: implicitHeight
-              radius: Style.space(8)
-              color: modelData.today === true ? root.tint(0.04) : root.tint(0.018)
-              border.width: 1
-              border.color: root.tint(modelData.today === true ? 0.12 : 0.07)
-              Column {
-                id: dayCol
-                x: Style.space(12)
-                y: Style.space(8)
-                width: parent.width - Style.space(24)
-                spacing: Style.space(6)
-                Item {
-                  width: parent.width
-                  implicitHeight: dayName.implicitHeight
-                  Text {
-                    id: dayName
-                    text: String(modelData.label || "")
-                    color: root.contentForeground
-                    font.family: root.proseFamily
-                    font.pixelSize: Style.font.title
-                    font.bold: modelData.today === true
-                    anchors.left: parent.left
-                    anchors.right: dayValue.left
-                    anchors.rightMargin: Style.space(12)
-                    elide: Text.ElideRight
-                  }
-                  Text {
-                    id: dayValue
-                    anchors.right: parent.right
-                    text: card.rowValue(modelData)
-                    color: root.contentForeground
-                    font.family: root.monoFamily
-                    font.pixelSize: Style.font.subtitle
-                    font.bold: true
-                  }
-                }
-                Meter {
-                  width: parent.width
-                  ratio: (Number(modelData.tokens) || 0) / card.dayPeak
-                  today: modelData.today === true
-                }
               }
             }
           }

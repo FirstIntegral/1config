@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-10 — Spend drops the weekday rows
+
+**Decision:** The spend card does not draw a box per weekday. Each used tool shows one line for today and the 7-day total, then the plan-limit bars, then model boxes when that toggle is on. The collector still counts days so a tool with only a day total still counts as used. Those rows are not drawn.
+
+**Why:** The weekday run was the long part of the card. The totals and the plan windows are the figures that matter.
+
+**Rejected:** Removing the plan-limit bars. Those windows are not named by weekday. Removing the today and 7-day totals.
+
 ## 2026-10-10 — Vitals open first
 
 **Policy:** omarchy_panel_open=vitals-at-icon
