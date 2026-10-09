@@ -1489,6 +1489,18 @@ if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
 else
   bad "1config bar still has a label, or the grid, or weekday rows, or no Go usage URL, or no quiet toggle"
 fi
+if grep -q 'function tileFill' "$PLUGIN/Panel.qml" \
+   && grep -q 'function tileEdge' "$PLUGIN/Panel.qml" \
+   && grep -q '0.045' "$PLUGIN/Panel.qml" \
+   && grep -q '0.28' "$PLUGIN/Panel.qml" \
+   && grep -q '0.045' "$PLUGIN/Vitals.qml" \
+   && grep -q '0.28' "$PLUGIN/Vitals.qml" \
+   && ! grep -q 'root.tint(0.022)' "$PLUGIN/Panel.qml" \
+   && ! grep -q 'root.tint(0.028)' "$PLUGIN/Panel.qml"; then
+  ok "1config spend boxes use the vitals tile colours"
+else
+  bad "1config spend boxes still use a gray fill"
+fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then
   bad "setup.sh does not install firstintegral.1config"

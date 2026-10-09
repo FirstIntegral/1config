@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-10 — Spend boxes use the vitals tile colours
+
+**Decision:** A spend box uses the same colours as a vitals tile. The fill is the foreground at 0.045, or 0.07 when a limit is at 80% or the card has an error. The edge is the accent at 0.28, or 0.8 when that box is hot. An error uses urgent, the same as a failed vital. A short accent pip sits on the left. Figures on the right use the accent, the way CLEAR does. The meter uses the accent, not a gray bar.
+
+**Why:** The spend cards were a gray wash with a gray edge. Next to the vitals tiles they read as a different panel.
+
+**Rejected:** Repainting the vitals tiles to match the old gray spend cards. Making a limit at 80% urgent. Urgent stays for a failed check and for a usage error.
+
 ## 2026-10-10 — Spend drops the weekday rows
 
 **Decision:** The spend card does not draw a box per weekday. Each used tool shows one line for today and the 7-day total, then the plan-limit bars, then model boxes when that toggle is on. The collector still counts days so a tool with only a day total still counts as used. Those rows are not drawn.

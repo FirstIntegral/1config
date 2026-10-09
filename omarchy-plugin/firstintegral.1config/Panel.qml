@@ -53,6 +53,15 @@ Panel {
     return Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, a)
   }
   function accentA(a) { return Qt.rgba(root.accent.r, root.accent.g, root.accent.b, a) }
+  // Same tile as Vitals.qml: foreground wash, accent edge. Strong is the
+  // warn weight. Fault is urgent, which vitals uses for a failed check.
+  function tileFill(strong) {
+    return Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, strong ? 0.07 : 0.045)
+  }
+  function tileEdge(strong, fault) {
+    var c = fault ? Color.urgent : root.accent
+    return Qt.rgba(c.r, c.g, c.b, (strong || fault) ? 0.8 : 0.28)
+  }
   function pad2(n) {
     var v = Math.max(0, Math.round(Number(n) || 0))
     return (v < 10 ? "0" : "") + v
@@ -173,14 +182,23 @@ Panel {
     Rectangle {
       anchors.fill: parent
       radius: height / 2
-      color: root.tint(0.14)
+      color: root.tileFill(true)
     }
     Rectangle {
       width: Math.max(0, Math.min(1, meter.ratio)) * parent.width
       height: parent.height
       radius: height / 2
-      color: meter.hot ? root.accent : root.tint(0.55)
+      color: meter.hot ? root.accent : root.accentA(0.55)
     }
+  }
+
+  component TilePip: Rectangle {
+    property bool strong: false
+    property bool fault: false
+    width: Style.space(3)
+    radius: width / 2
+    color: fault ? Color.urgent : root.accent
+    opacity: (strong || fault) ? 1 : 0.4
   }
 
   component UsageCard: Item {
@@ -190,6 +208,17 @@ Panel {
     readonly property bool quiet: agent.used === false
     readonly property var modelRows: agent.models || []
     readonly property real modelPeak: root.peakOf(modelRows, "tokens")
+    function hotLimits() {
+      if (quiet) return false
+      var limits = agent.limits || []
+      for (var i = 0; i < limits.length; i++) {
+        if ((Number(limits[i].usedPct) || 0) >= 80) return true
+      }
+      return false
+    }
+    function faulted() {
+      return !quiet && String(agent.status || "") !== ""
+    }
     width: parent ? parent.width : implicitWidth
     implicitHeight: cardBox.implicitHeight
     height: implicitHeight
@@ -205,10 +234,19 @@ Panel {
       width: card.width
       implicitHeight: cardCol.implicitHeight + Style.space(32)
       height: implicitHeight
-      radius: Style.space(10)
-      color: root.tint(card.quiet ? 0.018 : 0.028)
+      radius: Style.space(6)
+      color: root.tileFill(card.hotLimits() || card.faulted())
       border.width: 1
-      border.color: root.tint(card.quiet ? 0.07 : 0.10)
+      border.color: root.tileEdge(card.hotLimits(), card.faulted())
+
+      TilePip {
+        strong: card.hotLimits()
+        fault: card.faulted()
+        anchors.left: parent.left
+        anchors.leftMargin: Style.space(8)
+        anchors.verticalCenter: parent.verticalCenter
+        height: parent.height * 0.55
+      }
 
       Column {
         id: cardCol
@@ -239,7 +277,8 @@ Panel {
             anchors.verticalCenter: cardName.verticalCenter
             visible: !card.quiet && text !== ""
             text: String(card.agent.headline || card.agent.weekCostLabel || "")
-            color: root.contentForeground
+            color: card.faulted() ? Color.urgent : root.accent
+            opacity: (card.hotLimits() || card.faulted()) ? 0.95 : 0.55
             font.family: root.monoFamily
             font.pixelSize: Style.font.heading
             font.bold: true
@@ -262,15 +301,21 @@ Panel {
           width: parent.width
           implicitHeight: summaryCol.implicitHeight + Style.space(20)
           height: implicitHeight
-          radius: Style.space(8)
-          color: root.tint(0.022)
+          radius: Style.space(6)
+          color: root.tileFill(false)
           border.width: 1
-          border.color: root.tint(0.07)
+          border.color: root.tileEdge(false, false)
+          TilePip {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            height: parent.height * 0.55
+          }
           Column {
             id: summaryCol
-            x: Style.space(12)
+            x: Style.space(18)
             y: Style.space(10)
-            width: parent.width - Style.space(24)
+            width: parent.width - Style.space(30)
             spacing: Style.space(4)
             Text {
               width: parent.width
@@ -283,7 +328,8 @@ Panel {
             Text {
               width: parent.width
               text: String(card.agent.todayLabel || "—") + "     ·     7 days  " + String(card.agent.weekLabel || "—")
-              color: root.contentForeground
+              color: root.accent
+              opacity: 0.55
               font.family: root.monoFamily
               font.pixelSize: Style.font.title
               font.bold: true
@@ -294,19 +340,28 @@ Panel {
         Repeater {
           model: card.quiet ? [] : (card.agent.limits || [])
           delegate: Rectangle {
+            id: limitBox
             required property var modelData
+            readonly property bool strong: (Number(modelData.usedPct) || 0) >= 80
             width: cardCol.width
             implicitHeight: limitCol.implicitHeight + Style.space(20)
             height: implicitHeight
-            radius: Style.space(8)
-            color: root.tint(0.022)
+            radius: Style.space(6)
+            color: root.tileFill(strong)
             border.width: 1
-            border.color: root.tint(0.07)
+            border.color: root.tileEdge(strong, false)
+            TilePip {
+              strong: limitBox.strong
+              anchors.left: parent.left
+              anchors.leftMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              height: parent.height * 0.55
+            }
             Column {
               id: limitCol
-              x: Style.space(12)
+              x: Style.space(18)
               y: Style.space(10)
-              width: parent.width - Style.space(24)
+              width: parent.width - Style.space(30)
               spacing: Style.space(6)
               Item {
                 width: parent.width
@@ -327,7 +382,8 @@ Panel {
                   id: limitPct
                   anchors.right: parent.right
                   text: Math.round(Number(modelData.usedPct) || 0) + "% used"
-                  color: Number(modelData.usedPct) >= 80 ? root.accent : root.contentForeground
+                  color: root.accent
+                  opacity: limitBox.strong ? 0.95 : 0.55
                   font.family: root.monoFamily
                   font.pixelSize: Style.font.title
                   font.bold: true
@@ -370,15 +426,21 @@ Panel {
               width: cardCol.width
               implicitHeight: modelCol.implicitHeight + Style.space(18)
               height: implicitHeight
-              radius: Style.space(8)
-              color: root.tint(0.022)
+              radius: Style.space(6)
+              color: root.tileFill(false)
               border.width: 1
-              border.color: root.tint(0.08)
+              border.color: root.tileEdge(false, false)
+              TilePip {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                height: parent.height * 0.55
+              }
               Column {
                 id: modelCol
-                x: Style.space(12)
+                x: Style.space(18)
                 y: Style.space(10)
-                width: parent.width - Style.space(24)
+                width: parent.width - Style.space(30)
                 spacing: Style.space(6)
                 Text {
                   width: parent.width
@@ -393,7 +455,8 @@ Panel {
                   width: parent.width
                   horizontalAlignment: Text.AlignRight
                   text: card.rowValue(modelData)
-                  color: root.contentForeground
+                  color: root.accent
+                  opacity: 0.55
                   font.family: root.monoFamily
                   font.pixelSize: Style.font.title
                   font.bold: true
@@ -723,10 +786,10 @@ Panel {
                   width: quietLabel.implicitWidth + Style.space(36)
                   implicitHeight: quietLabel.implicitHeight + Style.space(16)
                   height: implicitHeight
-                  radius: Style.space(8)
-                  color: root.showQuiet ? root.accentA(0.18) : root.tint(0.06)
+                  radius: Style.space(6)
+                  color: root.showQuiet ? root.accentA(0.18) : root.tileFill(false)
                   border.width: 1
-                  border.color: root.showQuiet ? root.accentA(0.75) : root.tint(0.20)
+                  border.color: root.showQuiet ? root.tileEdge(true, false) : root.tileEdge(false, false)
                   Text {
                     id: quietLabel
                     anchors.centerIn: parent
@@ -746,10 +809,10 @@ Panel {
                   width: modelToggleLabel.implicitWidth + Style.space(36)
                   implicitHeight: modelToggleLabel.implicitHeight + Style.space(16)
                   height: implicitHeight
-                  radius: Style.space(8)
-                  color: root.showModels ? root.accentA(0.18) : root.tint(0.06)
+                  radius: Style.space(6)
+                  color: root.showModels ? root.accentA(0.18) : root.tileFill(false)
                   border.width: 1
-                  border.color: root.showModels ? root.accentA(0.75) : root.tint(0.20)
+                  border.color: root.showModels ? root.tileEdge(true, false) : root.tileEdge(false, false)
                   Text {
                     id: modelToggleLabel
                     anchors.centerIn: parent
