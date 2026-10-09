@@ -761,10 +761,10 @@ Panel {
                         width: detailCol.width
                         implicitHeight: partCol.implicitHeight
                         Rectangle {
+                          x: 0
+                          y: 0
                           width: Style.space(2)
                           height: partName.implicitHeight
-                          anchors.left: parent.left
-                          anchors.top: parent.top
                           color: partMouse.containsMouse ? root.accent : root.tint(0.25)
                         }
                         Column {
