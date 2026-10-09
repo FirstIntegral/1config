@@ -1468,6 +1468,7 @@ if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
    && ! grep -q 'var step = 18' "$PLUGIN/Panel.qml" \
    && grep -q 'This week' "$PLUGIN/Panel.qml" \
    && grep -q 'showQuiet' "$PLUGIN/Panel.qml" \
+   && grep -q 'showModels' "$PLUGIN/Panel.qml" \
    && grep -q 'By model' "$PLUGIN/Panel.qml" \
    && grep -q 'zen/go/v1/usage' "$PLUGIN/bin/usage.py" \
    && grep -q 'Starts on first use' "$PLUGIN/bin/usage.py" \

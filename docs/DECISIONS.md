@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-09 — Model toggle, lighter spend boxes
+
+**Decision:** Spend has a second toggle beside the quiet one, labelled "By model". It starts on. `m` is the same switch. Off, the model boxes drop out of every tool card and the limits and the week stay. The tool boxes, and the boxes inside them, use a lower fill and a softer border so the card reads lighter.
+
+**Why:** The model list is the long part of Grok and OpenCode. It should be one click away, not a second screen. The first box fill was heavy enough to look like a slab on the dark panel.
+
+**Rejected:** A per-card model toggle. Hiding models until the first click, which would undo the breakdown that the boxes were added for.
+
 ## 2026-10-09 — Spend boxes, six tools, quiet ones hidden
 
 **Decision:** The spend view uses the proportional face for words and monospace for figures, at the shell heading and title sizes, with no small-caps. Each used tool is a bordered box. Each limit, each day, and each model is a bordered box inside it. The roster is Claude, Grok, OpenAI, OpenCode, Codex, and Cursor, with used tools first. A tool counts as used when it has tokens, a plan window, a model row, or a day with a count. The others stay off the list until `a` or the button shows them at the end, as a short box. No ledger and no install says "Not on this machine". An install with no ledger we can read says "No usage record on this machine". A ledger that is empty says "No usage this week", unless the record already has a status. OpenAI has neither an install nor a ledger here. Cursor has the `cursor-agent` binary and no ledger, so it takes the middle sentence. Neither card invents a number. An Omarchy usage file outside the roster is dropped.

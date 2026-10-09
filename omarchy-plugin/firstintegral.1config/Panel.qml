@@ -29,6 +29,7 @@ Panel {
   property string mode: "usage"
   property string selectedId: ""
   property bool showQuiet: false
+  property bool showModels: true
 
   function open() {
     root.mode = "usage"
@@ -132,6 +133,7 @@ Panel {
     else if (t === "g" || t === "G") root.mode = "map"
     else if (t === "s" || t === "S") root.mode = "usage"
     else if (t === "a" || t === "A") root.showQuiet = !root.showQuiet
+    else if (t === "m" || t === "M") root.showModels = !root.showModels
     else if (t === "h" || t === "H") root.cycle(-1)
     else if (t === "l" || t === "L") root.cycle(1)
   }
@@ -279,9 +281,9 @@ Panel {
       implicitHeight: cardCol.implicitHeight + Style.space(32)
       height: implicitHeight
       radius: Style.space(10)
-      color: root.tint(card.quiet ? 0.03 : 0.055)
+      color: root.tint(card.quiet ? 0.018 : 0.028)
       border.width: 1
-      border.color: root.tint(card.quiet ? 0.10 : 0.18)
+      border.color: root.tint(card.quiet ? 0.07 : 0.10)
 
       Column {
         id: cardCol
@@ -336,9 +338,9 @@ Panel {
           implicitHeight: summaryCol.implicitHeight + Style.space(20)
           height: implicitHeight
           radius: Style.space(8)
-          color: root.tint(0.04)
+          color: root.tint(0.022)
           border.width: 1
-          border.color: root.tint(0.10)
+          border.color: root.tint(0.07)
           Column {
             id: summaryCol
             x: Style.space(12)
@@ -372,9 +374,9 @@ Panel {
             implicitHeight: limitCol.implicitHeight + Style.space(20)
             height: implicitHeight
             radius: Style.space(8)
-            color: root.tint(0.04)
+            color: root.tint(0.022)
             border.width: 1
-            border.color: root.tint(0.10)
+            border.color: root.tint(0.07)
             Column {
               id: limitCol
               x: Style.space(12)
@@ -444,9 +446,9 @@ Panel {
               implicitHeight: dayCol.implicitHeight + Style.space(16)
               height: implicitHeight
               radius: Style.space(8)
-              color: modelData.today === true ? root.tint(0.07) : root.tint(0.035)
+              color: modelData.today === true ? root.tint(0.04) : root.tint(0.018)
               border.width: 1
-              border.color: root.tint(modelData.today === true ? 0.18 : 0.10)
+              border.color: root.tint(modelData.today === true ? 0.12 : 0.07)
               Column {
                 id: dayCol
                 x: Style.space(12)
@@ -489,7 +491,7 @@ Panel {
         }
 
         Column {
-          visible: !card.quiet && card.modelRows.length > 0
+          visible: !card.quiet && root.showModels && card.modelRows.length > 0
           width: parent.width
           spacing: Style.space(8)
           Text {
@@ -507,9 +509,9 @@ Panel {
               implicitHeight: modelCol.implicitHeight + Style.space(18)
               height: implicitHeight
               radius: Style.space(8)
-              color: root.tint(0.04)
+              color: root.tint(0.022)
               border.width: 1
-              border.color: root.tint(0.12)
+              border.color: root.tint(0.08)
               Column {
                 id: modelCol
                 x: Style.space(12)
@@ -965,35 +967,62 @@ Panel {
                 width: parent.width
                 text: root.service && root.service.note
                   ? String(root.service.note)
-                  : "Each tool is its own box. a shows tools with no usage on this machine."
+                  : "Each tool is its own box. a shows quiet tools. By model shows or hides the model boxes."
                 color: root.contentForeground
                 opacity: 0.8
                 font.family: root.proseFamily
                 font.pixelSize: Style.font.title
                 wrapMode: Text.WordWrap
               }
-              Rectangle {
-                visible: root.quietCount > 0
-                width: Math.min(parent.width, quietLabel.implicitWidth + Style.space(36))
-                implicitHeight: quietLabel.implicitHeight + Style.space(16)
-                height: implicitHeight
-                radius: Style.space(8)
-                color: root.showQuiet ? root.accentA(0.18) : root.tint(0.06)
-                border.width: 1
-                border.color: root.showQuiet ? root.accentA(0.75) : root.tint(0.20)
-                Text {
-                  id: quietLabel
-                  anchors.centerIn: parent
-                  text: root.showQuiet ? "Used only" : ("Show " + root.quietCount + " not in use")
-                  color: root.contentForeground
-                  font.family: root.proseFamily
-                  font.pixelSize: Style.font.title
-                  font.bold: true
+              Row {
+                spacing: Style.space(8)
+                Rectangle {
+                  visible: root.quietCount > 0
+                  width: quietLabel.implicitWidth + Style.space(36)
+                  implicitHeight: quietLabel.implicitHeight + Style.space(16)
+                  height: implicitHeight
+                  radius: Style.space(8)
+                  color: root.showQuiet ? root.accentA(0.18) : root.tint(0.06)
+                  border.width: 1
+                  border.color: root.showQuiet ? root.accentA(0.75) : root.tint(0.20)
+                  Text {
+                    id: quietLabel
+                    anchors.centerIn: parent
+                    text: root.showQuiet ? "Used only" : ("Show " + root.quietCount + " not in use")
+                    color: root.contentForeground
+                    font.family: root.proseFamily
+                    font.pixelSize: Style.font.title
+                    font.bold: true
+                  }
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.showQuiet = !root.showQuiet
+                  }
                 }
-                MouseArea {
-                  anchors.fill: parent
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.showQuiet = !root.showQuiet
+                Rectangle {
+                  width: modelToggleLabel.implicitWidth + Style.space(36)
+                  implicitHeight: modelToggleLabel.implicitHeight + Style.space(16)
+                  height: implicitHeight
+                  radius: Style.space(8)
+                  color: root.showModels ? root.accentA(0.18) : root.tint(0.06)
+                  border.width: 1
+                  border.color: root.showModels ? root.accentA(0.75) : root.tint(0.20)
+                  Text {
+                    id: modelToggleLabel
+                    anchors.centerIn: parent
+                    text: "By model"
+                    color: root.contentForeground
+                    opacity: root.showModels ? 1 : 0.7
+                    font.family: root.proseFamily
+                    font.pixelSize: Style.font.title
+                    font.bold: true
+                  }
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.showModels = !root.showModels
+                  }
                 }
               }
               Text {
@@ -1026,6 +1055,7 @@ Panel {
               { k: "g", t: "map" },
               { k: "s", t: "spend" },
               { k: "a", t: "all" },
+              { k: "m", t: "models" },
               { k: "h/l", t: "cycle" }
             ]
             Rectangle {
@@ -1053,6 +1083,7 @@ Panel {
                   text: {
                     if (chip.modelData.k === "r" && root.service && root.service.loading) return "sync…"
                     if (chip.modelData.k === "a") return root.showQuiet ? "used" : "quiet"
+                    if (chip.modelData.k === "m") return root.showModels ? "on" : "off"
                     return chip.modelData.t
                   }
                   color: root.contentForeground
