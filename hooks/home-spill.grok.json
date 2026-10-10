@@ -1,0 +1,50 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.agents/hooks/home-spill-guard.sh\" sweep",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.agents/hooks/home-spill-guard.sh\" sweep",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|search_replace|run_terminal_command|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.agents/hooks/home-spill-guard.sh\" pretool",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|run_terminal_command|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.agents/hooks/home-spill-guard.sh\" sweep",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

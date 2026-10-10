@@ -81,7 +81,7 @@
   <text x="1132" y="424" font-size="12" fill="#79c0ff">merge-strays.sh @daily (headless LLM)</text>
   <text x="1132" y="442" font-size="12" fill="#8b949e">quarantined strays → merged → canonical</text>
   <text x="1132" y="462" font-size="12" fill="#79c0ff">claude-memory-guard @daily+@reboot</text>
-  <text x="1132" y="480" font-size="12" fill="#8b949e">residue → archive → stage → wipe to stub</text>
+  <text x="1132" y="480" font-size="12" fill="#8b949e">residue → stub · home-spill-guard hourly</text>
   <text x="1132" y="500" font-size="12" fill="#79c0ff">tool updater @reboot + resume shim</text>
   <text x="1132" y="518" font-size="12" fill="#8b949e">skips mise-managed · refreshes inventory</text>
   <text x="1132" y="538" font-size="12" fill="#79c0ff">boot-dashboard @login (XDG, Wayland+X11)</text>
