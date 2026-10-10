@@ -331,3 +331,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** One home for design skills; the global copy was an unused duplicate (only announced, never referenced by a project).
 
 **Rejected:** Keeping identical copies in three places.
+
+## 2026-10-10 — Boot dashboard exit 5 lists the diverged files, not just "resolve by hand"
+
+**Decision:** `check_dots_sync` exit 5 no longer shows sync.sh's bare last line. The row counts the diverged live files; up to three follow as indented sub-lines with their tag (`(local edit)` / `(changed on both sides)`), then both ways out (`keep:` copy them into `~/Projects/omarchy-dots` and push; `force:` run `apply.sh`), plus the missing/incoming waiting note when present. Exit 2/3 each get one hint line. Sub-lines (`note()`) are display-only — the close slip keeps the row line.
+
+**Why:** Login only surfaces the dashboard. The old row kept the last `dots-sync:` line, which is "nothing applied — resolve by hand:" — the file list and the keep/force instructions were dropped, so the user had to run sync.sh by hand to learn which file and what to do.
+
+**Rejected:** Dumping sync.sh's raw multiline output into the row. Writing the file list into close-slip.txt (the slip is one line per row by design, and the README documents that shape).

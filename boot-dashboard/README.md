@@ -18,7 +18,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 |-----|---------|
 | **network** | GitHub reachable (HEAD / api). Retries ~6×3s so early-boot DHCP/WiFi catch up. Warn = online but GitHub slow; fail = offline. |
 | **brain sync** | `hooks/brain-sync.sh` fetches `origin/main` and, when local `~/.agents` is behind `github:FirstIntegral/1config`, fast-forwards to match the repo. Fast-forward only, validated 1config remote only, never over local edits or unpushed commits. |
-| **omarchy dots** | Omarchy machines only — runs `~/Projects/omarchy-dots/sync.sh` (fetch → ff-only pull → re-exec → drift-check `~/.config` vs pack → `apply.sh` on incoming drift). Skipped visibly (`–`) on non-Omarchy boxes. Warn rows: fetch failed / repo ahead / repo dirty / a live file was edited locally (exit 5; the row shows sync.sh's own line). |
+| **omarchy dots** | Omarchy machines only — runs `~/Projects/omarchy-dots/sync.sh` (fetch → ff-only pull → re-exec → drift-check `~/.config` vs pack → `apply.sh` on incoming drift). Skipped visibly (`–`) on non-Omarchy boxes. Warn rows: fetch failed / repo ahead / repo dirty (both print a one-line hint under the row) / a live file was edited locally or changed on both sides (exit 5 — the row counts them, lists up to three with their `(local edit)` / `(changed on both sides)` tag, and prints both ways out: fold them into the pack, or force with `apply.sh`). |
 | **symlinks** | 3 AGENTS paths → `~/.agents/AGENTS.md` |
 | **link guard** | `agents-symlink-guard` healthy |
 | **memory guard** | Claude/Grok residue clean |
@@ -66,7 +66,7 @@ Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail —
    `brain-sync.sh` only fast-forwards. Fetch failed = offline or the SSH key isn't in the agent yet. Local ahead = you have unpushed commits (run `bash ~/.agents/sync.sh -m "…"`). Behind + local edits = pull the repo manually (`git -C ~/.agents pull --ff-only`) once the edits are committed or stashed. Divergence is a hard fail — resolve by hand.
 
 5. **omarchy dots — fetch failed / ahead / dirty / live edit**  
-   Same fetch semantics as brain sync. The row color is `sync.sh`'s exit code (`|| true` used to force that code to 0, so a failure still looked green). `ahead` = pack repo has unpushed commits; `dirty` = uncommitted pack edits (pull refused). Exit 5 = a live file was edited here, or the pack and the live file both changed; sync prints the paths and applies nothing. Missing or incoming files are fixed by `apply.sh` at the next login.
+   Same fetch semantics as brain sync. The row color is `sync.sh`'s exit code (`|| true` used to force that code to 0, so a failure still looked green). `ahead` = pack repo has unpushed commits (hint printed: push or reset in `~/Projects/omarchy-dots`); `dirty` = uncommitted pack edits (hint: commit or stash). Exit 5 = a live `~/.config` file was edited here, or the pack and the live file both changed, so `sync.sh` applies nothing (an `apply.sh` run would overwrite the local edits on the way). The dashboard lists up to three of those files with their tag and both exits: **keep** them by copying the live files into `~/Projects/omarchy-dots` (commit, push), or **force** the pack with `~/Projects/omarchy-dots/apply.sh` (overwrites the local edits). Missing or incoming files are fixed by `apply.sh` at the next login, after this is resolved.
 
 ## After the window closes
 

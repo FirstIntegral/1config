@@ -79,6 +79,11 @@ row() {
   slip_note "$st" "$label" "$detail"
 }
 
+note() {
+  # note TEXT — dim sub-line under the preceding row. Not a row, not in the slip.
+  printf "     ${DIM}%s${R}\n" "$1"
+}
+
 spinner_wait() {
   # spinner_wait SECONDS message — brief visual wait
   local total="$1" msg="$2" i=0
@@ -344,7 +349,8 @@ check_brain_sync() {
 check_dots_sync() {
   # Omarchy config pack (github:FirstIntegral/omarchy-dots) — fetch, ff-only pull,
   # drift-check ~/.config, auto-apply on drift. Skips cleanly on non-Omarchy boxes
-  # or when the pack is not cloned here.
+  # or when the pack is not cloned here. Exit 5 renders the diverged live files
+  # and both ways out instead of sync.sh's bare "resolve by hand:" line.
   local dots="$HOME/Projects/omarchy-dots"
   local script="$dots/sync.sh"
   if ! command -v omarchy >/dev/null 2>&1; then
@@ -363,9 +369,36 @@ check_dots_sync() {
   case "$rc" in
     0) row ok "omarchy dots" "$last" ;;
     1) row warn "omarchy dots" "fetch failed — offline or key not loaded" ;;
-    2) row warn "omarchy dots" "$last" ;;
-    3) row warn "omarchy dots" "$last" ;;
-    5) row warn "omarchy dots" "$last" ;;
+    2) row warn "omarchy dots" "$last"
+       note "unpushed commits in ~/Projects/omarchy-dots — push or reset, then re-sync" ;;
+    3) row warn "omarchy dots" "$last"
+       note "uncommitted changes in ~/Projects/omarchy-dots — commit or stash, then re-sync" ;;
+    5)
+      # Live files diverge from the pack: edited locally, or moved on both
+      # sides. sync.sh never clobbers them and applies nothing (apply.sh
+      # installs the whole pack, so a mixed apply would take the edits with
+      # it). The row only had room for "resolve by hand:" — list the files
+      # and the two resolutions under it.
+      local files nfiles also
+      files="$(echo "$out" | grep -E '^  - .*\((local edit|changed on both sides)\)' \
+        | sed "s|^  - $HOME/|~/|; s|^  - ||")"
+      nfiles="$(printf '%s\n' "$files" | grep -c .)"
+      if [ "$nfiles" -eq 0 ]; then
+        row warn "omarchy dots" "$last"
+        return 1
+      fi
+      if [ "$nfiles" -eq 1 ]; then
+        row warn "omarchy dots" "1 live file edited vs pack — nothing applied"
+      else
+        row warn "omarchy dots" "$nfiles live files edited vs pack — nothing applied"
+      fi
+      printf '%s\n' "$files" | head -3 | while IFS= read -r f; do note "$f"; done
+      [ "$nfiles" -gt 3 ] && note "+ $((nfiles - 3)) more — bash ~/Projects/omarchy-dots/sync.sh"
+      also="$(echo "$out" | grep -E '^  \([0-9]+ missing / [0-9]+ incoming also waiting')"
+      [ -n "$also" ] && note "${also#  }"
+      note "keep: copy the live files into ~/Projects/omarchy-dots, commit, push"
+      note "force: bash ~/Projects/omarchy-dots/apply.sh (overwrites the local edits)"
+      ;;
     *) row fail "omarchy dots" "$last" ;;
   esac
 }

@@ -731,6 +731,14 @@ if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
   else
     ok "boot dashboard omarchy-dots exit 5 is the sync.sh line"
   fi
+  # Exit 5 must name the diverged files and both fixes, not just "resolve by hand".
+  if grep -q 'keep: copy the live files' "$BD/dashboard.sh" \
+     && grep -q 'overwrites the local edits' "$BD/dashboard.sh" \
+     && grep -qE 'local edit|changed on both sides' "$BD/dashboard.sh"; then
+    ok "boot dashboard exit 5 lists diverged files and both ways out"
+  else
+    bad "boot dashboard exit 5 must list diverged files and both ways out"
+  fi
   if grep -q 'close-slip.txt' "$CANON" && grep -q 'close-slip.txt' "$SETUP"; then
     ok "close slip documented in AGENTS.md and SETUP.md"
   else
