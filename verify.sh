@@ -1634,6 +1634,41 @@ else
   info "lake not on PATH — skip paper-template lake build (run hooks/install-elan.sh)"
 fi
 
+# --- tracked on-demand skills (tri-tool) -------------------------------------
+_skill_list="$(sed -n 's#^!skills/\([^/]*\)/$#\1#p' "$AGENTS_HOME/.gitignore")"
+if [ -z "$_skill_list" ]; then
+  bad ".gitignore lists no tracked skills (!skills/<name>/)"
+fi
+for _s in $_skill_list; do
+  _sd="$AGENTS_HOME/skills/$_s"
+  if [ ! -f "$_sd/SKILL.md" ]; then bad "skill $_s: SKILL.md missing"; continue; fi
+  _nm="$(sed -n '2,5s/^name: *//p' "$_sd/SKILL.md" | head -1)"
+  [ "$_nm" = "$_s" ] && ok "skill $_s: frontmatter name matches" || bad "skill $_s: frontmatter name '$_nm' != dir"
+  grep -q '^description: ' "$_sd/SKILL.md" || bad "skill $_s: no description"
+  for _f in UPSTREAM.md LICENSE.upstream; do
+    [ -f "$_sd/$_f" ] || bad "skill $_s: $_f missing"
+  done
+  grep -q 'MIT License, Copyright (c) 2025 Jesse Vincent' "$_sd/SKILL.md" || bad "skill $_s: MIT credit footer missing"
+  if grep -rqiE 'superpowers:|Co-Authored-By' "$_sd"; then bad "skill $_s: superpowers: cross-ref or co-author line"; fi
+  _cl="$HOME/.claude/skills/$_s"
+  if [ -L "$_cl" ] && [ "$(readlink -f "$_cl")" = "$(readlink -f "$_sd")" ]; then
+    ok "skill $_s: ~/.claude/skills symlink"
+  else
+    bad "skill $_s: ~/.claude/skills/$_s does not resolve to $_sd (run setup.sh)"
+  fi
+  if git -C "$AGENTS_HOME" check-ignore -q "skills/$_s/SKILL.md"; then bad "skill $_s: ignored by .gitignore"; fi
+done
+for _m in omarchy diagnose-crash vigil; do
+  if [ -e "$AGENTS_HOME/skills/$_m" ] && ! git -C "$AGENTS_HOME" check-ignore -q "skills/$_m"; then
+    bad "machine-local skill $_m is not gitignored"
+  fi
+done
+_tracked="$(git -C "$AGENTS_HOME" ls-files skills/ | cut -d/ -f2 | sort -u | tr '\n' ' ')"
+_want="$(printf '%s\n' $_skill_list | sort -u | tr '\n' ' ')"
+if [ -n "$_tracked" ] && [ "$_tracked" != "$_want" ]; then
+  bad "git ls-files skills/ ($_tracked) != .gitignore allowlist ($_want)"
+fi
+
 # --- summary ---------------------------------------------------------------
 echo
 if [ "$fail" -eq 0 ]; then

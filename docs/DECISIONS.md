@@ -347,3 +347,13 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Login only surfaces the panel; the slip line "nothing applied — resolve by hand:" named neither file nor fix. The detail overlay answers "what is the problem" without a terminal, and the same for a dirty brain checkout.
 
 **Rejected:** Running `sync.sh` from the panel (network at click time, duplicates the dashboard). A filesystem watcher on close-slip.txt (the 120s collector refresh is enough). Printing absolute home paths in slip lines (first-file form stays relative).
+
+## 2026-10-10 — On-demand process skills tracked in ~/.agents/skills
+
+**Policy:** process_skills_home=tracked-in-agents-skills
+
+**Decision:** Adopt five skills from obra/superpowers @ `8ca22dba` (MIT, Jesse Vincent), trimmed of `superpowers:*` cross-refs and Claude-only names: systematic-debugging, verification-before-completion, receiving-code-review, requesting-code-review, writing-plans. They live in `~/.agents/skills/<name>/` and are tracked through `skills/*` plus one `!skills/<name>/` line each; omarchy, diagnose-crash and vigil stay untracked. Grok and OpenCode read the dir natively; `setup.sh` symlinks each tracked skill into `~/.claude/skills/`; `verify.sh` checks all of it. requesting-code-review triggers only before merging or calling a substantial change done. writing-plans saves to `docs/plans/`, which is committed. Updates are manual: re-diff at a new upstream SHA and update `UPSTREAM.md`.
+
+**Why:** Debugging, verification, review and planning discipline in every tool without growing the always-loaded AGENTS.md. Supersedes the "machine-local only" half of the 2026-10-09 skills ADR; design skills still live in `~/Projects/skills/`.
+
+**Rejected:** using-superpowers and its session-start hook (always loaded); brainstorming (fires on all creative work, hard approval gate); writing-skills (depends on the TDD skill, 681 lines); anthropics skill-creator (Apache-2.0, eval tooling); vendoring the whole plugin; 1config linking omarchy and vigil into Claude; gitignoring `docs/plans/`.

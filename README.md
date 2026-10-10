@@ -18,7 +18,7 @@ This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runti
 | **Ubuntu** (Debian) | Supported | `sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full` |
 | Other systemd Linux | Best-effort | python3, flock, git, cron, gnupg, gnome-keyring |
 
-Same `setup.sh` on both. No Omarchy-only step in the install path. The Omarchy desktop skill is **gitignored** (`skills/`) and never required for the brain to run.
+Same `setup.sh` on both. No Omarchy-only step in the install path. The Omarchy desktop skill is **gitignored** (machine-local under `skills/`) and never required for the brain to run.
 
 ## Fresh machine
 
@@ -123,4 +123,16 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |
-| `skills/` | Machine-local (Omarchy, diagnose-crash, Vigil skills). Gitignored. Reusable design skills live in `~/Projects/skills/`, not here. |
+| `skills/` | Three groups, see [Skills](#skills). Tracked: five on-demand process skills. Untracked: machine-local tool skills. |
+
+## Skills
+
+Skills load only when their `description` matches the task. Three groups, three homes:
+
+| Group | Where | Git | Examples |
+|-------|-------|-----|----------|
+| Machine-local tool skills | `~/.agents/skills/<name>/` | Untracked (`skills/*` in `.gitignore`) | omarchy, diagnose-crash, vigil |
+| On-demand process skills | `~/.agents/skills/<name>/` | Tracked in 1config (one `!skills/<name>/` line each) | systematic-debugging, verification-before-completion, receiving-code-review, requesting-code-review, writing-plans |
+| Design skills | `~/Projects/skills/<name>/` | That repo | ambient-operations-design, brain-hud-design |
+
+The process skills are adapted from [obra/superpowers](https://github.com/obra/superpowers) at a pinned commit (MIT, Copyright (c) 2025 Jesse Vincent). Each dir keeps `UPSTREAM.md` and `LICENSE.upstream`. Grok and OpenCode read `~/.agents/skills` natively. `setup.sh` step `1b` symlinks each tracked skill into `~/.claude/skills/<name>` and leaves a real directory there untouched. `verify.sh` checks the frontmatter, the credit, and the symlinks. 1config does not link machine-local skills into Claude. Plans written by `writing-plans` go in the project's `docs/plans/` and are committed. To add a tracked skill: create the dir, add its `!skills/<name>/` line, run `setup.sh`.

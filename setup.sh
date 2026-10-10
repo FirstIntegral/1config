@@ -115,6 +115,27 @@ link_one "$HOME/.grok/AGENTS.md"
 link_one "$HOME/.config/opencode/AGENTS.md"
 link_one "$HOME/.claude/CLAUDE.md"
 
+# --- 1b tracked on-demand skills → Claude ----------------------------------
+# Grok and OpenCode read ~/.agents/skills natively. Claude Code reads
+# ~/.claude/skills/<name>, so each TRACKED skill (the !skills/<name>/ lines in
+# .gitignore) gets a per-skill symlink. Machine-local skills are not exposed.
+echo "[1b] tracked skills → ~/.claude/skills"
+mkdir -p "$HOME/.claude/skills"
+TRACKED_SKILLS="$(sed -n 's#^!skills/\([^/]*\)/$#\1#p' "$AGENTS_HOME/.gitignore")"
+for s in $TRACKED_SKILLS; do
+  src="$AGENTS_HOME/skills/$s"
+  dst="$HOME/.claude/skills/$s"
+  [ -f "$src/SKILL.md" ] || die "tracked skill $s has no $src/SKILL.md"
+  if [ -L "$dst" ] && [ "$(readlink -f "$dst")" = "$(readlink -f "$src")" ]; then
+    log "ok       $dst (already linked)"
+  elif [ -e "$dst" ] && [ ! -L "$dst" ]; then
+    log "WARN     $dst is a real path — left untouched; merge it by hand, then re-run setup"
+  else
+    ln -sfn "$src" "$dst"
+    log "linked   $dst"
+  fi
+done
+
 # --- 2 grok config.toml ------------------------------------------------------
 echo "[2] grok config.toml switches"
 GROK_CFG="$HOME/.grok/config.toml"

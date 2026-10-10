@@ -72,6 +72,7 @@ ln -s ~/.agents/AGENTS.md ~/.claude/CLAUDE.md
 - Back up any pre-existing regular file before replacing it.
 - Reads AND writes through any of these paths land in the canonical file.
 - Each tool only ever opens its own expected path; the OS resolves the link.
+- **Tracked skills** (step `1b`): Grok and OpenCode read `~/.agents/skills` natively. Claude gets one symlink per tracked skill, `~/.claude/skills/<name>` → `~/.agents/skills/<name>`; the list is the `!skills/<name>/` lines in `.gitignore`. A real dir at the target is warned about, never replaced. Machine-local skills (omarchy, diagnose-crash, vigil) are not linked by 1config.
 
 ## 4. Tool-specific config
 

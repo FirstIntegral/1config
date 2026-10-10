@@ -5,8 +5,14 @@ backups/
 __pycache__/
 *.pyc
 
-# Machine-local opencode skills (e.g. Omarchy-provided) — not part of the brain
-skills/
+# Skills: machine-local tool skills (omarchy, diagnose-crash, vigil) stay untracked;
+# on-demand process skills below are tracked in 1config.
+skills/*
+!skills/systematic-debugging/
+!skills/verification-before-completion/
+!skills/receiving-code-review/
+!skills/requesting-code-review/
+!skills/writing-plans/
 
 # Live grok/claude/opencode versions — differ per machine, rewritten by setup/updater
 inventory.local.md
