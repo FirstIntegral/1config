@@ -581,57 +581,6 @@ fi
 
 rm -f "${EFFECTIVE_PERMS:-}"
 
-# --- 5e2 home spill guard: grok hooks + claude PreToolUse/session sweep -----
-echo "[5e2] home spill guard"
-SPILL_SH="$AGENTS_HOME/hooks/home-spill-guard.sh"
-SPILL_PY="$AGENTS_HOME/hooks/home-spill-guard.py"
-SPILL_JSON="$AGENTS_HOME/hooks/home-spill.grok.json"
-if [ ! -f "$SPILL_SH" ] || [ ! -f "$SPILL_PY" ] || [ ! -f "$SPILL_JSON" ]; then
-  log "WARNING: hooks/home-spill-guard missing — copy ~/.agents fully; skipping"
-else
-  chmod +x "$SPILL_SH" "$SPILL_PY"
-  mkdir -p "$HOME/.grok/hooks"
-  cp -p "$SPILL_JSON" "$HOME/.grok/hooks/home-spill.json"
-  log "installed ~/.grok/hooks/home-spill.json"
-  CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-  [ -f "$CLAUDE_SETTINGS" ] && cp -p "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-spill.json"
-  CLAUDE_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PYEOF'
-import json, os, pathlib
-p = pathlib.Path(os.environ["CLAUDE_SETTINGS"])
-cfg = json.loads(p.read_text()) if p.exists() else {}
-cmd = 'bash "$HOME/.agents/hooks/home-spill-guard.sh"'
-hooks = cfg.setdefault("hooks", {})
-changed = False
-
-def wire(event, matcher, arg):
-    global changed
-    groups = hooks.setdefault(event, [])
-    existing = [h.get("command", "") for g in groups for h in g.get("hooks", [])]
-    if any("home-spill-guard.sh" in c and arg in c for c in existing):
-        return
-    entry = {"type": "command", "command": f"{cmd} {arg}", "timeout": 10}
-    group = {"hooks": [entry]}
-    if matcher:
-        group = {"matcher": matcher, "hooks": [entry]}
-    groups.append(group)
-    changed = True
-
-wire("SessionStart", None, "sweep")
-wire("SessionEnd", None, "sweep")
-wire("PreToolUse", "Bash|Write|Edit", "pretool")
-wire("PostToolUse", "Bash", "sweep")
-if changed:
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2) + "\n")
-    print("  wired    claude home-spill-guard")
-else:
-    print("  ok       claude home-spill-guard already wired")
-PYEOF
-  if [ -f "$BACKUP_DIR/claude-settings-spill.json" ] && cmp -s "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-spill.json"; then
-    rm -f "$BACKUP_DIR/claude-settings-spill.json"
-  fi
-fi
-
 # --- 5e claude PreToolUse hook: quoted-heredoc -> scratchpad rewrite --------
 echo "[5e] claude PreToolUse heredoc-rewrite hook"
 HR_SH="$AGENTS_HOME/hooks/heredoc-rewrite.sh"
@@ -744,23 +693,19 @@ elif ! command -v crontab >/dev/null; then
   log "  @daily  $MEM_GUARD_DIR/check-memory.sh"
   log "  @reboot $MEM_GUARD_DIR/check-memory.sh"
   log "  @reboot $UPD_DIR/boot-check.sh"
-  log "  @hourly $AGENTS_HOME/hooks/home-spill-guard.sh sweep"
-  log "  @reboot $AGENTS_HOME/hooks/home-spill-guard.sh sweep"
 else
   # CRITICAL: never feed `crontab -` an empty stdin (installs an empty crontab).
   # All greps carry `|| true` so set -e/pipefail cannot abort before crontab -.
   CT_OLD="$(crontab -l 2>/dev/null || true)"
-  CT_OLD="$(printf '%s\n' "$CT_OLD" | grep -v -E 'agents-symlink-guard|claude-memory-guard|ai-terminal-tools-update-on-boot|home-spill-guard' || true)"
+  CT_OLD="$(printf '%s\n' "$CT_OLD" | grep -v -E 'agents-symlink-guard|claude-memory-guard|ai-terminal-tools-update-on-boot' || true)"
   { printf '%s\n' "$CT_OLD"
-    printf '@daily %s\n@reboot %s\n@daily %s\n@daily %s\n@reboot %s\n@reboot %s\n@hourly %s sweep\n@reboot %s sweep\n' \
+    printf '@daily %s\n@reboot %s\n@daily %s\n@daily %s\n@reboot %s\n@reboot %s\n' \
       "$GUARD_DIR/check-links.sh" "$GUARD_DIR/check-links.sh" \
       "$GUARD_DIR/merge-strays.sh" \
       "$MEM_GUARD_DIR/check-memory.sh" "$MEM_GUARD_DIR/check-memory.sh" \
-      "$UPD_DIR/boot-check.sh" \
-      "$AGENTS_HOME/hooks/home-spill-guard.sh" \
-      "$AGENTS_HOME/hooks/home-spill-guard.sh"
+      "$UPD_DIR/boot-check.sh"
   } | grep -v '^$' | crontab -
-  log "installed symlink-guard (@daily + @reboot) + stray-merge (@daily) + memory-guard (@daily + @reboot) + tool updater (@reboot) + home-spill-guard (@hourly + @reboot)"
+  log "installed symlink-guard (@daily + @reboot) + stray-merge (@daily) + memory-guard (@daily + @reboot) + tool updater (@reboot)"
 fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------

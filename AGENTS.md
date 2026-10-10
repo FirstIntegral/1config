@@ -257,17 +257,6 @@ These three stay out.
 
 ---
 
-## Home is not a project — HARD RULE
-
-`$HOME` is the machine, not a workspace. Do not create a new file or directory whose parent is `$HOME`.
-
-- New work goes in `~/Projects/<name>` (`create_project`) or in the project that already owns it. Scratch, logs, renders, and upscales go in that project or in `/tmp`.
-- A path under an existing directory is fine (`~/Projects/...`, `~/.config/...`, `~/.agents/...`). A new non-dot name directly in `$HOME` is not.
-- Dot-paths (`~/.config`, `~/.local`) are tool config. Leave the user's existing top-level names alone.
-- Grok's Cursor shell writes `<workspace>/terminals/` and `<workspace>/agent-tools/` by itself. That writer has been in the binary since at least 1.0.13. Grok 1.0.50 (installed on this machine 2026-10-09) falls back to the workspace when the tracked shell cwd is gone, so a session started in `$HOME` drops those directories in `$HOME`. They are tool spill, not projects. `hooks/home-spill-guard.sh` deletes a matching spill and refuses the create. Launch `grok` from the project directory so the spill is not born in `$HOME`.
-
----
-
 ## `create_project` trigger
 
 When the user says **`create_project`** (starting a new project), always set up the standard layout. Resolve the target before editing: `create_project <name>` with a simple name means `~/Projects/<name>`; an explicit absolute or relative path containing `/` is used after resolution; a missing name requires a question. Never use the current working directory as the default for a simple name. `verify.sh` runs `hooks/rule-oracles.sh`: `foo` → `~/Projects/foo`, a name containing `/` is not moved under `~/Projects`, an empty name exits 30 (ask). That fixture also fails if a hook reads `session_transcript.md`. Fast path: `cp -r ~/.agents/project-template/. <project-dir>/` then fill in names; or create the files manually:
@@ -543,9 +532,8 @@ When `create_project` lands under `~/Projects/sites/`, merge the usual session i
 |-------|---------------|--------------|--------------------------------|-----|
 | Symlink | `~/.agents/hooks/check-links.sh` | `~/cron-jobs/agents-symlink-guard/check-links.sh` | `NEEDS-SYMLINK-MERGE` | Keep the 3 AGENTS symlinks healthy |
 | Tool memory | `~/.agents/hooks/check-claude-memory.sh` | `~/cron-jobs/claude-memory-guard/check-memory.sh` | `NEEDS-MEMORY-MERGE` | Detect Claude/Grok memory residue → archive → stage → wipe to stub |
-| Home spill | `~/.agents/hooks/home-spill-guard.sh` | cron calls that script directly | — | Delete Grok `~/terminals` and `~/agent-tools` spill; refuse a new non-dot name in `$HOME` |
 
-The symlink and memory guards are copied by `setup.sh` into `~/cron-jobs/`. Schedule: `@daily` + `@reboot` each. The home-spill guard is not copied; cron runs `~/.agents/hooks/home-spill-guard.sh` at `@hourly` and `@reboot`. Stray merging is automated by `~/.agents/hooks/merge-strays.sh` (cron `@daily`, see Symlink conflict section below).
+Both installed by `setup.sh` (copy from `hooks/`). Schedule: `@daily` + `@reboot` each. Stray merging is automated by `~/.agents/hooks/merge-strays.sh` (cron `@daily`, see Symlink conflict section below).
 
 **Two different flags — do not mix them up:**
 

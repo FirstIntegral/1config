@@ -2,14 +2,6 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
-## 2026-10-10 — Home is not a project
-
-**Decision:** Agents must not create a new non-dot file or directory directly in `$HOME`. Grok shell spill that does land there (`~/terminals`, `~/agent-tools`) is deleted by `hooks/home-spill-guard.sh` when the files match the Cursor-shell signature. A `status: running` terminal log stays. `agent-tools` uuid files younger than 10 minutes stay so the model can still read the spill. The same script's `pretool` mode denies the create. Grok loads it from `~/.grok/hooks/home-spill.json`. Claude loads it from `settings.json`. Cron runs the sweep `@hourly` and `@reboot`.
-
-**Why:** Grok 1.0.50 writes that spill into the workspace when the tracked shell cwd is gone. Sessions started in `$HOME` therefore dropped project-looking directories in the home directory. There is no Grok setting that moves the directory. A PATH wrapper in front of `grok` does not win: mise puts the package bin ahead of `~/.local/bin`.
-
-**Rejected:** Wrapping the `grok` binary (mise shadows `~/.local/bin`). Deleting `agent-tools` in the same PostToolUse that created them (the model still has to read the spill). Treating OpenCode as if it had a PreToolUse hook. It does not; the rule in `AGENTS.md` is the OpenCode half.
-
 ## 2026-10-10 — Spend hides today and the section pip
 
 **Decision:** The spend card does not show a today total. Plan windows stay: rolling, weekly, monthly, and the other limit bars. Spend boxes keep the vitals fill and accent edge, and they do not draw the accent pip. Vitals tiles keep the pip.

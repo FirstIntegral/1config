@@ -174,7 +174,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh home-spill-guard.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -1300,81 +1300,6 @@ else
   bad "heredoc-rewrite hook files missing (run setup.sh)"
 fi
 
-# --- home spill guard ------------------------------------------------------
-echo "[home spill guard]"
-SPILL_SH="$HOOKS/home-spill-guard.sh"
-SPILL_PY="$HOOKS/home-spill-guard.py"
-if [ -f "$SPILL_SH" ] && [ -f "$SPILL_PY" ] && [ -f "$HOOKS/home-spill.grok.json" ]; then
-  [ -x "$SPILL_SH" ] || note "hooks/home-spill-guard.sh not executable"
-  python3 -m py_compile "$SPILL_PY" 2>/dev/null && ok "home-spill-guard.py parses" || bad "home-spill-guard.py SYNTAX ERROR"
-  if grep -q 'Home is not a project' "$AGENTS_HOME/AGENTS.md" && grep -q 'home-spill-guard' "$SETUP"; then
-    ok "home spill rule documented in AGENTS.md and SETUP.md"
-  else
-    bad "home spill rule missing from AGENTS.md or SETUP.md"
-  fi
-  if grep -q 'OpenCode has no PreToolUse' "$SETUP"; then
-    ok "OpenCode home-spill gap recorded in SETUP.md"
-  else
-    bad "SETUP.md missing the OpenCode home-spill gap"
-  fi
-  if [ -f "$HOME/.grok/hooks/home-spill.json" ] && grep -q 'home-spill-guard.sh' "$HOME/.grok/hooks/home-spill.json"; then
-    ok "grok hook ~/.grok/hooks/home-spill.json installed"
-  else
-    bad "grok home-spill hook missing (run setup.sh)"
-  fi
-  if [ -f "$HOME/.claude/settings.json" ] && grep -q 'home-spill-guard.sh' "$HOME/.claude/settings.json"; then
-    ok "claude settings wire home-spill-guard.sh"
-  else
-    bad "claude settings missing home-spill-guard.sh (run setup.sh)"
-  fi
-  spill_tmp="$(mktemp -d)"
-  printf '%s\n' '---' 'pid: 1' 'cwd: "/tmp"' 'status: succeeded' 'running_for_ms: 1' '---' > "$spill_tmp/term.txt"
-  mkdir -p "$spill_tmp/home/terminals" "$spill_tmp/home/agent-tools" "$spill_tmp/home/Projects"
-  mv "$spill_tmp/term.txt" "$spill_tmp/home/terminals/1.txt"
-  printf 'x\n' > "$spill_tmp/home/agent-tools/6c4b31c0-e868-49cb-9b1a-4b02f0b99f6e.txt"
-  touch -d '2000-01-01 00:00:00' "$spill_tmp/home/agent-tools/6c4b31c0-e868-49cb-9b1a-4b02f0b99f6e.txt"
-  if HOME="$spill_tmp/home" python3 "$SPILL_PY" sweep && [ ! -e "$spill_tmp/home/terminals" ] && [ ! -e "$spill_tmp/home/agent-tools" ]; then
-    ok "smoke: finished spill dirs removed"
-  else
-    bad "smoke: finished spill dirs not removed"
-  fi
-  mkdir -p "$spill_tmp/home/terminals"
-  printf '%s\n' '---' 'pid: 1' 'status: running' 'running_for_ms: 1' '---' > "$spill_tmp/home/terminals/2.txt"
-  if HOME="$spill_tmp/home" python3 "$SPILL_PY" sweep && [ -f "$spill_tmp/home/terminals/2.txt" ]; then
-    ok "smoke: running terminal file kept"
-  else
-    bad "smoke: running terminal file was removed"
-  fi
-  mkdir -p "$spill_tmp/home/agent-tools"
-  printf 'real\n' > "$spill_tmp/home/agent-tools/notes.txt"
-  if HOME="$spill_tmp/home" python3 "$SPILL_PY" sweep; then
-    bad "smoke: non-spill agent-tools should exit 2"
-  else
-    [ -f "$spill_tmp/home/agent-tools/notes.txt" ] && ok "smoke: non-spill agent-tools kept" || bad "smoke: non-spill file deleted"
-  fi
-  deny="$(HOME="$spill_tmp/home" python3 - <<PY | HOME="$spill_tmp/home" python3 "$SPILL_PY" pretool
-import json
-print(json.dumps({"tool_name":"Bash","tool_input":{"command":"mkdir ~/sp-work"}}))
-PY
-)"
-  printf '%s' "$deny" | grep -q '"decision": "deny"' && ok "smoke: mkdir ~/sp-work denied" || bad "smoke: mkdir ~/sp-work was allowed"
-  allow="$(HOME="$spill_tmp/home" python3 - <<PY | HOME="$spill_tmp/home" python3 "$SPILL_PY" pretool
-import json
-print(json.dumps({"tool_name":"Bash","tool_input":{"command":"mkdir -p ~/Projects/foo"}}))
-PY
-)"
-  [ -z "$allow" ] && ok "smoke: mkdir ~/Projects/foo allowed" || bad "smoke: mkdir ~/Projects/foo denied"
-  allow="$(HOME="$spill_tmp/home" python3 - <<PY | HOME="$spill_tmp/home" python3 "$SPILL_PY" pretool
-import json
-print(json.dumps({"tool_name":"Bash","tool_input":{"command":"ls ~"}}))
-PY
-)"
-  [ -z "$allow" ] && ok "smoke: ls ~ allowed" || bad "smoke: ls ~ denied"
-  rm -rf "$spill_tmp"
-else
-  bad "home-spill-guard files missing (run setup.sh)"
-fi
-
 # --- crontab ---------------------------------------------------------------
 echo "[crontab]"
 if command -v crontab >/dev/null; then
@@ -1383,7 +1308,6 @@ if command -v crontab >/dev/null; then
   echo "$ct" | grep -q 'agents-symlink-guard/merge-strays.sh' && ok "crontab stray-merge" || bad "crontab missing stray-merge"
   echo "$ct" | grep -q 'claude-memory-guard/check-memory.sh' && ok "crontab memory guard" || bad "crontab missing memory guard"
   echo "$ct" | grep -q 'ai-terminal-tools-update-on-boot/boot-check.sh' && ok "crontab tool updater" || bad "crontab missing tool updater"
-  echo "$ct" | grep -q 'home-spill-guard.sh sweep' && ok "crontab home-spill-guard" || bad "crontab missing home-spill-guard"
 else
   note "crontab not available"
 fi
@@ -1630,11 +1554,6 @@ if [ -d "$HOME/.config/omarchy/plugins" ]; then
   fi
 else
   info "no Omarchy plugins dir — install copy not required here"
-fi
-if ! grep -q 'home-spill-guard' "$AGENTS_HOME/setup-infographic.svg"; then
-  bad "infographic missing home-spill-guard"
-else
-  ok "infographic shows home-spill-guard"
 fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup-infographic.svg"; then
   bad "infographic missing firstintegral.1config"
