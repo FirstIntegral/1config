@@ -91,6 +91,8 @@ enabled = false  # memory lives in shared markdown, not grok's store
 
 (`skills`/`mcps`/`hooks` compat intentionally left enabled.)
 
+- **Tracked skills** — Grok reads `~/.agents/skills` natively (and `~/.claude/skills` via skills compat). Grok has no skill-listing command, so `verify.sh` checks Grok only through the shared dir; OpenCode is checked with `opencode debug skill`, Claude through the step `1b` symlinks.
+
 - **Grok memory dir removed.** If `~/.grok/memory/` exists, `setup.sh` archives it under `~/.agents/backups/setup-<ts>/grok-memory/` then deletes it. Do not recreate.
 - **Permission rules** — `setup.sh` step `5c` replaces `[permission] allow / ask / deny` from `~/.agents/permissions.json`, filtering out unsupported non-`Bash` rules. Replacement makes revocations effective. **While `bash_without_prompt` is true, the ask bucket is written empty:** Grok always-approve still honors shell `ask` rules, so leaving `Bash(git push)` in ask would re-prompt. Unknown existing keys such as structured `rules` cause setup to stop before writing instead of silently deleting them; move desired policy into canonical first. The transformed TOML is parsed before replacing the live file.
 - **`permission_mode` is brain-managed** — step `5c` maps Bash autonomy to `always-approve`, edit-only autonomy to `acceptEdits`, and both flags off to `ask`. **Current `permissions.json`: `bash_without_prompt` true → Grok `always-approve`.** Many people will not want that; flip the flag.

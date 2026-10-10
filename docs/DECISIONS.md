@@ -357,3 +357,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Debugging, verification, review and planning discipline in every tool without growing the always-loaded AGENTS.md. Supersedes the "machine-local only" half of the 2026-10-09 skills ADR; design skills still live in `~/Projects/skills/`.
 
 **Rejected:** using-superpowers and its session-start hook (always loaded); brainstorming (fires on all creative work, hard approval gate); writing-skills (depends on the TDD skill, 681 lines); anthropics skill-creator (Apache-2.0, eval tooling); vendoring the whole plugin; 1config linking omarchy and vigil into Claude; gitignoring `docs/plans/`.
+
+## 2026-10-10 — Skills follow-up: trims in UPSTREAM.md, OpenCode check, rules line
+
+**Decision:** Each `skills/<name>/UPSTREAM.md` lists its own trims (it pointed at a proposal file outside the repo). `verify.sh` checks OpenCode discovery with `opencode debug skill`. Grok has no listing command and is checked only through the shared dir (SETUP.md §4). `AGENTS.md` gets two short lines: skills wiring under tri-tool parity and the skills home under `global_brain_update` step 2. The figure shows the tracked skills.
+
+**Why:** Tri-tool parity requires a verify check per tool. A pointer to a file outside the repo breaks on every other clone.
+
+**Rejected:** A full skills section in `AGENTS.md` (always loaded; README and SETUP already hold the detail).

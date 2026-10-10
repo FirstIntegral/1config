@@ -1663,6 +1663,15 @@ for _m in omarchy diagnose-crash vigil; do
     bad "machine-local skill $_m is not gitignored"
   fi
 done
+if command -v opencode >/dev/null 2>&1; then
+  # to a file, not $(...): opencode exits before flushing a >64 KB pipe
+  _ocf="$(mktemp)"; (cd /tmp && timeout 30 opencode debug skill >"$_ocf" 2>/dev/null); _oc="$(cat "$_ocf")"; rm -f "$_ocf"
+  for _s in $_skill_list; do
+    grep -q "\"name\": *\"$_s\"" <<<"$_oc" && ok "skill $_s: opencode discovers it" || bad "skill $_s: opencode debug skill does not list it"
+  done
+else
+  info "opencode not on PATH — skip skill discovery check"
+fi
 _tracked="$(git -C "$AGENTS_HOME" ls-files skills/ | cut -d/ -f2 | sort -u | tr '\n' ' ')"
 _want="$(printf '%s\n' $_skill_list | sort -u | tr '\n' ' ')"
 if [ -n "$_tracked" ] && [ "$_tracked" != "$_want" ]; then

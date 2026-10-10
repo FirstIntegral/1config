@@ -127,7 +127,7 @@ Whenever anything is added to or changed in this setup:
 4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
 5. Same for memory: shared markdown only, identical for all three (see Memory policy). Tool-internal stores stay disabled everywhere.
 
-Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok, OpenCode, and Claude Code 2.1.277+ (the SessionStart hook prints it only when Claude will not); permissions → `permissions.json` fan-out (above).
+Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok, OpenCode, and Claude Code 2.1.277+ (the SessionStart hook prints it only when Claude will not); permissions → `permissions.json` fan-out (above); skills → `~/.agents/skills` (Grok, OpenCode native; Claude per-skill symlink, setup `1b`).
 
 ---
 
@@ -446,7 +446,7 @@ Each such update: patch the affected sections (and the abstract/contributions if
 When the user says **`global_brain_update <what to change>`**, the target is **the brain itself** — `~/.agents/` — not the current project. The trailing text is the change to make.
 
 1. **Read before writing.** `AGENTS.md` (canonical rules) and `SETUP.md` (spec), plus whatever the request touches: `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`. Never patch the brain blind — half of it installs the other half.
-2. **Put the change in its canonical home**, never in a tool-local path: rules & triggers → `AGENTS.md` · spec / how it installs → `SETUP.md` · install logic → `setup.sh` · checks → `verify.sh` · permissions → `permissions.json` · scripts → `hooks/` (or `updater/`) · scaffolds → `project-template/` / `paper-template/`.
+2. **Put the change in its canonical home**, never in a tool-local path: rules & triggers → `AGENTS.md` · spec / how it installs → `SETUP.md` · install logic → `setup.sh` · checks → `verify.sh` · permissions → `permissions.json` · scripts → `hooks/` (or `updater/`) · scaffolds → `project-template/` / `paper-template/` · on-demand process skills → `skills/<name>/` + one `!skills/<name>/` line in `.gitignore`; adopted ones keep `UPSTREAM.md` (pinned SHA, trims) and `LICENSE.upstream`.
 2b. **If the change alters what `setup-infographic.svg` depicts** (components, flows, toolchain), regenerate the figure in the same turn — it is part of the spec surface (verify checks it exists and stays referenced).
 3. **Tri-tool parity applies** (see that HARD RULE): land it for Claude Code + Grok + OpenCode, install it in `setup.sh`, check it in `verify.sh`. A brain change with no verify check is not done.
 4. `bash ~/.agents/setup.sh` → must end `== PASS ==` with `warnings=0`. Fix anything it reports before moving on.
