@@ -4,8 +4,9 @@
   <circle cx="140" cy="56" r="4.5" fill="#39d3e0"/>
   <circle cx="202.4" cy="164" r="4.5" fill="#39d3e0"/>
   <circle cx="77.6" cy="164" r="4.5" fill="#39d3e0"/>
-  <text x="140" y="140" text-anchor="middle" fill="#e6edf3" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="64" font-weight="300">1</text>
-  <text x="140" y="222" text-anchor="middle" fill="#8b949e" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11" letter-spacing="1.4">CLAUDE · GROK · OPENCODE</text>
+  <!-- "1": DejaVu Sans Mono glyph at 64px as a path; ink box centred on the circle (140,128) -->
+  <path d="M127.5 146.02H137.31V110.36L126.75 112.73V106.98L137.25 104.67H143.56V146.02H153.25V151.33H127.5Z" fill="#e6edf3"/>
+  <text x="140" y="222" text-anchor="middle" fill="#8b949e" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11" letter-spacing="1.4">ONE CONFIG FOR ALL AIS</text>
   <text x="140" y="250" text-anchor="middle" fill="#e6edf3" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="16" font-weight="700" letter-spacing="4">1CONFIG</text>
-  <text x="140" y="276" text-anchor="middle" fill="#8b949e" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11" letter-spacing="1.2">ONE CONFIG · ONE MACHINE</text>
+  <text x="140" y="276" text-anchor="middle" fill="#8b949e" font-family="DejaVu Sans Mono, ui-monospace, monospace" font-size="11" letter-spacing="1.2">ONE MACHINE · EVERY AGENT</text>
 </svg>
