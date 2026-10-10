@@ -1465,7 +1465,7 @@ else
 fi
 if grep -q 'property string mode: "vitals"' "$PLUGIN/Panel.qml" \
    && grep -q 'showModels: false' "$PLUGIN/Panel.qml" \
-   && grep -q 'onOpenedChanged: if (root.opened) root.mode = "vitals"' "$PLUGIN/Panel.qml" \
+   && grep -q 'onOpenedChanged: if (root.opened)' "$PLUGIN/Panel.qml" \
    && grep -q 'panel.mode = "vitals"' "$PLUGIN/BarWidget.qml" \
    && ! grep -q 'centerOnBar: true' "$PLUGIN/Panel.qml"; then
   ok "1config panel opens on vitals under the icon, models off"
@@ -1525,6 +1525,17 @@ if command -v omarchy-plugin-validate >/dev/null 2>&1; then
   fi
 else
   info "omarchy-plugin-validate not on this machine — skipped"
+fi
+# Vitals tiles with detail (boot slip, dirty work tree) must stay clickable
+# and the collector must carry the detail lines.
+if grep -q 'signal detailRequested' "$PLUGIN/Vitals.qml" \
+   && grep -qE 'card\.hasMore|cardTap\.containsMouse' "$PLUGIN/Vitals.qml" \
+   && grep -q 'detailOpen' "$PLUGIN/Panel.qml" \
+   && grep -q 'detailLayer' "$PLUGIN/Panel.qml" \
+   && grep -q 'moreNote' "$PLUGIN/bin/usage.py"; then
+  ok "1config vitals open slip/tree detail on click"
+else
+  bad "1config vitals detail-on-click missing (Vitals.qml/Panel.qml/usage.py)"
 fi
 if [ -d "$HOME/.config/omarchy/plugins" ]; then
   if diff -rq "$PLUGIN" "$HOME/.config/omarchy/plugins/firstintegral.1config" >/dev/null; then

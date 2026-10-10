@@ -339,3 +339,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Login only surfaces the dashboard. The old row kept the last `dots-sync:` line, which is "nothing applied — resolve by hand:" — the file list and the keep/force instructions were dropped, so the user had to run sync.sh by hand to learn which file and what to do.
 
 **Rejected:** Dumping sync.sh's raw multiline output into the row. Writing the file list into close-slip.txt (the slip is one line per row by design, and the README documents that shape).
+
+## 2026-10-10 — Vitals tiles with detail open on click; the slip names the file
+
+**Decision:** The plugin's vitals tiles carry an optional `more` array (`moreNote` for context) from `usage.py`. Boot slip fills it with the close-slip lines (sanitised, 8 max); a dirty Work tree fills it with its `git status --porcelain` lines (10 max, no `@`). A tile with `more` shows `›`, brightens on hover, and click opens a detail layer inside the card (`esc` or a click closes it; `Vitals.qml` signal → `Panel.qml` `detailOpen`). The omarchy-dots exit-5 row now names the first diverged file (`1 edited: hypr/bindings.lua — not applied`, relative to `~/.config`), so the close slip — and therefore the Boot slip tile — carries a path, not just the count.
+
+**Why:** Login only surfaces the panel; the slip line "nothing applied — resolve by hand:" named neither file nor fix. The detail overlay answers "what is the problem" without a terminal, and the same for a dirty brain checkout.
+
+**Rejected:** Running `sync.sh` from the panel (network at click time, duplicates the dashboard). A filesystem watcher on close-slip.txt (the 120s collector refresh is enough). Printing absolute home paths in slip lines (first-file form stays relative).

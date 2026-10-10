@@ -379,7 +379,7 @@ check_dots_sync() {
       # installs the whole pack, so a mixed apply would take the edits with
       # it). The row only had room for "resolve by hand:" — list the files
       # and the two resolutions under it.
-      local files nfiles also
+      local files nfiles also short
       files="$(echo "$out" | grep -E '^  - .*\((local edit|changed on both sides)\)' \
         | sed "s|^  - $HOME/|~/|; s|^  - ||")"
       nfiles="$(printf '%s\n' "$files" | grep -c .)"
@@ -387,10 +387,14 @@ check_dots_sync() {
         row warn "omarchy dots" "$last"
         return 1
       fi
+      # Name the first file in the row itself: this text is what the close
+      # slip and the plugin's Boot slip detail show, so "resolve by hand"
+      # carries the path. Shorter only if the file lies under ~/.config.
+      short="$(printf '%s\n' "$files" | head -1 | sed 's/ (.*//; s|^~/\.config/||')"
       if [ "$nfiles" -eq 1 ]; then
-        row warn "omarchy dots" "1 live file edited vs pack — nothing applied"
+        row warn "omarchy dots" "1 edited: $short — not applied"
       else
-        row warn "omarchy dots" "$nfiles live files edited vs pack — nothing applied"
+        row warn "omarchy dots" "$nfiles edited: $short +$((nfiles - 1)) — not applied"
       fi
       printf '%s\n' "$files" | head -3 | while IFS= read -r f; do note "$f"; done
       [ "$nfiles" -gt 3 ] && note "+ $((nfiles - 3)) more — bash ~/Projects/omarchy-dots/sync.sh"

@@ -18,6 +18,10 @@ Item {
   property string proseFamily: "sans-serif"
   property string monoFamily: Style.font.family
 
+  // A tile that carries detail (boot slip lines, uncommitted files) asks the
+  // panel to open them. Tiles without detail are not clickable.
+  signal detailRequested(string vitalId)
+
   property real spin: 0
 
   readonly property color ray: verdict === "fault" ? Color.urgent : accent
@@ -235,6 +239,7 @@ Item {
                 required property int index
                 required property var modelData
                 readonly property string state: String(modelData.state || "")
+                readonly property bool hasMore: !!(card.modelData.more && card.modelData.more.length > 0)
                 readonly property int cellW: Math.max(40, Math.floor((board.width - board.gap) / 2))
                 width: cellW
                 height: board.cellH
@@ -243,7 +248,10 @@ Item {
                 radius: Style.space(6)
                 color: root.alpha(root.foreground, card.state === "ok" ? 0.045 : 0.07)
                 border.width: 1
-                border.color: root.alpha(root.tone(card.state), card.state === "ok" ? 0.28 : 0.8)
+                border.color: root.alpha(
+                  root.tone(card.state),
+                  (card.hasMore && cardTap.containsMouse) ? 1
+                    : card.state === "ok" ? 0.28 : 0.8)
 
                 Rectangle {
                   width: Style.space(3)
@@ -261,7 +269,8 @@ Item {
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
-                  text: card.state === "ok" ? "CLEAR" : (card.state === "warn" ? "WARN" : "FAULT")
+                  text: (card.state === "ok" ? "CLEAR" : (card.state === "warn" ? "WARN" : "FAULT"))
+                    + (card.hasMore ? "  ›" : "")
                   color: root.tone(card.state)
                   opacity: card.state === "ok" ? 0.55 : 0.95
                   font.family: root.monoFamily
@@ -293,6 +302,15 @@ Item {
                   elide: Text.ElideRight
                   font.family: root.monoFamily
                   font.pixelSize: Style.font.bodySmall
+                }
+
+                MouseArea {
+                  id: cardTap
+                  anchors.fill: parent
+                  enabled: card.hasMore
+                  hoverEnabled: card.hasMore
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.detailRequested(String(card.modelData.id))
                 }
               }
             }

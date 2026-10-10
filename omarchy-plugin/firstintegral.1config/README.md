@@ -2,7 +2,7 @@
 
 Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). The bar face is the ring. The panel is spend, and vitals for whether this checkout is actually correct.
 
-Left click opens a card under the bar icon, on vitals. Right click re-reads local files. `s` opens spend. `v` and `g` return to vitals.
+Left click opens a card under the bar icon, on vitals. Right click re-reads local files. `s` opens spend. `v` and `g` return to vitals. A tile marked `›` carries detail: Boot slip opens the warn/fail lines the boot dashboard wrote at its last exit, and a dirty Work tree opens the uncommitted files. `esc` (or a click on the detail) goes back.
 
 The bar shows the ring only, at the bar's own icon size. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`) and starts with the brain verdict. An accent dot pulses on the bar when a limit is at 80% or more, and when a vital is a fault.
 
@@ -21,19 +21,19 @@ The spend list is six tools, in this order, with anything actually used pulled t
 
 The Go read is the one network call, and only when that cache is older than ten minutes. The prepaid dollar balance on the console is a separate wallet and is not on this route. In the panel, `u` runs `omarchy-agent-usage-update --limits-only` and forces the Go read again. `r` re-reads disk and uses the Go cache if it is still fresh.
 
-Vitals is the checkout, not a diagram of it. Each tile is one check and one short result. No paths, remotes, or keys are printed. The groups are Checkout, Rules, Guards, and Machine.
+Vitals is the checkout, not a diagram of it. Each tile is one check and one short result. Tile text itself prints no paths, remotes, or keys. The groups are Checkout, Rules, Guards, and Machine.
 
 | Tile | Clear when |
 |---|---|
 | Checkout | `setup.sh`, `verify.sh`, `sync.sh`, and `AGENTS.md` are all in the checkout |
-| Work tree | `git status` is clean. A dirty tree is a warn |
+| Work tree | `git status` is clean. A dirty tree is a warn; click it for the uncommitted files |
 | Remote | `origin` is one of the lines in `BRAIN_REMOTE` |
 | Matches origin | local `HEAD` equals local `origin/main`. Ahead or behind is a warn. Diverged is a fault. No fetch |
 | Rules links | all three rules symlinks resolve to this `AGENTS.md` |
 | Permissions | `permissions.json` parses, including `bash_without_prompt`. `local.json` may override that flag |
 | Hooks | the nine install and guard scripts are in `hooks/` |
 | Scaffolds | project template, paper template, its build script, and the Lean lakefile are present |
-| Boot slip | the last boot dashboard exit wrote `CLEAN`. A missing slip is a warn, not a fault |
+| Boot slip | the last boot dashboard exit wrote `CLEAN`. A missing slip is a warn, not a fault; click for the warn/fail lines |
 | Memory guard | the installed cron script is present and the residue flag is absent |
 | Symlink guard | the installed cron script is present and the stray flag is absent |
 | Boot dashboard | the installed autostart `Exec` line points at this checkout's `launch.sh` |
@@ -45,7 +45,7 @@ Vitals is the checkout, not a diagram of it. Each tile is one check and one shor
 
 The header still shows the short commit, the branch, the dirty bit, the link count, and the tool count. The bar dot pulses on a usage limit at 80% or on a vital fault. A warn does not pulse the bar. Hover starts with `brain clear`, `brain warn`, or `brain fault`.
 
-No prompt text, paths, or credentials leave the collector. Output is one JSON object on stdout.
+No prompt text or credentials leave the collector. Detail lines (slip text, `git status` paths relative to this checkout) are local-file names only, and an `@` never passes. Output is one JSON object on stdout.
 
 `brwsk.brain` is a different plugin (the grokbot-brain tracker). This one is 1config itself.
 

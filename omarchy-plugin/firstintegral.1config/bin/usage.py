@@ -833,6 +833,15 @@ def _detail(value: str) -> str:
     return cleaned.strip()[:40] or "unknown"
 
 
+def _more_line(value: str) -> str:
+    # Detail lines are local-file text (slip lines, git status). Keep the
+    # useful punctuation; never an "@" (remotes, addresses).
+    if "@" in value:
+        return ""
+    cleaned = "".join(ch for ch in value if ch.isalnum() or ch in " /_-.:~()—'")
+    return cleaned.strip()[:160]
+
+
 def _vital(vital_id: str, group: str, name: str, state: str, detail: str) -> dict:
     if state not in {"ok", "warn", "fail"}:
         state = "fail"
@@ -1012,17 +1021,18 @@ def _permissions_vital(root: Path) -> dict:
     return _vital("permissions", "rules", "Permissions", "ok", "autonomy on" if flag else "autonomy off")
 
 
-def _slip_state(root: Path) -> tuple[str, str]:
+def _slip_state(root: Path) -> tuple[str, str, list[str]]:
     slip_path = root / "boot-dashboard" / "close-slip.txt"
     try:
         if not slip_path.is_file():
-            return "warn", "no exit"
-        first = slip_path.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
+            return "warn", "no exit", []
+        lines = slip_path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return "warn", "no exit"
-    if first and first[0].strip() == "CLEAN":
-        return "ok", "clean"
-    return "warn", "warn"
+        return "warn", "no exit", []
+    if lines and lines[0].strip() == "CLEAN":
+        return "ok", "clean", []
+    shown = [text for text in (_more_line(line) for line in lines) if text][:8]
+    return "warn", "warn", shown
 
 
 CHECKOUT_FILES = ("setup.sh", "verify.sh", "sync.sh", "AGENTS.md")
@@ -1082,7 +1092,7 @@ def brain_status(home: Path, which=None, git=None) -> dict:
     branch = ""
     dirty = False
     links = 0
-    slip, _slip_detail = _slip_state(root)
+    slip, _slip_detail, slip_lines = _slip_state(root)
     head = runner(root, ["rev-parse", "--short", "HEAD"])
     if head:
         commit = _token(head, 12)
@@ -1092,6 +1102,7 @@ def brain_status(home: Path, which=None, git=None) -> dict:
     status = runner(root, ["status", "--porcelain", "--untracked-files=no"])
     if status:
         dirty = True
+    tree_more = [text for text in (_more_line(line) for line in (status or "").splitlines()) if text][:10]
     if present:
         target = (root / "AGENTS.md").resolve()
         for rel in LINK_RELS:
@@ -1153,16 +1164,25 @@ def brain_status(home: Path, which=None, git=None) -> dict:
     lean_state, lean_detail = ("ok", "ready") if lean_ready else ("fail", "missing")
     tools = [{"id": name, "present": finder(name) is not None} for name in ("claude", "grok", "opencode")]
 
+    tree_vital = _vital("tree", "checkout", "Work tree", tree_state, tree_detail)
+    if tree_state != "ok" and tree_more:
+        tree_vital["more"] = tree_more
+        tree_vital["moreNote"] = "uncommitted files in this checkout"
+    slip_vital = _vital("slip", "guards", "Boot slip", slip if slip != "unknown" else "warn", _slip_detail)
+    if slip_lines:
+        slip_vital["more"] = slip_lines
+        slip_vital["moreNote"] = "warn/fail lines from the last boot dashboard exit"
+
     vitals = [
         _vital("checkout", "checkout", "Checkout", checkout_state, checkout_detail),
-        _vital("tree", "checkout", "Work tree", tree_state, tree_detail),
+        tree_vital,
         _vital("remote", "checkout", "Remote", remote_state, remote_detail),
         _vital("level", "checkout", "Matches origin", level_state, level_detail),
         _vital("links", "rules", "Rules links", link_state, link_detail),
         _permissions_vital(root),
         _vital("hooks", "rules", "Hooks", hook_state, hook_detail),
         _vital("scaffolds", "rules", "Scaffolds", scaffold_state, scaffold_detail),
-        _vital("slip", "guards", "Boot slip", slip if slip != "unknown" else "warn", _slip_detail),
+        slip_vital,
         _guard_vital(
             home,
             root,
@@ -1572,6 +1592,25 @@ def self_test() -> None:
             return None
 
         healthy_brain = brain_status(healthy, which=finder, git=fake_git)
+        assert all("more" not in item for item in healthy_brain["vitals"]), healthy_brain["vitals"]
+        (slip_dir / "close-slip.txt").write_text(
+            "warn  omarchy dots  1 edited: hypr/bindings.lua — not applied\n", encoding="utf-8"
+        )
+        warn_state, warn_detail, warn_lines = _slip_state(root)
+        assert (warn_state, warn_detail) == ("warn", "warn"), (warn_state, warn_detail)
+        assert warn_lines == ["warn  omarchy dots  1 edited: hypr/bindings.lua — not applied"], warn_lines
+
+        def dirty_git(_root: Path, args: list[str]) -> str | None:
+            if tuple(args) == ("status", "--porcelain", "--untracked-files=no"):
+                return " M boot-dashboard/dashboard.sh"
+            return fake_git(_root, args)
+
+        worn_brain = brain_status(healthy, which=finder, git=dirty_git)
+        worn_slip = next(item for item in worn_brain["vitals"] if item["id"] == "slip")
+        worn_tree = next(item for item in worn_brain["vitals"] if item["id"] == "tree")
+        assert worn_brain["verdict"] == "warn", worn_brain["verdict"]
+        assert worn_slip["more"] == ["warn  omarchy dots  1 edited: hypr/bindings.lua — not applied"], worn_slip
+        assert worn_tree["more"] == ["M boot-dashboard/dashboard.sh"], worn_tree
     assert healthy_brain["verdict"] == "clear", [
         (item["id"], item["state"], item["detail"])
         for item in healthy_brain["vitals"]

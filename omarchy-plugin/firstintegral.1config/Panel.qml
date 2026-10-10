@@ -28,15 +28,36 @@ Panel {
   property string mode: "vitals"
   property bool showQuiet: false
   property bool showModels: false
+  property bool detailOpen: false
+  property string detailTitle: ""
+  property string detailNote: ""
+  property var detailLines: []
 
   function open() {
     root.mode = "vitals"
     root.showQuiet = false
+    root.detailOpen = false
     root.controller.show()
   }
   // Any show path, including the base Panel open, lands on vitals.
-  onOpenedChanged: if (root.opened) root.mode = "vitals"
+  onOpenedChanged: if (root.opened) {
+    root.mode = "vitals"
+    root.detailOpen = false
+  }
   function close() { root.controller.hide() }
+  function openDetail(vitalId) {
+    var list = root.brain.vitals || []
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].id) !== String(vitalId)) continue
+      var more = list[i].more || []
+      if (!more.length) return
+      root.detailTitle = String(list[i].name || vitalId)
+      root.detailNote = String(list[i].moreNote || "")
+      root.detailLines = more
+      root.detailOpen = true
+      return
+    }
+  }
   function toggle() {
     if (root.opened) root.close()
     else root.open()
@@ -125,8 +146,14 @@ Panel {
   function handleTextKey(t) {
     if (t === "r" || t === "R") root.refresh()
     else if (t === "u" || t === "U") root.refreshLimits()
-    else if (t === "v" || t === "V" || t === "g" || t === "G") root.mode = "vitals"
-    else if (t === "s" || t === "S") root.mode = "usage"
+    else if (t === "v" || t === "V" || t === "g" || t === "G") {
+      root.mode = "vitals"
+      root.detailOpen = false
+    }
+    else if (t === "s" || t === "S") {
+      root.mode = "usage"
+      root.detailOpen = false
+    }
     else if (t === "a" || t === "A") root.showQuiet = !root.showQuiet
     else if (t === "m" || t === "M") root.showModels = !root.showModels
   }
@@ -428,7 +455,10 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       clip: true
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.detailOpen) root.detailOpen = false
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onMoveRequested: function(dx, dy) {
         if (dy === 0) return
@@ -670,6 +700,7 @@ Panel {
               board.background = Qt.binding(function() { return root.cardBackground })
               board.proseFamily = Qt.binding(function() { return root.proseFamily })
               board.monoFamily = Qt.binding(function() { return root.monoFamily })
+              board.detailRequested.connect(function(vitalId) { root.openDetail(vitalId) })
             }
           }
 
@@ -774,6 +805,97 @@ Panel {
               }
             }
           }
+
+          // Click-through detail: slip lines, uncommitted files. Covers the
+          // vitals board only; esc (or a click) goes back.
+          Rectangle {
+            id: detailLayer
+            anchors.fill: parent
+            visible: root.detailOpen
+            z: 10
+            radius: Style.space(6)
+            color: root.cardBackground
+            border.width: 1
+            border.color: root.tileEdge(true, false)
+
+            MouseArea {
+              anchors.fill: parent
+              onClicked: root.detailOpen = false
+            }
+
+            Column {
+              id: detailCol
+              anchors.fill: parent
+              anchors.margins: Style.space(16)
+              spacing: Style.space(8)
+
+              Text {
+                id: detailTitleText
+                width: parent.width
+                text: root.detailTitle
+                color: root.contentForeground
+                font.family: root.proseFamily
+                font.pixelSize: Style.font.heading
+                font.bold: true
+                elide: Text.ElideRight
+              }
+              Text {
+                id: detailNoteText
+                visible: text !== ""
+                width: parent.width
+                text: root.detailNote
+                color: root.contentForeground
+                opacity: 0.7
+                font.family: root.proseFamily
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.WordWrap
+              }
+              Flickable {
+                id: detailFlick
+                width: parent.width
+                height: Math.max(Style.space(60),
+                  detailCol.height - detailTitleText.implicitHeight
+                    - (detailNoteText.visible ? detailNoteText.implicitHeight + detailCol.spacing : 0)
+                    - detailEscText.implicitHeight - detailCol.spacing * 2)
+                contentWidth: width
+                contentHeight: detailLinesCol.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar {
+                  policy: detailFlick.contentHeight > detailFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                }
+                Column {
+                  id: detailLinesCol
+                  width: detailFlick.width
+                  spacing: Style.space(4)
+                  Repeater {
+                    model: root.detailLines
+                    delegate: Text {
+                      required property var modelData
+                      width: detailLinesCol.width
+                      text: String(modelData)
+                      color: root.contentForeground
+                      opacity: 0.92
+                      wrapMode: Text.WordWrap
+                      font.family: root.monoFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+                  }
+                }
+              }
+              Text {
+                id: detailEscText
+                width: parent.width
+                text: root.detailTitle !== "" ? "esc or click  ·  back" : ""
+                color: root.accent
+                opacity: 0.8
+                font.family: root.monoFamily
+                font.pixelSize: Style.font.bodySmall
+                font.capitalization: Font.SmallCaps
+                font.letterSpacing: 0.3
+              }
+            }
+          }
         }
 
         Flow {
@@ -815,6 +937,7 @@ Panel {
                 Text {
                   text: {
                     if (chip.modelData.k === "r" && root.service && root.service.loading) return "sync…"
+                    if (chip.modelData.k === "esc" && root.detailOpen) return "back"
                     if (chip.modelData.k === "a") return root.showQuiet ? "used" : "quiet"
                     if (chip.modelData.k === "m") return root.showModels ? "on" : "off"
                     return chip.modelData.t
