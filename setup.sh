@@ -769,7 +769,7 @@ fi
 echo "[boot-dashboard] install XDG autostart (Wayland + X11)"
 BD="$AGENTS_HOME/boot-dashboard"
 if [ -d "$BD" ]; then
-  chmod +x "$BD/dashboard.sh" "$BD/launch.sh" 2>/dev/null || true
+  chmod +x "$BD/dashboard.sh" "$BD/launch.sh" "$AGENTS_HOME/hooks/close-slip.sh" 2>/dev/null || true
   mkdir -p "$HOME/.config/autostart"
   DESK_SRC="$BD/agents-boot-status.desktop"
   DESK_DST="$HOME/.config/autostart/agents-boot-status.desktop"
@@ -895,3 +895,9 @@ fi
 
 echo "== done. backups (if anything was replaced): $BACKUP_DIR =="
 echo "Rule: after ANY edit under $AGENTS_HOME → re-run this setup.sh (syncs installs + verify)."
+# verify.sh already dropped the ecosystem row. This pass also drops a setup
+# row left by an earlier fast-forward whose install has now succeeded.
+if [ -x "$AGENTS_HOME/hooks/close-slip.sh" ]; then
+  bash "$AGENTS_HOME/hooks/close-slip.sh" clear setup ecosystem \
+    || echo "close-slip update failed" >&2
+fi

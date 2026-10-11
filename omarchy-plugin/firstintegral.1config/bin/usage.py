@@ -1171,7 +1171,7 @@ def brain_status(home: Path, which=None, git=None) -> dict:
     slip_vital = _vital("slip", "guards", "Boot slip", slip if slip != "unknown" else "warn", _slip_detail)
     if slip_lines:
         slip_vital["more"] = slip_lines
-        slip_vital["moreNote"] = "warn/fail lines from the last boot dashboard exit"
+        slip_vital["moreNote"] = "boot exit lines; verify and setup replace their own rows"
 
     vitals = [
         _vital("checkout", "checkout", "Checkout", checkout_state, checkout_detail),

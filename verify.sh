@@ -18,10 +18,11 @@ UPD_DIR="$HOME/cron-jobs/ai-terminal-tools-update-on-boot"
 UPD_SRC="$AGENTS_HOME/updater"
 TEMPLATE="$AGENTS_HOME/project-template"
 fail=0
+nfails=0
 warns=0
 
 ok()   { echo "  OK    $*"; }
-bad()  { echo "  FAIL  $*"; fail=1; }
+bad()  { echo "  FAIL  $*"; fail=1; nfails=$((nfails + 1)); }
 note() { echo "  WARN  $*"; warns=$((warns + 1)); }
 info() { echo "  INFO  $*"; }               # transient state, not a defect — never counts as a warning
 
@@ -769,6 +770,23 @@ if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
   else
     bad "close slip missing from AGENTS.md or SETUP.md"
   fi
+fi
+if [ -x "$HOOKS/close-slip.sh" ] && bash "$HOOKS/close-slip.sh" --selftest; then
+  ok "close-slip.sh drops a resolved row and leaves the others"
+else
+  bad "close-slip.sh missing or selftest failed"
+fi
+# The check lives above the summary, so only the summary's own calls count.
+if awk '
+  /^# --- summary/ { inside=1 }
+  inside && /_slip clear ecosystem/ { saw_clear=1 }
+  inside && /_slip set fail ecosystem/ { saw_set=1 }
+  END { exit (saw_clear && saw_set) ? 0 : 1 }
+' "$AGENTS_HOME/verify.sh" \
+   && grep -q 'close-slip.sh" clear setup ecosystem' "$AGENTS_HOME/setup.sh"; then
+  ok "verify and setup update the close slip for the rows they re-check"
+else
+  bad "verify.sh or setup.sh does not update the close slip"
 fi
 
 # --- flag names (must not reintroduce bare NEEDS-MERGE as the live flag) ---
@@ -1704,13 +1722,24 @@ if [ -n "$_tracked" ] && [ "$_tracked" != "$_want" ]; then
 fi
 
 # --- summary ---------------------------------------------------------------
+_slip() {
+  # Drop or replace this run's row. A missing hook must not change the exit.
+  local hook="$HOOKS/close-slip.sh"
+  [ -x "$hook" ] || return 0
+  if ! bash "$hook" "$@"; then
+    echo "close-slip update failed" >&2
+  fi
+}
+
 echo
 if [ "$fail" -eq 0 ]; then
   echo "== PASS (warnings=$warns) =="
   echo "After future ~/.agents edits:  bash ~/.agents/setup.sh"
+  _slip clear ecosystem
   exit 0
 else
   echo "== FAIL (fail>=1, warnings=$warns) =="
   echo "Fix issues, then:  bash ~/.agents/setup.sh && bash ~/.agents/verify.sh"
+  _slip set fail ecosystem "verify FAIL ($nfails) — bash ~/.agents/verify.sh"
   exit 1
 fi

@@ -75,3 +75,5 @@ Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail —
 ## After the window closes
 
 Exit overwrites `~/.agents/boot-dashboard/close-slip.txt` (gitignored). One line per warn or fail that is not **tool updates**. Shape: `warn  signing  no stored passphrase` (status, two spaces, label, two spaces, detail). Newlines in a detail become spaces. No such row writes the single word `CLEAN`. A missing file means this dashboard has not exited since the slip existed. Tool-update text stays in `~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.log`. Ok and skip rows are omitted.
+
+A later `verify.sh` or finished `setup.sh` does not wait for the next login. `hooks/close-slip.sh` drops the `ecosystem` row when verify passes, replaces that row when verify fails, and a finished setup also drops the `setup` row. Rows this command did not re-check stay. The 1config panel picks the file up on its 120s timer. `r` reads it now. A clear of a missing slip does not invent `CLEAN`.

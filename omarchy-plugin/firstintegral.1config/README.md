@@ -33,7 +33,7 @@ Vitals is the checkout, not a diagram of it. Each tile is one check and one shor
 | Permissions | `permissions.json` parses, including `bash_without_prompt`. `local.json` may override that flag |
 | Hooks | the nine install and guard scripts are in `hooks/` |
 | Scaffolds | project template, paper template, its build script, and the Lean lakefile are present |
-| Boot slip | the last boot dashboard exit wrote `CLEAN`. A missing slip is a warn, not a fault; click for the warn/fail lines |
+| Boot slip | the last boot dashboard exit wrote `CLEAN`, except an `ecosystem` or `setup` row that a later `verify.sh` or finished `setup.sh` has already replaced. Other rows stay until the next exit. A missing slip is a warn, not a fault; click for the warn/fail lines. The card re-reads the file about every 120s |
 | Memory guard | the installed cron script is present and the residue flag is absent |
 | Symlink guard | the installed cron script is present and the stray flag is absent |
 | Boot dashboard | the installed autostart `Exec` line points at this checkout's `launch.sh` |

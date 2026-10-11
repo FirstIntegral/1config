@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-11 — Close slip drops a row once that check has passed
+
+**Decision:** `hooks/close-slip.sh` edits `boot-dashboard/close-slip.txt` after the dashboard has exited. `verify.sh` drops the `ecosystem` row when it passes and replaces that row when it fails. A `setup.sh` that finishes drops the `setup` row and the `ecosystem` row. `clear` on a missing file does nothing. Other rows stay until the next dashboard exit, which still rewrites the whole file.
+
+**Why:** The slip is the boot dashboard's exit note. The 1config panel re-reads it every 120 seconds and on `r`, and it does not re-run the checks. On 2026-10-11 the file still said `fail ecosystem verify FAIL (7)` after `setup.sh` and `verify.sh` had passed, so the panel stayed on warn until someone ran the dashboard again. The panel was right about the file. The file was the stale part.
+
+**Rejected:** A filesystem watcher (the 2026-10-10 vitals ADR already keeps the 120s read). Rewriting the whole slip from verify (that would erase a dots or signing warn verify did not re-check). Writing `CLEAN` when the file is missing (a missing file still means no dashboard exit). Having `r` run the dashboard (network, dots apply, and a second verify on every keypress).
+
 ## 2026-10-11 — Boot installs the brain after a fast-forward
 
 **Decision:** When `hooks/brain-sync.sh` fast-forwards `~/.agents` at login, the boot dashboard runs `bash ~/.agents/setup.sh` after the tool-updater wait and before `verify.sh`. The gate is exit 0 plus the hook's `fast-forwarded N` line. Up to date, ahead, dirty, and diverged do not run it. A setup failure is its own row. The dashboard does not run `sync.sh`.
