@@ -2,6 +2,14 @@
 
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
+## 2026-10-11 — Boot installs the brain after a fast-forward
+
+**Decision:** When `hooks/brain-sync.sh` fast-forwards `~/.agents` at login, the boot dashboard runs `bash ~/.agents/setup.sh` after the tool-updater wait and before `verify.sh`. The gate is exit 0 plus the hook's `fast-forwarded N` line. Up to date, ahead, dirty, and diverged do not run it. A setup failure is its own row. The dashboard does not run `sync.sh`.
+
+**Why:** The 2026-09-04 decision automated the pull half of `git pull && bash setup.sh` and left the install half for a person. The same boot then ran `verify.sh`, which grades cron copies, the 1config plugin, and the Claude skill links against the tree just pulled. A fast-forward that adds any of those is a guaranteed NOT READY. Login on 2026-10-11 fast-forwarded 27 commits and failed seven checks that `setup.sh` clears. Dots had already written the `firstintegral.1config` bar id. The plugin files only arrive through `setup.sh`.
+
+**Rejected:** Running `setup.sh` on every login (a quiet boot is already installed). Running it before the tool updater (both write `inventory.local.md`). Parsing setup's output to skip the ecosystem `verify.sh` (the 2026-10-04 note already refuses to guess success from text; setup's own verify stays, and the ecosystem row still runs). Calling `sync.sh` from the dashboard (that script publishes, and it re-execs).
+
 ## 2026-10-10 — Spend hides today and the section pip
 
 **Decision:** The spend card does not show a today total. Plan windows stay: rolling, weekly, monthly, and the other limit bars. Spend boxes keep the vitals fill and accent edge, and they do not draw the accent pip. Vitals tiles keep the pip.

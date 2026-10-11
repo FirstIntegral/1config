@@ -23,7 +23,8 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **link guard** | `agents-symlink-guard` healthy |
 | **memory guard** | Claude/Grok residue clean |
 | **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. Runs **before** ecosystem so inventory refresh finishes first. |
-| **ecosystem** | `verify.sh` PASS (after tool updates — avoids false inventory mismatch at boot) |
+| **setup** | Only after a real fast-forward (`fast-forwarded N` on exit 0). Runs `bash ~/.agents/setup.sh` after tool updates and before ecosystem. Up to date, ahead, dirty, and diverged skip it. A failure is its own row. Does not run `sync.sh`. Quiet boots have no setup row. |
+| **ecosystem** | `verify.sh` PASS (after tool updates, and after setup on a fast-forward — avoids grading the pre-pull install) |
 | **tool versions** | grok / claude / opencode on PATH |
 | **signing** | Runs **first**, before tool-update / verify. Unlocks the GPG signing key from the dedicated `gpg-signing` collection (key from `git config user.signingkey` / `$GPG_SIGNING_KEY`; migrates out of bricked default `.keyring` files). Warn: nothing stored / dbus down / passphrase rejected — not a generic "locked". Git commits themselves go through `hooks/gpg-git.sh` (loopback, no pinentry GUI). |
 
@@ -62,10 +63,13 @@ Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail —
 3. **signing — no stored passphrase / dbus failed / passphrase rejected**  
    Dedicated `gpg-signing` collection missing, gnome-keyring down, or the passphrase changed. One-time: `bash ~/.agents/hooks/gpg-store-passphrase.sh`. Unlock also migrates the item out of bricked default `.keyring` files (multiline secrets make gnome-keyring refuse the whole file).
 
-4. **brain sync — fetch failed / local ahead / behind + local edits**  
+4. **setup — exit N after a fast-forward**  
+   The pull installed nothing until this row. `setup.sh` failed, so cron copies, the 1config plugin, or the Claude skill links may still be the old tree. The row carries the last `ERROR:` or `== FAIL` from that run. Fix that, then `bash ~/.agents/setup.sh`. A quiet boot has no setup row.
+
+5. **brain sync — fetch failed / local ahead / behind + local edits**  
    `brain-sync.sh` only fast-forwards. Fetch failed = offline or the SSH key isn't in the agent yet. Local ahead = you have unpushed commits (run `bash ~/.agents/sync.sh -m "…"`). Behind + local edits = pull the repo manually (`git -C ~/.agents pull --ff-only`) once the edits are committed or stashed. Divergence is a hard fail — resolve by hand.
 
-5. **omarchy dots — fetch failed / ahead / dirty / live edit**  
+6. **omarchy dots — fetch failed / ahead / dirty / live edit**  
    Same fetch semantics as brain sync. The row color is `sync.sh`'s exit code (`|| true` used to force that code to 0, so a failure still looked green). `ahead` = pack repo has unpushed commits (hint printed: push or reset in `~/Projects/omarchy-dots`); `dirty` = uncommitted pack edits (hint: commit or stash). Exit 5 = a live `~/.config` file was edited here, or the pack and the live file both changed, so `sync.sh` applies nothing (an `apply.sh` run would overwrite the local edits on the way). The row reads `N edited: <first file under ~/.config> +M — not applied`, the same text lands in the close slip, and up to three files follow with their tag. Both exits are printed: **keep** them by copying the live files into `~/Projects/omarchy-dots` (commit, push), or **force** the pack with `~/Projects/omarchy-dots/apply.sh` (overwrites the local edits). Missing or incoming files are fixed by `apply.sh` at the next login, after this is resolved.
 
 ## After the window closes

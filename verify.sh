@@ -710,6 +710,31 @@ if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
   else
     bad "boot dashboard does not sync brain before verify"
   fi
+  _su_call="$(awk '/^main\(\)/{m=1} m && /check_setup_after_ff/{print NR; exit}' "$BD/dashboard.sh")"
+  _upd_for_setup="$(awk '/^main\(\)/{m=1} m && /check_tool_updates/{print NR; exit}' "$BD/dashboard.sh")"
+  if [ -n "$_su_call" ] && [ -n "$_upd_for_setup" ] && [ -n "$_vr_call" ] \
+     && [ "$_upd_for_setup" -lt "$_su_call" ] && [ "$_su_call" -lt "$_vr_call" ]; then
+    ok "boot dashboard installs after a fast-forward, before verify"
+  else
+    bad "boot dashboard must run setup after tool updates and before verify"
+  fi
+  if bash "$BD/dashboard.sh" --setup-gate-selftest; then
+    ok "boot dashboard setup gate is fast-forward only"
+  else
+    bad "boot dashboard setup gate selftest failed"
+  fi
+  # Column-0 brace ends the function. Inner braces are indented.
+  if awk '
+    /^check_setup_after_ff\(\)/ { inside=1; next }
+    inside && /^}/ { exit }
+    inside && /setup\.sh/ { saw_setup=1 }
+    inside && /sync\.sh/ { saw_sync=1 }
+    END { exit (saw_setup && !saw_sync) ? 0 : 1 }
+  ' "$BD/dashboard.sh"; then
+    ok "boot dashboard setup row runs setup.sh and not sync.sh"
+  else
+    bad "boot dashboard setup row must run setup.sh and must not run sync.sh"
+  fi
   if bash "$BD/dashboard.sh" --slip-selftest; then
     ok "boot dashboard close slip records warn/fail and writes CLEAN"
   else

@@ -32,6 +32,10 @@ fail=0
 warn=0
 # Warn/fail lines kept for close-slip.txt. Empty means CLEAN.
 slip_lines=()
+# Filled by check_brain_sync. 99 = the hook never ran. Setup runs only when
+# brain_sync_needs_setup says this boot fast-forwarded.
+brain_sync_rc=99
+brain_sync_out=""
 
 # ── layout helpers ─────────────────────────────────────────────────────────
 clear_screen() { printf '\033[2J\033[H'; }
@@ -323,11 +327,27 @@ check_tool_updates() {
   return 1
 }
 
+# True only for the hook's own fast-forward line on exit 0. "up to date" is
+# also exit 0 and must not install. Ahead, dirty, and diverged must not either.
+# Do not call sync.sh from here. That script publishes.
+brain_sync_needs_setup() {
+  local rc="$1" msg="$2" line
+  [ "$rc" -eq 0 ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "fast-forwarded "*) return 0 ;;
+    esac
+  done <<<"$msg"
+  return 1
+}
+
 check_brain_sync() {
   # Fetch origin/main and, if the local checkout is behind the remote in BRAIN_REMOTE,
   # fast-forward to match. Safe: ff-only, allowlisted remote, never over local edits.
   local hook="$AGENTS_HOME/hooks/brain-sync.sh"
   if [ ! -x "$hook" ]; then
+    brain_sync_rc=99
+    brain_sync_out="hook missing"
     row warn "brain sync" "hook missing — run setup.sh"
     return 1
   fi
@@ -336,6 +356,8 @@ check_brain_sync() {
   # which painted a green row for every sync failure.
   out="$("$hook" 2>&1)"
   rc=$?
+  brain_sync_rc=$rc
+  brain_sync_out=$out
   case "$rc" in
     0) row ok "brain sync" "$out" ;;
     1) row warn "brain sync" "fetch failed — offline or key not loaded" ;;
@@ -344,6 +366,40 @@ check_brain_sync() {
     4) row fail "brain sync" "$out" ;;
     *) row warn "brain sync" "$out" ;;
   esac
+}
+
+check_setup_after_ff() {
+  # Install the tree this boot just fast-forwarded. Runs after the tool
+  # updater so both writers of inventory.local.md are finished before verify.
+  # setup.sh already ends in verify.sh; the ecosystem row still runs verify
+  # so a pull day and a quiet day share that line.
+  brain_sync_needs_setup "$brain_sync_rc" "$brain_sync_out" || return 0
+  local setup out rc hint
+  setup="$AGENTS_HOME/setup.sh"
+  if [ ! -x "$setup" ]; then
+    row fail "setup" "setup.sh missing after fast-forward"
+    return 1
+  fi
+  printf "  ${BLUE}…${R}  ${BOLD}%-18s${R}  ${DIM}%s${R}" \
+    "setup" "installing fast-forward…"
+  out="$(bash "$setup" 2>&1)"
+  rc=$?
+  printf "\r\033[2K"
+  if [ "$rc" -eq 0 ]; then
+    row ok "setup" "installed after fast-forward"
+    return 0
+  fi
+  hint="$(printf '%s\n' "$out" | grep -E 'ERROR:|== FAIL' | tail -1 || true)"
+  hint="${hint#"${hint%%[![:space:]]*}"}"
+  if [ "${#hint}" -gt 90 ]; then
+    hint="${hint:0:87}..."
+  fi
+  if [ -n "$hint" ]; then
+    row fail "setup" "exit $rc — $hint"
+  else
+    row fail "setup" "setup.sh exit $rc after fast-forward"
+  fi
+  return 1
 }
 
 check_dots_sync() {
@@ -471,6 +527,24 @@ slip_selftest() {
   return 0
 }
 
+setup_gate_selftest() {
+  # The predicate only. This must not run setup.sh.
+  local fail=0
+  brain_sync_needs_setup 0 "fast-forwarded 27 commit(s) → matches origin/main" || fail=1
+  brain_sync_needs_setup 0 $'note\nfast-forwarded 1 commit(s) → matches origin/main' || fail=1
+  brain_sync_needs_setup 0 "up to date" && fail=1
+  brain_sync_needs_setup 0 "" && fail=1
+  brain_sync_needs_setup 2 "2 local commit(s) ahead — not pulling" && fail=1
+  brain_sync_needs_setup 3 "3 commit(s) behind but tree dirty — not pulling" && fail=1
+  brain_sync_needs_setup 4 "diverged from origin/main (3 behind, 1 ahead) — needs a manual merge" && fail=1
+  brain_sync_needs_setup 1 "brain-sync: fetch failed (offline or key not available)" && fail=1
+  if [ "$fail" -ne 0 ]; then
+    echo "setup-gate selftest failed" >&2
+    return 1
+  fi
+  return 0
+}
+
 # ── main ───────────────────────────────────────────────────────────────────
 main() {
   # Window close is SIGHUP. Exit writes the slip once. Trap stays inside main
@@ -501,7 +575,10 @@ main() {
   check_mem_guard
   # Tool updater rewrites gitignored inventory.local.md — wait for it BEFORE
   # verify so boot never false-fails on a mid-upgrade version probe.
+  # A fast-forward installs after that wait: setup.sh refreshes the same
+  # inventory, and verify must see the installed tree, not the pre-pull copies.
   check_tool_updates
+  check_setup_after_ff
   check_verify
   check_versions
 
@@ -526,6 +603,10 @@ main() {
 
 if [ "${1:-}" = "--slip-selftest" ]; then
   slip_selftest
+  exit $?
+fi
+if [ "${1:-}" = "--setup-gate-selftest" ]; then
+  setup_gate_selftest
   exit $?
 fi
 main "$@"
