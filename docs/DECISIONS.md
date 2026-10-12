@@ -76,6 +76,8 @@ ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs 
 
 **Rejected:** Leaving every Omarchy usage file on the card. Hiding OpenAI and Cursor completely, so a later install would need a code change before the card could name them. Inventing a zero-usage chart for a tool that has no ledger. Keeping small-caps and only raising the pixel size again.
 
+The roster list in this entry is superseded by the 2026-10-12 Grok Bot ADR. The rest of this decision stands.
+
 ## 2026-10-09 — OpenCode Go windows, larger type, smaller ring
 
 **Decision:** The OpenCode card leads with the Go plan from `GET https://opencode.ai/zen/go/v1/usage`: rolling, weekly, and monthly, each with a percent, a bar, and a reset. Rolling at 0% says "Starts on first use". The key already in `auth.json` is sent as a bearer header and is not stored in the ten-minute cache. Local day and model rows stay under those three bars. The request uses a curl user agent because Cloudflare rejects Python's default client. Panel type moves up one step (caption to body-small, body-small to body, body to subtitle) and the wide letter-spacing comes in. The bar ring draws at `Style.bar.iconCanvas` instead of 72% of the icon slot.
@@ -389,3 +391,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** The weekly snapshot after the 2026-10-11 reset was `1.0`, and the old `(0, 1]` multiply painted that as 100%. Earlier readings in the same log were `21`, `24`, `25`, `26`, `49`, `50` — already percents. The fraction guess never matched a real line.
 
 **Rejected:** Treating only `1.0` as a percent and still multiplying `(0, 1)`. A `0.4` reading is 0.4% on this field.
+
+## 2026-10-12 — Grok Bot weekly usage on the spend card
+
+**Decision:** The spend roster adds Grok Bot after Grok. The card reads the newest `weekly-usage.cache` slice in `~/.config/Grok Bot/sand-client-persistence` and no other blob there. `percentUsed` is already a percent on 0–100. The row is Weekly. On demand is a second row only when that cache has `usedCents` and a positive `limitCents`. A cache past `expiresAtMs` is not shown. The Grok CLI credits row is unchanged.
+
+**Why:** Grok Bot keeps a separate weekly meter from the CLI's `creditUsagePercent`. On 2026-10-12 the CLI snapshot was 1% and reset on 2026-10-18, while the Bot cache was 100% and reset the same evening. One Grok row cannot show both.
+
+**Rejected:** Folding the Bot percent into the Grok credits row. Fetching the Bot meter over the network. Reading the transcript blobs next to the usage cache.

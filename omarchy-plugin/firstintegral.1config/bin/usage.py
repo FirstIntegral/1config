@@ -13,6 +13,7 @@ Does not emit paths, prompts, credentials, or message text.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -33,6 +34,7 @@ from pathlib import Path
 ROSTER = (
     ("claude", "Claude", ("claude",), (".claude",)),
     ("grok", "Grok", ("grok",), (".grok",)),
+    ("grokbot", "Grok Bot", ("grok-bot",), (".config/Grok Bot", ".grokbot")),
     ("openai", "OpenAI", ("openai",), (".openai", ".config/openai")),
     ("opencode", "OpenCode", ("opencode",), (".local/share/opencode", ".config/opencode")),
     ("codex", "Codex", ("codex",), (".codex",)),
@@ -376,6 +378,119 @@ def grok_agent(home: Path, now: datetime) -> dict:
         "limits": limits,
         "models": [{"id": name, "tokens": tokens, "label": format_tokens(tokens)} for name, tokens in top],
     }
+
+
+def _b32_key(stem: str) -> str:
+    pad = "=" * ((8 - len(stem) % 8) % 8)
+    try:
+        raw = base64.b32decode(stem.upper() + pad, casefold=True)
+    except ValueError:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return ""
+
+
+def _ms_iso(value: object) -> str:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return ""
+    number = float(value)
+    if number <= 0 or number > 10_000_000_000_000:
+        return ""
+    try:
+        return datetime.fromtimestamp(number / 1000, timezone.utc).isoformat(timespec="seconds")
+    except (OverflowError, OSError, ValueError):
+        return ""
+
+
+def grokbot_cache(home: Path) -> dict | None:
+    """Newest Grok Bot weekly-usage slice. Other blobs in that directory stay unread."""
+    root = home / ".config" / "Grok Bot" / "sand-client-persistence"
+    if not root.is_dir():
+        return None
+    best: tuple[float, dict] | None = None
+    try:
+        paths = list(root.glob("*.blob"))
+    except OSError:
+        return None
+    for path in paths:
+        if not _b32_key(path.stem).endswith(".weekly-usage.cache"):
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("value")
+        reading = value.get("reading") if isinstance(value, dict) else None
+        if not isinstance(value, dict) or value.get("kind") != "present" or not isinstance(reading, dict):
+            continue
+        read_at = reading.get("readAtMs")
+        stamp = float(read_at) if isinstance(read_at, (int, float)) and not isinstance(read_at, bool) else 0.0
+        if best is None or stamp >= best[0]:
+            best = (stamp, payload)
+    return None if best is None else best[1]
+
+
+def grokbot_agent(home: Path, now: datetime) -> dict:
+    card = {
+        "id": "grokbot",
+        "name": "Grok Bot",
+        "source": "grokbot-cache",
+        "sourceLabel": "Grok Bot weekly usage cache",
+        "ready": False,
+        "status": "",
+        "todayTokens": 0,
+        "todayLabel": "0",
+        "weekTokens": None,
+        "weekLabel": "—",
+        "todayPrompts": 0,
+        "todaySessions": 0,
+        "updatedAt": "",
+        "limits": [],
+        "models": [],
+        "days": [],
+    }
+    payload = grokbot_cache(home)
+    if payload is None:
+        card["source"] = "none"
+        card["sourceLabel"] = ""
+        return card
+    value = payload["value"]
+    reading = value["reading"]
+    usage = reading.get("usage") if isinstance(reading.get("usage"), dict) else {}
+    card["updatedAt"] = _ms_iso(reading.get("readAtMs"))[:40]
+    expires = parse_time(_ms_iso(value.get("expiresAtMs")))
+    if expires is not None and expires <= now:
+        # The app keeps the file after the window rolls. An old 100% must not stick.
+        card["status"] = "Usage cache expired"
+        return card
+    limits = []
+    # percentUsed is already 0–100. 1 is 1%. Do not rescale.
+    used = as_percent(usage.get("percentUsed"), fraction_if_unit=False)
+    resets = _ms_iso(usage.get("nextResetMs"))[:40]
+    if used is not None:
+        limits.append({"label": "Weekly", "usedPct": used, "resetsAt": resets})
+    demand = usage.get("onDemand")
+    if isinstance(demand, dict):
+        spent = demand.get("usedCents")
+        cap = demand.get("limitCents")
+        if (
+            isinstance(spent, (int, float))
+            and not isinstance(spent, bool)
+            and isinstance(cap, (int, float))
+            and not isinstance(cap, bool)
+            and cap > 0
+            and spent >= 0
+        ):
+            limits.append(
+                {"label": "On demand", "usedPct": round(float(spent) / float(cap) * 100, 1), "resetsAt": resets}
+            )
+    card["limits"] = limits
+    card["ready"] = bool(limits)
+    return card
 
 
 def last_billing(path: Path) -> dict | None:
@@ -1267,6 +1382,7 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, 
             by_id[agent["id"]] = agent
             loaded.add(agent["id"])
     by_id["grok"] = grok_agent(home, now)
+    by_id["grokbot"] = grokbot_agent(home, now)
     by_id["opencode"] = attach_go(opencode_agent(home, now), home, now, force=force_go)
     roster: list[dict] = []
     for agent_id, name, bins, rels in ROSTER:
@@ -1455,6 +1571,46 @@ def self_test() -> None:
             )
             fresh = grok_agent(home, now)
             assert fresh["limits"][0]["usedPct"] == expect, fresh["limits"]
+
+        def write_bot(percent: float, expires: datetime, demand: dict | None) -> None:
+            cache_dir = home / ".config" / "Grok Bot" / "sand-client-persistence"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            stem = base64.b32encode(b"sand.client.slice.weekly-usage.cache").decode().rstrip("=").lower()
+            blob = {
+                "schemaVersion": 2,
+                "value": {
+                    "kind": "present",
+                    "reading": {
+                        "usage": {
+                            "percentUsed": percent,
+                            "nextResetMs": int(datetime(2026, 10, 16, tzinfo=timezone.utc).timestamp() * 1000),
+                            "hasNonZeroIncludedLimit": True,
+                            "onDemand": demand,
+                        },
+                        "readAtMs": int(datetime(2026, 10, 9, 14, tzinfo=timezone.utc).timestamp() * 1000),
+                    },
+                    "expiresAtMs": int(expires.timestamp() * 1000),
+                },
+            }
+            (cache_dir / f"{stem}.blob").write_text(json.dumps(blob), encoding="utf-8")
+
+        fresh_until = datetime(2026, 10, 10, 14, tzinfo=timezone.utc)
+        write_bot(100, fresh_until, {"usedCents": 25, "limitCents": 100})
+        bot = grokbot_agent(home, now)
+        assert [item["label"] for item in bot["limits"]] == ["Weekly", "On demand"], bot["limits"]
+        assert bot["limits"][0]["usedPct"] == 100, bot["limits"]
+        assert bot["limits"][1]["usedPct"] == 25, bot["limits"]
+        assert bot["limits"][0]["resetsAt"].startswith("2026-10-16"), bot["limits"]
+        again = collect(home, now, which=lambda _name: None)
+        bot_card = next(item for item in again["agents"] if item["id"] == "grokbot")
+        assert bot_card["used"] is True and bot_card["limits"][0]["usedPct"] == 100, bot_card
+        assert again["bar"]["label"] == "Grok Bot 100%", again["bar"]
+        write_bot(1.0, fresh_until, None)
+        one = grokbot_agent(home, now)
+        assert one["limits"][0]["usedPct"] == 1.0, one["limits"]
+        write_bot(100, datetime(2026, 10, 8, 14, tzinfo=timezone.utc), None)
+        stale = grokbot_agent(home, now)
+        assert stale["limits"] == [] and stale["status"] == "Usage cache expired", stale
     claude = payload["agents"][0]
     grok = payload["agents"][1]
     opencode = payload["agents"][2]
@@ -1489,6 +1645,7 @@ def self_test() -> None:
         "claude",
         "grok",
         "opencode",
+        "grokbot",
         "openai",
         "codex",
         "cursor",
@@ -1496,11 +1653,13 @@ def self_test() -> None:
     assert claude["models"][0]["id"] == "claude-opus", claude["models"]
     assert claude["models"][0]["tokens"] == 100, claude["models"]
     assert claude["days"][-1]["tokenLabel"] == "4 msgs", claude["days"]
+    assert payload["agents"][3]["id"] == "grokbot"
     assert payload["agents"][3]["used"] is False, payload["agents"][3]
     assert payload["agents"][3]["present"] is False, payload["agents"][3]
     assert payload["agents"][3]["status"] == "Not on this machine", payload["agents"][3]
     assert payload["agents"][4]["used"] is False and payload["agents"][4]["status"] == "Not on this machine"
     assert payload["agents"][5]["used"] is False and payload["agents"][5]["status"] == "Not on this machine"
+    assert payload["agents"][6]["used"] is False and payload["agents"][6]["status"] == "Not on this machine"
     cursor_only = _mark_agent(_blank_agent("cursor", "Cursor"), "Cursor", True)
     assert cursor_only["status"] == "No usage record on this machine", cursor_only
     assert "fireworks" not in [item["id"] for item in payload["agents"]]
