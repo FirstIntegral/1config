@@ -346,10 +346,9 @@ def grok_agent(home: Path, now: datetime) -> dict:
     if billing is not None:
         ctx = billing.get("ctx") if isinstance(billing.get("ctx"), dict) else {}
         config = ctx.get("config") if isinstance(ctx.get("config"), dict) else {}
+        # Already a percent on 0–100. 1.0 is 1% used. Rescaling (0, 1] turned a
+        # fresh weekly 1% into 100%.
         used = as_percent(config.get("creditUsagePercent"), fraction_if_unit=False)
-        # A 0–1 reading is a fraction some snapshots use. Above 1 is already a percent.
-        if used is not None and 0 < used <= 1:
-            used = round(used * 100, 1)
         period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else {}
         resets = str(period.get("end") or config.get("billingPeriodEnd") or "")[:40]
         if used is not None:
@@ -1436,6 +1435,26 @@ def self_test() -> None:
             encoding="utf-8",
         )
         payload = collect(home, now, which=lambda _name: None)
+        log_path = home / ".grok" / "logs" / "unified.jsonl"
+        for reading, expect in ((1.0, 1.0), (0.4, 0.4)):
+            log_path.write_text(
+                json.dumps(
+                    {
+                        "ts": "2026-10-12T16:57:43Z",
+                        "msg": "billing: fetched credits config",
+                        "ctx": {
+                            "config": {
+                                "creditUsagePercent": reading,
+                                "currentPeriod": {"end": "2026-10-18T18:41:08Z"},
+                            }
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            fresh = grok_agent(home, now)
+            assert fresh["limits"][0]["usedPct"] == expect, fresh["limits"]
     claude = payload["agents"][0]
     grok = payload["agents"][1]
     opencode = payload["agents"][2]

@@ -381,3 +381,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Tri-tool parity requires a verify check per tool. A pointer to a file outside the repo breaks on every other clone.
 
 **Rejected:** A full skills section in `AGENTS.md` (always loaded; README and SETUP already hold the detail).
+
+## 2026-10-12 — Grok `creditUsagePercent` stays on a 0–100 scale
+
+**Decision:** The 1config spend card reads Grok's `creditUsagePercent` as a percent already. `1.0` is 1% used. Values in `(0, 1]` are not rescaled.
+
+**Why:** The weekly snapshot after the 2026-10-11 reset was `1.0`, and the old `(0, 1]` multiply painted that as 100%. Earlier readings in the same log were `21`, `24`, `25`, `26`, `49`, `50` — already percents. The fraction guess never matched a real line.
+
+**Rejected:** Treating only `1.0` as a percent and still multiplying `(0, 1)`. A `0.4` reading is 0.4% on this field.
