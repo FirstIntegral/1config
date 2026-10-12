@@ -1,5 +1,14 @@
 # Brain decisions
 
+## 2026-10-12 — Foreign checkouts stay out of their repo
+
+**Decision:** A foreign checkout is a clone we contribute back to, listed in `fork-parents.txt` as `ourOwner/repo parentOwner/repo`. Checkpoint writes our notes into that clone's `.git/info/exclude` and, when the push URL's owner is not on a `BRAIN_REMOTE` URL, commits if needed and exits 14 without pushing. A tracked `AGENTS.md` or `docs/DECISIONS.md` on that checkout exits 15. Sites and repos we own are unchanged.
+
+**Why:** A checkpoint on omalauncher `main` tracks Simon's repo, so the push would have gone to him. `AGENTS.md` and `docs/DECISIONS.md` are not in the exit 20 leak list, so `git add -A` would have published them. A local git config flag dies on the next clone. Same-repo-name misses a renamed fork. Skip-worktree makes a later fix look clean and aborts a merge.
+
+**Rejected:** Ignore lines in their `.gitignore`. `create_project` on the clone. Asking "ours or foreign?" on every session-less git root. Ungated exclude append (it hides `docs/DECISIONS.md` on sites). `checkpoint.foreign` and the extra URL keys. Skip-worktree. A new trigger.
+
+
 ADRs for `~/.agents`. The origin allowlist is `BRAIN_REMOTE`. Project work logs decisions in *that* project's `docs/DECISIONS.md`. This file is the brain's own.
 
 ## 2026-10-11 — Close slip drops a row once that check has passed

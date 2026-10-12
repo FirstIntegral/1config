@@ -1,0 +1,6 @@
+# Forks we contribute back to. One line: ourOwner/repo parentOwner/repo
+# origin's push URL must match the first field. The parent owner must not be
+# an owner on a BRAIN_REMOTE URL. A repo we own is absent from this list.
+# Checkpoint reads this file. It does not call gh and it does not guess.
+FirstIntegral/omalauncher SimonSchubert/omalauncher
+FirstIntegral/agentic-OpenTabletDriver OpenTabletDriver/OpenTabletDriver

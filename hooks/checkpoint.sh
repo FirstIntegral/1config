@@ -14,9 +14,11 @@
 #   not a git repo                  -> do nothing at all                    (exit 10)
 #   dir is not the repo toplevel    -> do nothing at all                    (exit 11)
 #   session files not ignored       -> refuse, change nothing               (exit 20)
+#   foreign, private file tracked   -> refuse, change nothing               (exit 15)
 #   clean + no locally unpushed work -> do nothing                           (exit  3)
 #   no remote configured            -> commit locally, do not push          (exit 12)
 #   remote unreachable / missing    -> commit, do not push                  (exit 13)
+#   push URL owner is not ours      -> commit if needed, do not push        (exit 14)
 #   push fails                      -> commit stays, report                 (exit 21)
 #   otherwise                       -> commit if needed + push              (exit  0)
 #
@@ -26,6 +28,127 @@
 # must not change it. Publishing something the user never chose to publish cannot be undone
 # by deleting it afterwards.
 set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+FORK_PARENTS="$ROOT/fork-parents.txt"
+BRAIN_URLS="$ROOT/BRAIN_REMOTE"
+FOREIGN_BEGIN="# 1config-foreign"
+FOREIGN_END="# end 1config-foreign"
+
+# git@host:owner/repo.git or https://host/owner/repo.git. Empty if unparsed.
+slug_of() {
+  local url="$1" rest owner repo
+  case "$url" in
+    git@*:*) rest="${url#*:}" ;;
+    https://*|http://*)
+      rest="${url#*://}"
+      rest="${rest#*/}"
+      ;;
+    *) printf '\n'; return 0 ;;
+  esac
+  rest="${rest%.git}"
+  owner="${rest%%/*}"
+  repo="${rest#*/}"
+  repo="${repo%%/*}"
+  if [ -z "$owner" ] || [ -z "$repo" ] || [ "$owner" = "$rest" ]; then
+    printf '\n'
+    return 0
+  fi
+  printf '%s/%s\n' "$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')" \
+                   "$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')"
+}
+
+owner_of() {
+  local slug
+  slug="$(slug_of "$1")"
+  printf '%s\n' "${slug%%/*}"
+}
+
+# Owners on URL lines in the brain allowlist. Not the project's own files.
+inside_owner() {
+  local url slug owner
+  [ -f "$BRAIN_URLS" ] || return 1
+  while IFS= read -r url || [ -n "$url" ]; do
+    url="${url%$'\r'}"
+    case "$url" in
+      ''|'#'*) continue ;;
+    esac
+    slug="$(slug_of "$url")"
+    [ -n "$slug" ] || continue
+    owner="${slug%%/*}"
+    [ "$owner" = "$1" ] && return 0
+  done < "$BRAIN_URLS"
+  return 1
+}
+
+# Configured URL, not the insteadOf rewrite. The rewrite is transport.
+# The owner check has to see the URL a person set.
+raw_remote_url() {
+  local remote="$1" url
+  url="$(git -C "$PROJECT" config --get "remote.${remote}.pushurl" 2>/dev/null || true)"
+  if [ -z "$url" ]; then
+    url="$(git -C "$PROJECT" config --get "remote.${remote}.url" 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$url"
+}
+
+# origin matches fork-parents.txt and the parent owner is not ours.
+# Sites stay sites. A missing origin is not foreign.
+is_foreign_checkout() {
+  local origin slug line ours parent parent_owner
+  case "$PROJECT" in
+    "$HOME/Projects/sites"/*) return 1 ;;
+  esac
+  origin="$(raw_remote_url origin)"
+  slug="$(slug_of "$origin")"
+  [ -n "$slug" ] || return 1
+  [ -f "$FORK_PARENTS" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      ''|'#'*) continue ;;
+    esac
+    ours="$(printf '%s' "$line" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+    parent="$(printf '%s' "$line" | awk '{print $2}' | tr '[:upper:]' '[:lower:]')"
+    [ "$ours" = "$slug" ] || continue
+    parent_owner="${parent%%/*}"
+    inside_owner "$parent_owner" && return 1
+    return 0
+  done < "$FORK_PARENTS"
+  return 1
+}
+
+# The URL checkpoint would push to. Unparsed is not outside.
+push_owner_outside() {
+  local url="$1" owner
+  owner="$(owner_of "$url")"
+  [ -n "$owner" ] || return 1
+  inside_owner "$owner" && return 1
+  return 0
+}
+
+write_foreign_exclude() {
+  local ex="$PROJECT/.git/info/exclude" tmp
+  mkdir -p "$(dirname "$ex")"
+  [ -f "$ex" ] || : > "$ex"
+  tmp="$(mktemp)"
+  awk -v b="$FOREIGN_BEGIN" -v e="$FOREIGN_END" '
+    $0 == b { skip = 1; next }
+    $0 == e { skip = 0; next }
+    !skip { print }
+  ' "$ex" > "$tmp"
+  cat >> "$tmp" <<EOF
+
+$FOREIGN_BEGIN
+/AGENTS.md
+/docs/DECISIONS.md
+/session_compact.md
+/session_transcript.md
+/claude_memory_import.md
+$FOREIGN_END
+EOF
+  mv "$tmp" "$ex"
+}
 
 PROJECT=""
 SUBJECT=""
@@ -99,6 +222,52 @@ fi
 BRANCH="$(git -C "$PROJECT" branch --show-current 2>/dev/null || true)"
 [ -n "$BRANCH" ] || BRANCH="HEAD (detached)"
 echo "  repo     $TOP  (branch $BRANCH)"
+
+# --- 1b. foreign checkout: keep our notes out of their tree -------------------------
+# fork-parents.txt matches origin. A push aimed at an owner who is not on
+# BRAIN_REMOTE gets the same exclude, so a later retarget cannot publish notes
+# that this commit already captured. Sites are not this case. Dry-run writes nothing.
+FOREIGN=0
+OUTSIDE_PUSH=0
+CHOSEN_URL=""
+if is_foreign_checkout; then
+  FOREIGN=1
+fi
+_up="$(git -C "$PROJECT" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || true)"
+if [ -n "$_up" ]; then
+  _remote="${_up%%/*}"
+  CHOSEN_URL="$(raw_remote_url "$_remote")"
+elif git -C "$PROJECT" config --get remote.origin.url >/dev/null 2>&1; then
+  CHOSEN_URL="$(raw_remote_url origin)"
+fi
+if [ -n "$CHOSEN_URL" ] && push_owner_outside "$CHOSEN_URL"; then
+  OUTSIDE_PUSH=1
+fi
+if [ "$FOREIGN" = 1 ] || [ "$OUTSIDE_PUSH" = 1 ]; then
+  case "$PROJECT" in
+    "$HOME/Projects/sites"/*) ;;
+    *)
+      if [ "$DRY" = 1 ]; then
+        echo "  foreign  would write .git/info/exclude"
+      else
+        write_foreign_exclude
+        echo "  foreign  exclude updated"
+      fi
+      TRACKED_PRIVATE=()
+      for f in AGENTS.md docs/DECISIONS.md; do
+        if git -C "$PROJECT" ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+          TRACKED_PRIVATE+=("$f")
+        fi
+      done
+      if [ ${#TRACKED_PRIVATE[@]} -gt 0 ]; then
+        echo "  action   REFUSED — foreign checkout, already tracked:"
+        printf '             %s\n' "${TRACKED_PRIVATE[@]}"
+        echo "           exclude cannot untrack those. Nothing committed."
+        exit 15
+      fi
+      ;;
+  esac
+fi
 
 # --- 2. session files must be ignored before anything is staged ---------------------
 # The transcript is the user's private log. A checkpoint that publishes it is the one
@@ -181,11 +350,11 @@ else
   # Does it exist on the host, and can this key reach it? One call covers both, and works
   # for GitHub, GitLab and self-hosted alike -- nothing here is GitHub-specific.
   #
-  # NOT `--exit-code`: that flag reports 2 when no refs MATCH, and a freshly created empty
-  # repo has no refs at all. It would call every brand-new GitHub repo unreachable and
-  # silently refuse the first push, which is the case this check most needs to get right.
-  # Bare `ls-remote` is 0 on contact (even when empty) and 128 when it cannot reach or auth.
-  if git -C "$PROJECT" ls-remote "$REMOTE" >/dev/null 2>&1; then
+  # An owner who is not on BRAIN_REMOTE is not a reachability problem. Skip
+  # ls-remote so a refused push is exit 14, not exit 13. Unparsed URLs are not a veto.
+  if [ "$OUTSIDE_PUSH" = 1 ]; then
+    echo "  reachable skipped — push URL owner is not ours"
+  elif git -C "$PROJECT" ls-remote "$REMOTE" >/dev/null 2>&1; then
     echo "  reachable yes"
   else
     echo "  reachable NO — remote is configured but missing, renamed, or not writable by this key"
@@ -224,6 +393,11 @@ fi
 fi
 
 # --- 6. push ------------------------------------------------------------------------
+if [ "$OUTSIDE_PUSH" = 1 ]; then
+  echo "  push     skipped — push URL owner is not ours"
+  echo "== checkpoint: ${HASH:-none} not pushed (exit 14)"
+  exit 14
+fi
 if [ -z "$REMOTE" ]; then
   if [ "$UNREACHABLE" = 1 ]; then
     echo "  push     skipped — remote configured but not reachable"

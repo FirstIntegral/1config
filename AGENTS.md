@@ -293,7 +293,7 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
    2. `<path>/AGENTS.md` — project rules/conventions
    3. `<path>/docs/DECISIONS.md` — durable choices + why
 4. **Do NOT** open `<path>/session_transcript.md` unless the user explicitly asks (Transcript privacy HARD RULE).
-5. If none of the three files exist → say the path has no project session layout; offer `create_project` there (or fix the path).
+5. If none of the three files exist: a git root is not a new project. Do not offer `create_project`. Follow Foreign checkouts. Anything else → say the path has no project session layout; offer `create_project` there (or fix the path).
 6. After reading: brief status (current state + where we left off + open issues from compact), then wait for / take the user's next instruction. Do not invent state that is not in those files.
 7. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
 
@@ -305,7 +305,7 @@ Same trigger for all tools (Grok / Claude Code / OpenCode). No tool-specific con
 
 When the user says **`checkpoint_project`** (done for the day — leave and resume later), apply to the **current** project (cwd walk-up to nearest project root, stopping before `$HOME`):
 
-1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so, offer `create_project`.
+1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts. Anything else → offer `create_project`.
 2. Read `session_compact.md` (state restore). NEVER open `session_transcript.md` (Transcript privacy HARD RULE).
 3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, and the cumulative **Models used** list (current marked).
 4. Append a `## <YYYY-MM-DD> — wrap-up` entry to `session_transcript.md` (write-only): what was done today + the next step.
@@ -333,6 +333,8 @@ Read its exit code and report accordingly:
 | `11` | project is inside another repo, not its root | nothing done |
 | `12` | no remote | committed locally, not pushed |
 | `13` | remote configured but unreachable | committed, not pushed, **not created** |
+| `14` | push URL owner is not ours | committed if needed, not pushed, not retargeted |
+| `15` | **refused** — foreign checkout, `AGENTS.md` or `docs/DECISIONS.md` already tracked | nothing committed |
 | `20` | **refused** — session files would be published | nothing done; fix `.gitignore` and re-run |
 | `21` | commit or push failed | any commit made is safe; not retried, not forced |
 | `22` | **refused** — this checkout is the brain | nothing done; publish with `sync.sh` |
@@ -384,7 +386,7 @@ git push                        # -u origin <branch> if the branch has no upstre
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
 - **`git push` prompts only when the effective `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the effective flag is true, setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
 - **Clean with nothing locally unpushed** → exit `3`. Clean with commits absent from local remote-tracking refs → skip the commit but still push.
-- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out.
+- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out. On a foreign checkout those private files go in `.git/info/exclude`, not in their `.gitignore`. A dirty hunk in a file they already track is copied aside, the checkpoint runs, and the hunk is copied back. Do not set skip-worktree.
 
 Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.
 
@@ -478,6 +480,16 @@ Applies only under **`~/Projects/sites/<site>/`** (public site repos). Not other
 - Non-site projects: **do** commit `AGENTS.md` by default (team/shareable conventions).
 
 When `create_project` lands under `~/Projects/sites/`, merge the usual session ignore lines **and** add `AGENTS.md` + `CLAUDE.md` to `.gitignore`.
+
+### Foreign checkouts
+
+A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `ourOwner/repo parentOwner/repo`. `origin`'s push URL matches the first field, and the parent owner is not an owner on a `BRAIN_REMOTE` URL. A repo we own is absent from that list. `~/Projects/sites/*` stays the sites rule. This brain stays exit 22. Checkpoint does not call `gh` and does not guess from "has a remote".
+
+- Do not run `create_project` on a foreign checkout. Do not add our lines to their `.gitignore`.
+- `continue_project` on a git root never offers `create_project`. If `origin` is on the list and `AGENTS.md` or `docs/DECISIONS.md` is missing, write those local files in the same turn and do not commit. If either file is already tracked, stop and name it. If the git root is not on the list and the session files are missing, name the paths and stop.
+- Before `git add`, checkpoint writes a marked block in `.git/info/exclude`: `/AGENTS.md`, `/docs/DECISIONS.md`, `/session_compact.md`, `/session_transcript.md`, `/claude_memory_import.md`. It does that for a listed fork, and also when the push URL's owner is not ours, so a later retarget cannot publish notes this commit already captured. It does not do that under `~/Projects/sites/*`. It does not add `AGENTS.md` to the exit 20 leak list. If `AGENTS.md` or `docs/DECISIONS.md` is already tracked, it exits 15 and commits nothing.
+- The push URL is the branch upstream, otherwise `origin`. If that URL parses and the owner is not on a `BRAIN_REMOTE` URL, the commit stays and the push does not run. That exits 14, before the reachability check. It does not retarget and does not add a remote. An unparsed URL is not a veto. omalauncher `main` tracks Simon, so a checkpoint there exits 14.
+- A local edit inside a file they already track is not an ignore line. Copy those hunks aside, run the checkpoint, copy them back. Do not set skip-worktree. The script cannot tell those bytes from a real fix.
 
 ### Transcript privacy — HARD RULE
 

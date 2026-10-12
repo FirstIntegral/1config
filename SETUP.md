@@ -152,7 +152,9 @@ Steps 1-5 of that trigger need judgement (what happened today, which decisions t
 bash ~/.agents/hooks/checkpoint.sh <project-root> [-m SUBJECT] [--dry-run]
 ```
 
-Exit codes: `0` remote backup completed (new commit and/or existing commits pushed) · `3` clean tree and `HEAD` has no commit absent from local remote-tracking refs · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `20` refused, session files would be published · `21` commit/push failed · `22` brain checkout, nothing done · `2` usage.
+Exit codes: `0` remote backup completed (new commit and/or existing commits pushed) · `3` clean tree and `HEAD` has no commit absent from local remote-tracking refs · `10` not a repo · `11` inside another repo · `12` no remote (committed locally) · `13` remote unreachable (committed, not pushed) · `14` push URL owner is not ours (committed if needed, not pushed, not retargeted) · `15` foreign checkout, `AGENTS.md` or `docs/DECISIONS.md` already tracked (nothing committed) · `20` refused, session files would be published · `21` commit/push failed · `22` brain checkout, nothing done · `2` usage.
+
+A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `ourOwner/repo parentOwner/repo`. Checkpoint writes the private-file block into `.git/info/exclude` for a listed fork, and also when the push owner is not on a `BRAIN_REMOTE` URL. It does not edit their `.gitignore`, it does not do this under `~/Projects/sites/*`, and it exits 14 before `ls-remote` when that owner is not ours. An unparsed URL is not a veto. Local hunks in files they already track are copied aside around the checkpoint. They are not skip-worktree and not a verify fixture.
 
 Invariants, all covered by `verify.sh`:
 
@@ -162,7 +164,7 @@ Invariants, all covered by `verify.sh`:
 - Reachability uses bare `git ls-remote`, **not** `--exit-code`: that flag returns 2 when no refs match, so an empty freshly created repo would be misread as unreachable and the first push silently refused.
 - Cross-checks the URL against the project `AGENTS.md` `## Repo` line and warns on mismatch, but git config always wins — `AGENTS.md` is a file an AI writes and must never authorise a push.
 - **A clean tree is not the same as nothing to do.** Commits made earlier and never pushed are exactly the state where "the machine is not the only copy" fails, so a clean tree still takes the push path and only skips the commit. Local unpushed state is counted as `HEAD --not --remotes`; no fetch occurs, so exit `3` does not claim a live remote is reachable or unchanged.
-- `verify.sh` runs the refusals and the push path for real against scratch dirs and a bare remote (non-repo → 10 with no `.git` created; unignored transcript → 20; brain checkout → exit 22 with no git command; clean tree with one locally unpushed commit → pushed, exit 0; clean with no locally unpushed commit → exit 3).
+- `verify.sh` runs the refusals and the push path for real against scratch dirs and a bare remote (non-repo → 10 with no `.git` created; unignored transcript → 20; brain checkout → exit 22 with no git command; clean tree with one locally unpushed commit → pushed, exit 0; clean with no locally unpushed commit → exit 3; a listed fork keeps `AGENTS.md` out of the commit; an outside push owner exits 14 and the bare remote stays empty; a tracked `AGENTS.md` on a listed fork exits 15).
 - The brain checkout exits 22 before any git command. That is the directory `checkpoint.sh` lives in, and a worktree whose `origin` is listed in its `BRAIN_REMOTE` and which contains `setup.sh` and `verify.sh`. `sync.sh` is the publisher. `checkpoint.sh` does not run `verify.sh`, so it must not be a second door onto this repo.
 
 ### Rule oracles, policy keys, retired names
@@ -347,7 +349,7 @@ Same for all three tools.
 
 Trigger: user says **`checkpoint_project`** (done for the day — leave and resume later). Applies to the **current** project (cwd walk-up to nearest project root, stopping before `$HOME`). Must match canonical `AGENTS.md` — that file wins if they ever diverge.
 
-1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so, offer `create_project`.
+1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts in `AGENTS.md`. Anything else → offer `create_project`.
 2. Read `session_compact.md` (state restore). NEVER open `session_transcript.md` (Transcript privacy HARD RULE).
 3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, cumulative **Models used** list (current marked).
 4. Append a `## <YYYY-MM-DD> — wrap-up` entry to `session_transcript.md` (write-only): what was done today + the next step.

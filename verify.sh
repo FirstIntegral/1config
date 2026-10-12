@@ -322,6 +322,120 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   [ "$_rc" -eq 3 ] && ok "clean with no locally unpushed commit is a no-op (exit 3)" \
                    || bad "checkpoint.sh did not no-op with no locally unpushed commit (exit $_rc)"
   rm -rf "$_cpwork" "$_cpremote"
+
+  # Foreign checkout. insteadOf keeps every probe on a local bare repo.
+  _fx_id() {
+    git -C "$1" config user.email verify@local
+    git -C "$1" config user.name verify
+    git -C "$1" config commit.gpgsign false
+  }
+  _fxbare="$(mktemp -d)"
+  git init -q --bare "$_fxbare/remote.git"
+  _fxwork="$(mktemp -d)"
+  git init -q "$_fxwork"
+  _fx_id "$_fxwork"
+  git -C "$_fxwork" config url."$_fxbare/remote.git".insteadOf "git@github.com:FirstIntegral/omalauncher.git"
+  echo tracked > "$_fxwork/tracked.txt"
+  git -C "$_fxwork" add tracked.txt && git -C "$_fxwork" commit -qm tracked
+  git -C "$_fxwork" remote add origin "git@github.com:FirstIntegral/omalauncher.git"
+  echo more >> "$_fxwork/tracked.txt"
+  echo notes > "$_fxwork/AGENTS.md"
+  mkdir -p "$_fxwork/docs"
+  echo adr > "$_fxwork/docs/DECISIONS.md"
+  echo secret > "$_fxwork/session_compact.md"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_fxwork" -m fx >/dev/null 2>&1 || _rc=$?
+  _names="$(git -C "$_fxwork" show --name-only --format= HEAD)"
+  _bare_n="$(git -C "$_fxbare/remote.git" rev-list --count HEAD 2>/dev/null || echo 0)"
+  if [ "$_rc" -eq 0 ] && [ "$_bare_n" -eq 2 ] \
+     && printf '%s\n' "$_names" | grep -qx tracked.txt \
+     && ! printf '%s\n' "$_names" | grep -qx AGENTS.md \
+     && grep -qx '/AGENTS.md' "$_fxwork/.git/info/exclude" \
+     && grep -qx '/docs/DECISIONS.md' "$_fxwork/.git/info/exclude"; then
+    ok "foreign fork commits the tracked fix and not our notes"
+  else
+    bad "foreign fork leaked notes or did not push (exit $_rc, bare $_bare_n)"
+  fi
+
+  _outbare="$(mktemp -d)"
+  git init -q --bare "$_outbare/remote.git"
+  _outwork="$(mktemp -d)"
+  git init -q "$_outwork"
+  _fx_id "$_outwork"
+  git -C "$_outwork" config url."$_outbare/remote.git".insteadOf "https://github.com/SimonSchubert/omalauncher.git"
+  echo code > "$_outwork/code.txt"
+  git -C "$_outwork" add code.txt && git -C "$_outwork" commit -qm code
+  git -C "$_outwork" remote add origin "https://github.com/SimonSchubert/omalauncher.git"
+  echo more >> "$_outwork/code.txt"
+  echo notes > "$_outwork/AGENTS.md"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_outwork" -m out >/dev/null 2>&1 || _rc=$?
+  _out_n="$(git -C "$_outbare/remote.git" rev-list --count HEAD 2>/dev/null || echo 0)"
+  _out_names="$(git -C "$_outwork" show --name-only --format= HEAD)"
+  if [ "$_rc" -eq 14 ] && [ "$_out_n" -eq 0 ] \
+     && printf '%s\n' "$_out_names" | grep -qx code.txt \
+     && ! printf '%s\n' "$_out_names" | grep -qx AGENTS.md; then
+    ok "outside push owner exits 14 and keeps our notes out"
+  else
+    bad "outside push owner (exit $_rc, bare $_out_n)"
+  fi
+
+  _trwork="$(mktemp -d)"
+  git init -q "$_trwork"
+  _fx_id "$_trwork"
+  echo notes > "$_trwork/AGENTS.md"
+  git -C "$_trwork" add AGENTS.md && git -C "$_trwork" commit -qm notes
+  git -C "$_trwork" remote add origin "git@github.com:FirstIntegral/omalauncher.git"
+  echo code > "$_trwork/code.txt"
+  _before="$(git -C "$_trwork" rev-parse HEAD)"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_trwork" -m nope >/dev/null 2>&1 || _rc=$?
+  _after="$(git -C "$_trwork" rev-parse HEAD)"
+  if [ "$_rc" -eq 15 ] && [ "$_before" = "$_after" ]; then
+    ok "tracked AGENTS.md on a foreign fork exits 15"
+  else
+    bad "tracked private file (exit $_rc)"
+  fi
+
+  _ourbare="$(mktemp -d)"
+  git init -q --bare "$_ourbare/remote.git"
+  _ourwork="$(mktemp -d)"
+  git init -q "$_ourwork"
+  _fx_id "$_ourwork"
+  git -C "$_ourwork" config url."$_ourbare/remote.git".insteadOf "git@github.com:FirstIntegral/some-app.git"
+  echo code > "$_ourwork/code.txt"
+  git -C "$_ourwork" add code.txt && git -C "$_ourwork" commit -qm code
+  git -C "$_ourwork" remote add origin "git@github.com:FirstIntegral/some-app.git"
+  echo notes > "$_ourwork/AGENTS.md"
+  mkdir -p "$_ourwork/docs"
+  echo adr > "$_ourwork/docs/DECISIONS.md"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_ourwork" -m ours >/dev/null 2>&1 || _rc=$?
+  _our_names="$(git -C "$_ourwork" show --name-only --format= HEAD)"
+  if [ "$_rc" -eq 0 ] \
+     && printf '%s\n' "$_our_names" | grep -qx AGENTS.md \
+     && printf '%s\n' "$_our_names" | grep -qx docs/DECISIONS.md; then
+    ok "a repo we own still commits AGENTS.md and docs/DECISIONS.md"
+  else
+    bad "owned repo hid AGENTS.md (exit $_rc)"
+  fi
+
+  _sitehome="$(mktemp -d)"
+  _sitebare="$(mktemp -d)"
+  git init -q --bare "$_sitebare/remote.git"
+  _site="$_sitehome/Projects/sites/demo"
+  mkdir -p "$_site/docs"
+  git init -q "$_site"
+  _fx_id "$_site"
+  git -C "$_site" config url."$_sitebare/remote.git".insteadOf "git@github.com:FirstIntegral/omalauncher.git"
+  echo adr > "$_site/docs/DECISIONS.md"
+  git -C "$_site" remote add origin "git@github.com:FirstIntegral/omalauncher.git"
+  _rc=0; HOME="$_sitehome" bash "$HOOKS/checkpoint.sh" "$_site" -m site >/dev/null 2>&1 || _rc=$?
+  _site_names="$(git -C "$_site" show --name-only --format= HEAD 2>/dev/null || true)"
+  if [ "$_rc" -eq 0 ] \
+     && printf '%s\n' "$_site_names" | grep -qx docs/DECISIONS.md \
+     && { [ ! -f "$_site/.git/info/exclude" ] || ! grep -q '/docs/DECISIONS.md' "$_site/.git/info/exclude"; }; then
+    ok "sites checkout does not take the foreign exclude block"
+  else
+    bad "sites checkout hid docs/DECISIONS.md (exit $_rc)"
+  fi
+  rm -rf "$_fxbare" "$_fxwork" "$_outbare" "$_outwork" "$_trwork" "$_ourbare" "$_ourwork" "$_sitehome" "$_sitebare"
 else
   bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
 fi
@@ -345,6 +459,22 @@ if grep -q 'exits 22' "$CANON" && grep -q 'exits 22' "$SETUP"; then
   ok "brain checkpoint exit 22 documented in AGENTS.md and SETUP.md"
 else
   bad "exit 22 missing from AGENTS.md or SETUP.md"
+fi
+if grep -q 'foreign checkout' "$CANON" && grep -q 'foreign checkout' "$SETUP"; then
+  ok "foreign checkout documented in AGENTS.md and SETUP.md"
+else
+  bad "foreign checkout missing from AGENTS.md or SETUP.md"
+fi
+if grep -q 'exits 14' "$CANON" && grep -q 'exits 14' "$SETUP"; then
+  ok "checkpoint exit 14 documented in AGENTS.md and SETUP.md"
+else
+  bad "exit 14 missing from AGENTS.md or SETUP.md"
+fi
+if [ -f "$AGENTS_HOME/fork-parents.txt" ] \
+   && grep -qx 'FirstIntegral/omalauncher SimonSchubert/omalauncher' "$AGENTS_HOME/fork-parents.txt"; then
+  ok "fork-parents.txt lists omalauncher"
+else
+  bad "fork-parents.txt missing the omalauncher line"
 fi
 if grep -q 'kill-tokens.deny' "$CANON" && grep -q 'kill-tokens.deny' "$SETUP"; then
   ok "kill-tokens.deny documented in AGENTS.md and SETUP.md"
