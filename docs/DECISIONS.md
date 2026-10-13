@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-10-13 — Card cap is 760
+
+**Decision:** The open card caps at 760 wide and 820 tall. `Panel.qml` uses `Style.space(760)` and `Style.space(820)`. A narrower screen shrinks the width to the larger of 440 and 46% of the screen width. The sentence "about 640 by 820" in "2026-10-09 — Ring only on the bar, open week for OpenCode" is not the live size.
+
+**Why:** Commit `1935e35` widened the cap and updated `AGENTS.md` and `SETUP.md` in the same change, and left that older sentence at 640. A reader who treats the decision log as the spec would shrink the card.
+
+**Rejected:** Changing `Panel.qml` back to 640 to match the stale sentence.
+
 ## 2026-10-13 — Two note copies merge
 
 **Decision:** When this checkout and the notes repo both have a different copy of the same untracked file, `notes-sync.sh` keeps both. A log (`session_transcript.md`, `docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise write both full copies into the file, labeled `notes-sync-merge`, then push that file. Stdout is `notes: merged`. Pull publishes the merge too, so `continue_project` does not leave it on one machine. The next checkpoint rewrites a merged `session_compact.md` to one current state and does not drop either copy's open items. A delete versus an edit, a binary file, or a non-markdown path that will not 3-way clean still exits 23 and writes nothing.
@@ -116,6 +124,8 @@ The roster list in this entry is superseded by the 2026-10-12 Grok Bot ADR. The 
 ## 2026-10-09 — Ring only on the bar, open week for OpenCode
 
 **Decision:** The bar face is the ring and nothing else. The hottest plan stays in the tooltip and in the panel header. The card is about 640 by 820. The map drops the square grid, the scanlines, the tick ring, the corner brackets, and the boxed part list. Part names sit on the orbit with clear space, and the list under the map is plain lines. OpenCode spend is seven day rows (today first in the label, oldest day at the top of the run-up) plus one row per model. Each row is a name, a bar scaled to the busiest day or model, and the tokens and dollars on the right. Limit rows for the other tools use the same shape: label, percent, bar, time until reset.
+
+The width sentence above is superseded by "2026-10-13 — Card cap is 760". The rest stands.
 
 **Why:** `Grok 42%` beside the ring, and a second `1config` label, made the icon hard to read. The 18 px grid and the stacked boxes crowded the map. OpenCode had the numbers, but they were one caption line, so the week did not read. Omarchy's agents panel already shows a week as rows with the figure on the right. OpenCode has no plan percent on disk. The day rows are that same picture, drawn from `step-finish`.
 
