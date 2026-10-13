@@ -453,7 +453,8 @@ else
   bad "notes-sync.sh missing or does not parse"
 fi
 if grep -q '### Machine notes' "$CANON" && grep -q 'hooks/notes-sync.sh' "$SETUP" \
-   && grep -q '| `23`' "$CANON" && grep -q 'notes diverge' "$SETUP"; then
+   && grep -q '| `23`' "$CANON" && grep -q 'notes diverge' "$SETUP" \
+   && grep -q 'notes: merged' "$CANON" && grep -q 'notes-sync-merge' "$SETUP"; then
   ok "machine-notes documented in AGENTS.md and SETUP.md"
 else
   bad "machine-notes missing from AGENTS.md or SETUP.md"
@@ -537,12 +538,98 @@ git -C "$_ns" commit -qm remote
 git -C "$_ns" push -q origin HEAD
 echo local-side > "$_np/session_compact.md"
 _rc=0
-NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >/tmp/notes-div.out 2>/tmp/notes-div.err || _rc=$?
-if [ "$_rc" -eq 23 ] && [ "$(cat "$_np/session_compact.md")" = "local-side" ] \
-   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/session_compact.md")" = "remote-side" ]; then
-  ok "notes diverge exits 23 and writes nothing"
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-div.err)" || _rc=$?
+_merged="$_np/session_compact.md"
+_notesf="$_ns/github.com/firstintegral/notes-fixture/session_compact.md"
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: merged" ] \
+   && grep -q 'notes-sync-merge' "$_merged" \
+   && grep -q 'local-side' "$_merged" && grep -q 'remote-side' "$_merged" \
+   && cmp -s "$_merged" "$_notesf" \
+   && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/firstintegral/notes-fixture" ] \
+   && ! git -C "$_ns" log -1 --format='%B' | grep -q 'local-side'; then
+  ok "notes merge keeps both compact copies"
 else
-  bad "notes diverge (exit $_rc)"
+  bad "notes merge (exit $_rc, out $_out)"
+fi
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: current" ]; then
+  ok "second merge push is current"
+else
+  bad "second merge push (exit $_rc, out $_out)"
+fi
+printf 'alpha-transcript\nremote-entry\n' > "$_ns/github.com/firstintegral/notes-fixture/session_transcript.md"
+git -C "$_ns" add github.com/firstintegral/notes-fixture/session_transcript.md
+git -C "$_ns" commit -qm remote-log
+git -C "$_ns" push -q origin HEAD
+printf 'alpha-transcript\nlocal-entry\n' > "$_np/session_transcript.md"
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
+_tlog="$_np/session_transcript.md"
+_tnotes="$_ns/github.com/firstintegral/notes-fixture/session_transcript.md"
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: merged" ] \
+   && [ "$(grep -c '^alpha-transcript$' "$_tlog")" -eq 1 ] \
+   && grep -q '^local-entry$' "$_tlog" && grep -q '^remote-entry$' "$_tlog" \
+   && cmp -s "$_tlog" "$_tnotes" \
+   && ! git -C "$_ns" log -1 --format='%B' | grep -q 'local-entry'; then
+  ok "notes merge keeps both transcript tails once"
+else
+  bad "notes transcript merge (exit $_rc, out $_out)"
+fi
+_np3="$(mktemp -d)"
+git init -q "$_np3"
+git -C "$_np3" config user.email verify@local
+git -C "$_np3" config user.name verify
+git -C "$_np3" config commit.gpgsign false
+echo x > "$_np3/a.txt"
+printf 'session_compact.md\nsession_transcript.md\nnotes.allow\n' > "$_np3/.gitignore"
+git -C "$_np3" add a.txt .gitignore && git -C "$_np3" commit -qm x
+git -C "$_np3" remote add origin 'git@github.com:FirstIntegral/notes-fixture.git'
+echo desktop-only-line > "$_np3/session_compact.md"
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" pull "$_np3" 2>/dev/null)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: merged" ] \
+   && grep -q 'desktop-only-line' "$_np3/session_compact.md" \
+   && grep -q 'local-side' "$_np3/session_compact.md" \
+   && cmp -s "$_np3/session_compact.md" "$_notesf"; then
+  ok "no-base pull merges both compacts and publishes"
+else
+  bad "no-base merge (exit $_rc, out $_out)"
+fi
+printf '*.patch\n' >> "$_np/.gitignore"
+printf '%s\n' '.env' 'a.txt' 'foo.patch' > "$_np/notes.allow"
+printf 'patch-v1\n' > "$_np/foo.patch"
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
+printf 'patch-remote\n' > "$_ns/github.com/firstintegral/notes-fixture/foo.patch"
+git -C "$_ns" add github.com/firstintegral/notes-fixture/foo.patch
+git -C "$_ns" commit -qm remote-patch
+git -C "$_ns" push -q origin HEAD
+printf 'patch-local\n' > "$_np/foo.patch"
+_compact_before="$(cat "$_np/session_compact.md")"
+_rc=0
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >/tmp/notes-div.out 2>/tmp/notes-div.err || _rc=$?
+if [ "$_rc" -eq 23 ] && grep -q 'notes: diverge foo.patch' /tmp/notes-div.err \
+   && [ "$(cat "$_np/foo.patch")" = "patch-local" ] \
+   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/foo.patch")" = "patch-remote" ] \
+   && [ "$(cat "$_np/session_compact.md")" = "$_compact_before" ]; then
+  ok "non-markdown conflict exits 23 and writes nothing"
+else
+  bad "patch diverge (exit $_rc)"
+fi
+rm -f "$_np/session_compact.md"
+echo gone-side > "$_ns/github.com/firstintegral/notes-fixture/session_compact.md"
+git -C "$_ns" add github.com/firstintegral/notes-fixture/session_compact.md
+git -C "$_ns" commit -qm gone
+git -C "$_ns" push -q origin HEAD
+_rc=0
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >/tmp/notes-div.out 2>/tmp/notes-div.err || _rc=$?
+if [ "$_rc" -eq 23 ] && grep -q 'notes: diverge session_compact.md' /tmp/notes-div.err \
+   && [ ! -e "$_np/session_compact.md" ] \
+   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/session_compact.md")" = "gone-side" ]; then
+  ok "delete versus edit exits 23 and writes nothing"
+else
+  bad "delete diverge (exit $_rc)"
 fi
 _before_ns="$(git -C "$_ns" rev-parse HEAD)"
 # Raw origin URL stays the notes key. insteadOf keeps checkpoint's ls-remote off the network.
@@ -577,7 +664,7 @@ if [ -n "$_notes_pin" ]; then
 else
   ok "no machine-notes clone yet (fixture pin skipped)"
 fi
-rm -rf "$_ns" "$_nbare" "$_np" "$_np2"
+rm -rf "$_ns" "$_nbare" "$_np" "$_np2" "$_np3"
 rm -f /tmp/notes-warn.txt /tmp/notes-div.out /tmp/notes-div.err /tmp/notes-dry.out /tmp/notes-live.out
 
 echo "[rule oracles]"

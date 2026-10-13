@@ -288,7 +288,7 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
 2. **Residue / conflict check (all tools):**
    - Memory: if `~/cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE` or `~/.agents/backups/claude-residue/PENDING.md` or `<path>/claude_memory_import.md` exists → process memory residue merge (Memory policy) **before** relying on project files.
    - Symlinks: if `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` exists → process symlink conflict merge (see Cron guards) before editing global rules.
-3. **Notes pull, before any read:** `bash ~/.agents/hooks/notes-sync.sh pull <path>`. A missing clone prints `notes: skipped` and is not created. Exit `23`: both machines changed the same file. Stop. Do not overwrite it and do not read past it. The file the pull installed is the one you then read. Foreign "write the missing `AGENTS.md`" runs only after this pull, and only if that path is still absent.
+3. **Notes pull, before any read:** `bash ~/.agents/hooks/notes-sync.sh pull <path>`. A missing clone prints `notes: skipped` and is not created. `notes: merged` means both machines' copies are in the file. Read that file. A merged `session_compact.md` has both copies under `notes-sync-merge`. Both are current. Do not drop either machine's open items. The next checkpoint rewrites one compact. Exit `23`: merge refused (one side deleted the file while the other edited it, or the path is not markdown and will not 3-way clean). Stop. Do not overwrite it and do not read past it. Foreign "write the missing `AGENTS.md`" runs only after this pull, and only if that path is still absent.
 4. **Read, in order** (only if the file exists):
    1. `<path>/session_compact.md` — where we left off (AI handoff; **required read when present**)
    2. `<path>/AGENTS.md` — project rules/conventions
@@ -330,7 +330,7 @@ Read its exit code and report accordingly:
 |---|---|---|
 | `0` | remote backup completed | committed new changes and/or pushed existing local commits |
 | `3` | clean tree; `HEAD` has no commit absent from local remote-tracking refs | no project commit to push. Notes sync still runs |
-| `23` | **notes diverge** — this checkout and the notes repo both changed the same file | notes repo unchanged. Project commit is not rolled back |
+| `23` | **notes diverge** — merge refused (delete versus edit, or not a clean text merge) | notes repo unchanged. Project commit is not rolled back |
 | `10` | **not a git repo** | nothing done, no `git init` |
 | `11` | project is inside another repo, not its root | nothing done |
 | `12` | no remote | committed locally, not pushed |
@@ -343,7 +343,7 @@ Read its exit code and report accordingly:
 
 `--dry-run` prints the plan and changes nothing. It returns before any notes stat. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
 
-Exits `0`, `3`, `12`, `13`, `14`, and `21` run `hooks/notes-sync.sh push` after the project half. Exits `10`, `11`, `15`, `20`, and `22` do not. A missing notes clone prints `notes: skipped` and keeps the exit above. Exit `23` is the notes half: both sides changed the same file, nothing in the notes repo was written. A notes failure does not roll back a project commit.
+Exits `0`, `3`, `12`, `13`, `14`, and `21` run `hooks/notes-sync.sh push` after the project half. Exits `10`, `11`, `15`, `20`, and `22` do not. A missing notes clone prints `notes: skipped` and keeps the exit above. A markdown file both machines changed is merged (`notes: merged`) and pushed. Exit `23` is the notes half: the merge was refused, nothing in the notes repo was written. A notes failure does not roll back a project commit.
 
 Exit `3` is a local-ref statement, not proof that a live remote is reachable or unchanged: the script does not fetch. A clean tree with commits absent from local remote-tracking refs continues to the remote and push path.
 
@@ -408,7 +408,7 @@ Then `bash ~/.agents/hooks/notes-sync.sh backfill`, or let `continue_project` pu
 - A file rides only when this checkout does not track it. Defaults: `session_compact.md`, `session_transcript.md` (raw bytes; the commit message and stdout must not quote the body; agents still do not read it), `AGENTS.md`, `docs/DECISIONS.md`. Gitignored `notes.allow` lists extra relative paths and is itself synced. No globs, no `..`, no absolute path, no symlink that resolves outside. A directory line is walked file by file.
 - Out, even if listed: `claude_memory_import.md`, the retired session file the template `.gitignore` already names, `docs/session-archive/`, `docs/session-flushes/`, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `keystore.properties`, `credentials*`, and a play-store key json.
 - A tracked or unignored `notes.allow` is exit 20. Foreign exclude includes `/notes.allow`.
-- Three blob ids per checkout: last sync, notes `HEAD`, worktree. Both changed since last sync → exit 23, write nothing. A fresh checkout installs. A local delete is not put back and is not a remote delete. No mtime winner. No `--force`. v1 does not propagate deletes. A later `git remote set-url` does not move the old notes directory.
+- Three blob ids per checkout: last sync, notes `HEAD`, worktree. Same bytes, or only one side changed: that side wins. Both sides changed a markdown file, or `notes.allow`: keep both. A log (`session_transcript.md`, `docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise keep both full copies, labeled `notes-sync-merge`. The merged file is written on this machine and pushed. Stdout is `notes: merged`. The next checkpoint rewrites a merged compact to one current state and keeps every open item from both copies. A delete against an edit, a binary file, or a non-markdown path that will not 3-way clean: exit 23, write nothing. A fresh checkout with no local file installs. A local delete is not put back and is not a remote delete. No mtime winner. No `--force`. No model call. v1 does not propagate deletes. A later `git remote set-url` does not move the old notes directory.
 - One signed commit per project when bytes changed. Subject `notes: <host>/<owner>/<repo>`. `git add` only the paths this run wrote. Never `git add -A`. No AI attribution. Do not set `commit.gpgsign false` on the real notes repo.
 - Sync only when the project realpath is under the passwd-home `~/Projects/`. `/tmp` and a faked `$HOME` do not sync. `--dry-run` does not stat the notes clone. A missing clone keeps the checkpoint's exit code.
 - `create_project` does not sync. The first push is the first checkpoint after an origin URL exists. A project outside `~/Projects/` is out of v1.
@@ -521,7 +521,7 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 ### On session start
 
 0. **Residue / conflict check:** memory (`NEEDS-MEMORY-MERGE` / `PENDING.md` / project `claude_memory_import.md`) and/or symlink (`NEEDS-SYMLINK-MERGE`) — process first (Memory policy + Cron guards).
-0.5. **Notes pull** when the project root is a git checkout: `bash ~/.agents/hooks/notes-sync.sh pull <project-root>`, before reading `session_compact.md`. Missing clone: `notes: skipped`. Exit `23`: stop, do not overwrite the file.
+0.5. **Notes pull** when the project root is a git checkout: `bash ~/.agents/hooks/notes-sync.sh pull <project-root>`, before reading `session_compact.md`. Missing clone: `notes: skipped`. `notes: merged`: the compact has both machines' copies. Keep every open item from both. Exit `23`: stop, do not overwrite the file.
 1. If `session_compact.md` exists in the project root, read it first — it says where we left off.
 2. Read project `AGENTS.md` and `docs/DECISIONS.md` if they exist.
 3. Do NOT open `session_transcript.md` (Transcript privacy rule above).

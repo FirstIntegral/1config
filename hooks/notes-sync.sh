@@ -8,11 +8,13 @@
 # The project git never receives these files. This script never runs `git add -A`
 # in either repo, never creates a GitHub repo, and never force-pushes.
 #
-# Stdout ends with one of: notes: skipped | notes: current | notes: pushed | notes: pulled
-# Exit 0  those four
+# Stdout ends with one of:
+#   notes: skipped | notes: current | notes: pushed | notes: pulled | notes: merged
+# Exit 0  those five
 # Exit 20 notes.allow is tracked or not ignored
-# Exit 23 both sides changed the same file since the last sync; nothing written
+# Exit 23 merge refused (delete versus edit, binary, or a non-markdown conflict); nothing written
 # Exit 1  fetch, sign, or push failed. A project commit is not rolled back.
+# A markdown conflict is merged and pushed in both push and pull. Stdout is notes: merged.
 #
 # NOTES_SYNC_TEST_ROOT is for verify.sh only. checkpoint.sh unsets it.
 # The real clone is $passwd_home/.local/share/machine-notes. A test root that
@@ -265,6 +267,9 @@ trap 'rm -rf "$WORK"' EXIT
 : > "$WORK/install"
 : > "$WORK/stage"
 : > "$WORK/same"
+: > "$WORK/merge_in"
+: > "$WORK/merge_write"
+: > "$WORK/restore.list"
 
 is_tracked() {
   git -C "$PROJECT" ls-files --error-unmatch -- "$1" >/dev/null 2>&1
@@ -286,6 +291,143 @@ hash_file() {
   else
     git hash-object -- "$p"
   fi
+}
+
+# Merge two copies of one notes file. Writes the result to $5.
+# Logs keep the shared prefix once and both new tails.
+# Markdown keeps a clean 3-way when the edits sit apart, otherwise both full copies.
+# Anything else must 3-way clean, or this returns 1 and the run writes nothing.
+# No model call. Bytes in, bytes out. The same two inputs always produce the same output.
+merge_files() {
+  python3 - "$@" << 'PY'
+import hashlib
+import subprocess
+import sys
+
+rel, local_path, remote_path, base_path, out_path, oid_l, oid_r = sys.argv[1:]
+
+def read(path):
+    with open(path, "rb") as fh:
+        return fh.read()
+
+local = read(local_path)
+remote = read(remote_path)
+base = read(base_path) if base_path else None
+
+def fail():
+    sys.exit(1)
+
+def emit(data):
+    with open(out_path, "wb") as fh:
+        fh.write(data)
+    sys.exit(0)
+
+if b"\0" in local or b"\0" in remote or (base is not None and b"\0" in base):
+    fail()
+
+def aligned_contains(hay, needle):
+    if needle == b"":
+        return True
+    start = 0
+    while True:
+        i = hay.find(needle, start)
+        if i < 0:
+            return False
+        end = i + len(needle)
+        left_ok = i == 0 or hay[i - 1:i] == b"\n"
+        right_ok = end == len(hay) or hay[end:end + 1] == b"\n" or needle.endswith(b"\n")
+        if left_ok and right_ok:
+            return True
+        start = i + 1
+
+if aligned_contains(local, remote):
+    emit(local)
+if aligned_contains(remote, local):
+    emit(remote)
+
+name = rel.rsplit("/", 1)[-1]
+if name in ("session_transcript.md", "DECISIONS.md", "notes.allow"):
+    kind = "log"
+elif name.endswith(".md"):
+    kind = "prose"
+else:
+    kind = "strict"
+
+def join_parts(prefix, left, right):
+    if aligned_contains(left, right):
+        body = left
+    elif aligned_contains(right, left):
+        body = right
+    else:
+        pair = sorted((left, right), key=lambda item: hashlib.sha1(item).digest())
+        body = b""
+        for tail in pair:
+            if not tail:
+                continue
+            if body and not body.endswith(b"\n"):
+                body += b"\n"
+            body += tail
+    if prefix and body and not prefix.endswith(b"\n") and not body.startswith(b"\n"):
+        return prefix + b"\n" + body
+    return prefix + body
+
+def common_prefix(left, right):
+    limit = min(len(left), len(right))
+    n = 0
+    while n < limit and left[n] == right[n]:
+        n += 1
+    if n == limit:
+        return n
+    nl = left.rfind(b"\n", 0, n)
+    if nl < 0:
+        return 0
+    return nl + 1
+
+def labeled(left, right, left_oid, right_oid):
+    pair = sorted(((left_oid, left), (right_oid, right)), key=lambda item: item[0])
+    lo, hi = pair[0][0], pair[1][0]
+    out = (
+        "<!-- notes-sync-merge oids=%s,%s -->\n" % (lo, hi)
+    ).encode()
+    out += (
+        b"Two copies of this file differed. Both are below, unchanged. "
+        b"Next checkpoint rewrites this file to one current state. "
+        b"Keep every open item from both copies.\n\n"
+    )
+    for oid, body in pair:
+        if not body.endswith(b"\n"):
+            body += b"\n"
+        out += ("## copy %s\n\n" % oid[:12]).encode()
+        out += body
+        out += b"\n"
+    return out
+
+def clean_merge():
+    if base is None or base == b"":
+        return None
+    proc = subprocess.run(
+        ["git", "merge-file", "-p", "-q", local_path, base_path, remote_path],
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        return None
+    if b"<<<<<<<" in proc.stdout or b">>>>>>>" in proc.stdout:
+        return None
+    return proc.stdout
+
+if kind == "log":
+    if base is not None and local.startswith(base) and remote.startswith(base):
+        emit(join_parts(base, local[len(base):], remote[len(base):]))
+    n = common_prefix(local, remote)
+    emit(join_parts(local[:n], local[n:], remote[n:]))
+
+merged = clean_merge()
+if merged is not None:
+    emit(merged)
+if kind == "prose":
+    emit(labeled(local, remote, oid_l, oid_r))
+fail()
+PY
 }
 
 add_file() {
@@ -421,7 +563,7 @@ while IFS= read -r rel || [ -n "$rel" ]; do
     if [ -z "$B" ] || [ "$B" = "$W" ]; then
       if [ -z "$B" ]; then
         if [ "$MODE" = "push" ]; then
-          printf '%s\t%s\t%s\n' "$notes_rel" "$rel" "$W" >> "$WORK/stage"
+          printf '%s\t%s\t%s\t%s\n' "$notes_rel" "$rel" "$W" "$PROJECT/$rel" >> "$WORK/stage"
         fi
       fi
       # B == W and remote lacks the file: do not resurrect a delete.
@@ -435,12 +577,12 @@ while IFS= read -r rel || [ -n "$rel" ]; do
     continue
   fi
   if [ -z "$B" ]; then
-    printf '%s\n' "$rel" >> "$WORK/conflict"
+    printf '%s\t%s\t%s\t%s\n' "$rel" "$W" "$R" "-" >> "$WORK/merge_in"
     continue
   fi
   if [ "$R" = "$B" ]; then
     if [ "$MODE" = "push" ]; then
-      printf '%s\t%s\t%s\n' "$notes_rel" "$rel" "$W" >> "$WORK/stage"
+      printf '%s\t%s\t%s\t%s\n' "$notes_rel" "$rel" "$W" "$PROJECT/$rel" >> "$WORK/stage"
     fi
     continue
   fi
@@ -448,15 +590,71 @@ while IFS= read -r rel || [ -n "$rel" ]; do
     printf '%s\t%s\t%s\n' "$notes_rel" "$rel" "$R" >> "$WORK/install"
     continue
   fi
-  printf '%s\n' "$rel" >> "$WORK/conflict"
+  printf '%s\t%s\t%s\t%s\n' "$rel" "$W" "$R" "$B" >> "$WORK/merge_in"
 done < "$WORK/files"
 
-if [ -s "$WORK/conflict" ]; then
+report_conflict() {
   echo "notes: diverge" >&2
   while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
     echo "notes: diverge $rel" >&2
   done < "$WORK/conflict"
   exit 23
+}
+
+if [ -s "$WORK/conflict" ]; then
+  report_conflict
+fi
+
+didmerge=0
+mseq=0
+if [ -s "$WORK/merge_in" ]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "notes: python3 missing" >&2
+    exit 1
+  fi
+  while IFS=$'\t' read -r rel woid roid boid; do
+    [ -n "$rel" ] || continue
+    mseq=$((mseq + 1))
+    notes_rel="$KEY/$rel"
+    rfile="$WORK/m$mseq.remote"
+    lfile="$WORK/m$mseq.local"
+    ofile="$WORK/m$mseq.out"
+    bfile=""
+    if ! git -C "$NOTES" cat-file blob "$roid" > "$rfile"; then
+      printf '%s\n' "$rel" >> "$WORK/conflict"
+      continue
+    fi
+    if ! cp -L -- "$PROJECT/$rel" "$lfile"; then
+      printf '%s\n' "$rel" >> "$WORK/conflict"
+      continue
+    fi
+    if [ "$boid" != "-" ]; then
+      bfile="$WORK/m$mseq.base"
+      if ! git -C "$NOTES" cat-file blob "$boid" > "$bfile"; then
+        printf '%s\n' "$rel" >> "$WORK/conflict"
+        continue
+      fi
+    fi
+    if ! merge_files "$rel" "$lfile" "$rfile" "$bfile" "$ofile" "$woid" "$roid"; then
+      printf '%s\n' "$rel" >> "$WORK/conflict"
+      continue
+    fi
+    oid="$(git hash-object -- "$ofile")"
+    didmerge=1
+    if [ "$oid" != "$woid" ]; then
+      printf '%s\t%s\n' "$rel" "$ofile" >> "$WORK/merge_write"
+    fi
+    if [ "$oid" != "$roid" ]; then
+      printf '%s\t%s\t%s\t%s\n' "$notes_rel" "$rel" "$oid" "$ofile" >> "$WORK/stage"
+    else
+      printf '%s\t%s\t%s\n' "$notes_rel" "$rel" "$oid" >> "$WORK/install"
+    fi
+  done < "$WORK/merge_in"
+fi
+
+if [ -s "$WORK/conflict" ]; then
+  report_conflict
 fi
 
 installed=0
@@ -475,13 +673,47 @@ while IFS=$'\t' read -r notes_rel rel oid; do
 done < "$WORK/install"
 
 staged=0
-while IFS=$'\t' read -r notes_rel rel oid; do
+while IFS=$'\t' read -r notes_rel rel oid src; do
   [ -n "$rel" ] || continue
   mkdir -p "$(dirname "$NOTES/$notes_rel")"
-  cp -L -- "$PROJECT/$rel" "$NOTES/$notes_rel"
+  cp -L -- "$src" "$NOTES/$notes_rel"
   git -C "$NOTES" add -- "$notes_rel"
   staged=1
 done < "$WORK/stage"
+
+# Project files change only after the notes index has the merged bytes, and a
+# failed commit puts the project files back. A retry then sees the same inputs.
+restore_merge_write() {
+  [ -f "$WORK/restore.list" ] || return 0
+  while IFS=$'\t' read -r kind rel bak; do
+    [ -n "$rel" ] || continue
+    if [ "$kind" = "miss" ]; then
+      rm -f -- "$PROJECT/$rel"
+    else
+      mkdir -p "$(dirname "$PROJECT/$rel")"
+      cp -a -- "$bak" "$PROJECT/$rel"
+    fi
+  done < "$WORK/restore.list"
+}
+
+n=0
+while IFS=$'\t' read -r rel src; do
+  [ -n "$rel" ] || continue
+  n=$((n + 1))
+  dest="$PROJECT/$rel"
+  mkdir -p "$(dirname "$dest")" "$WORK/restore"
+  if [ -e "$dest" ] || [ -L "$dest" ]; then
+    cp -a -- "$dest" "$WORK/restore/$n"
+    printf 'have\t%s\t%s\n' "$rel" "$WORK/restore/$n" >> "$WORK/restore.list"
+  else
+    printf 'miss\t%s\t-\n' "$rel" >> "$WORK/restore.list"
+  fi
+  if ! cp -L -- "$src" "$dest"; then
+    restore_merge_write
+    echo "notes: write failed $rel" >&2
+    exit 1
+  fi
+done < "$WORK/merge_write"
 
 # Base tracks the blob both sides now share. Installs and unchanged files are
 # recorded before the commit. Staged files are recorded only after it, so a
@@ -528,42 +760,44 @@ if [ "$staged" -eq 1 ]; then
   fi
   if [ "$commit_ok" -ne 1 ]; then
     abort_stage
+    restore_merge_write
     echo "notes: sign failed. Run bash ~/.agents/hooks/gpg-agent-unlock.sh" >&2
     exit 1
   fi
-  while IFS=$'\t' read -r notes_rel rel oid; do
+  while IFS=$'\t' read -r notes_rel rel oid src; do
     [ -n "$notes_rel" ] || continue
     update_base "$notes_rel" "$oid"
   done < "$WORK/stage"
 fi
 
+# A merge during pull has to reach the other machine. Push whenever this
+# clone is ahead. A refspec without '+' refuses a non-fast-forward. This git
+# has no push --ff-only. merge-base rejects one before the push when the
+# remote ref exists.
 pushed=0
-if [ "$MODE" = "push" ]; then
-  ahead=0
+ahead=0
+if git -C "$NOTES" rev-parse -q --verify "origin/$BRANCH" >/dev/null 2>&1; then
+  ahead="$(git -C "$NOTES" rev-list --count "origin/$BRANCH..HEAD")"
+else
+  ahead=1
+fi
+if [ "${ahead:-0}" -gt 0 ]; then
   if git -C "$NOTES" rev-parse -q --verify "origin/$BRANCH" >/dev/null 2>&1; then
-    ahead="$(git -C "$NOTES" rev-list --count "origin/$BRANCH..HEAD")"
-  else
-    ahead=1
-  fi
-  if [ "${ahead:-0}" -gt 0 ]; then
-    # This git has no push --ff-only. A refspec without '+' already refuses a
-    # non-fast-forward. merge-base rejects one before the push when the remote
-    # ref exists.
-    if git -C "$NOTES" rev-parse -q --verify "origin/$BRANCH" >/dev/null 2>&1; then
-      if ! git -C "$NOTES" merge-base --is-ancestor "origin/$BRANCH" HEAD; then
-        echo "notes: push is not a fast-forward" >&2
-        exit 1
-      fi
-    fi
-    if ! git -C "$NOTES" push -q origin "HEAD:refs/heads/$BRANCH"; then
-      echo "notes: push failed" >&2
+    if ! git -C "$NOTES" merge-base --is-ancestor "origin/$BRANCH" HEAD; then
+      echo "notes: push is not a fast-forward" >&2
       exit 1
     fi
-    pushed=1
   fi
+  if ! git -C "$NOTES" push -q origin "HEAD:refs/heads/$BRANCH"; then
+    echo "notes: push failed" >&2
+    exit 1
+  fi
+  pushed=1
 fi
 
-if [ "$pushed" -eq 1 ]; then
+if [ "$didmerge" -eq 1 ]; then
+  echo "notes: merged"
+elif [ "$pushed" -eq 1 ]; then
   echo "notes: pushed"
 elif [ "$installed" -eq 1 ]; then
   echo "notes: pulled"

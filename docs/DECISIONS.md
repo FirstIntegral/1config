@@ -1,8 +1,18 @@
 # Brain decisions
 
+## 2026-10-13 — Two note copies merge
+
+**Decision:** When this checkout and the notes repo both have a different copy of the same untracked file, `notes-sync.sh` keeps both. A log (`session_transcript.md`, `docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise write both full copies into the file, labeled `notes-sync-merge`, then push that file. Stdout is `notes: merged`. Pull publishes the merge too, so `continue_project` does not leave it on one machine. The next checkpoint rewrites a merged `session_compact.md` to one current state and does not drop either copy's open items. A delete versus an edit, a binary file, or a non-markdown path that will not 3-way clean still exits 23 and writes nothing.
+
+**Why:** Two machines each checkpoint a week apart. `session_compact.md` is rewritten, so a later push used to stop, and a winner would drop a week of the other machine. The transcript is append-only, so the shared head stays once. No model call: a transcript must not be sent out, and the merge must be the same bytes whichever machine runs it.
+
+**Rejected:** An mtime winner. Leaving exit 23 for markdown. An LLM rewrite of the compact. Conflict markers as the file the next session reads. Concatenating two full transcripts when they share a prefix. Splicing a patch, or any other non-markdown file, that conflicts.
+
 ## 2026-10-13 — Untracked notes ride one private repo
 
 **Decision:** Files a project git does not track move between machines through one private repo, `FirstIntegral/machine-notes`, cloned at `~/.local/share/machine-notes`. The key is `host/owner/repo` from `origin`. `hooks/notes-sync.sh` is the only writer. `checkpoint.sh` calls it on the exits that already finished the project half, and never creates the repo. `continue_project` pulls before it reads `session_compact.md`. A checkout outside passwd-home `~/Projects/` does not sync. Both sides changed since that checkout's base → exit 23, write nothing.
+
+The both-sides sentence above is superseded by "2026-10-13 — Two note copies merge". The rest stands.
 
 **Why:** The other machine is usually off, so a peer sync has no mailbox. The public fork cannot hold `session_compact.md` or `CONTRIB-LOG.md`. One repo is the mailbox. Per-project repos were the other live option and stay available if a leak must be isolated. The base is per checkout because two worktrees share one clone.
 

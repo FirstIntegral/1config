@@ -21,7 +21,7 @@
 #   push URL owner is not ours      -> commit if needed, do not push        (exit 14)
 #   push fails                      -> commit stays, report                 (exit 21)
 #   otherwise                       -> commit if needed + push              (exit  0)
-#   notes diverge                   -> notes repo unchanged                 (exit 23)
+#   notes merge refused             -> notes repo unchanged                 (exit 23)
 #
 # After the leak check passes, exits 0, 3, 12, 13, 14, and 21 call
 # hooks/notes-sync.sh push. Exits 10, 11, 15, 20, and 22 do not. --dry-run
@@ -207,7 +207,7 @@ finish() {
     bash "$BRAIN_DIR/hooks/notes-sync.sh" push "$PROJECT"
   ) || nrc=$?
   if [ "$nrc" -eq 23 ]; then
-    echo "== checkpoint: notes diverge (exit 23). Notes repo unchanged."
+    echo "== checkpoint: notes merge refused (exit 23). Notes repo unchanged."
     exit 23
   fi
   if [ "$nrc" -eq 20 ]; then

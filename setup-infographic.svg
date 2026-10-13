@@ -160,7 +160,7 @@
   <text x="180" y="982" font-size="12" fill="#e6edf3">read FIRST at session start · REWRITE at end / milestone</text>
   <text x="180" y="1002" font-size="12" fill="#8b949e">state · left-off · next step · decisions · open issues</text>
   <text x="180" y="1022" font-size="12" fill="#8b949e">Models used = CUMULATIVE list (model + effort)</text>
-  <text x="180" y="1040" font-size="12" fill="#d29922">gitignored in the project · private machine-notes across machines</text>
+  <text x="180" y="1040" font-size="12" fill="#d29922">gitignored in the project · private machine-notes keeps both machines</text>
 
   <!-- session_transcript -->
   <rect x="813" y="932" width="627" height="118" rx="8" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>
@@ -175,7 +175,7 @@
   <text x="180" y="1098" font-size="13" font-weight="bold" fill="#e6edf3">SESSION LOOP</text>
   <text x="330" y="1098" font-size="12" fill="#8b949e">start: residue check → compact → AGENTS.md → DECISIONS.md (never transcript)</text>
   <text x="330" y="1120" font-size="12" fill="#8b949e">during: choice → ADR same turn · durable fact → AGENTS.md · milestone → append transcript</text>
-  <text x="330" y="1142" font-size="12" fill="#8b949e">end: checkpoint.sh · notes-sync to private machine-notes · rewrite compact · watch-stale</text>
+  <text x="330" y="1142" font-size="12" fill="#8b949e">end: checkpoint.sh · notes-sync keeps both copies · rewrite compact · watch-stale</text>
 
   <!-- ===== GITHUB POLICY ===== -->
   <rect x="130" y="1210" width="1340" height="110" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
