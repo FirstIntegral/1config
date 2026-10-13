@@ -275,7 +275,7 @@ Rules:
 2. **During work:** append to `session_transcript.md` at milestones (human-readable, chronological, verbose OK).
 3. **End of session / milestone / before compaction:** rewrite `session_compact.md` to reflect the latest state. It must always be accurate enough for a fresh AI session to resume work from it alone.
 4. Session files live in the project root. **Never commit them unless the user explicitly says otherwise** — `session_transcript.md` and `session_compact.md` are local-only; the template `.gitignore` enforces this. If copying files by hand (no template), add the same ignore lines.
-5. **`create_project` never creates a git repo or a remote.** Whether a project goes to GitHub is the user's call, made explicitly. Fill the `## Repo` line with `none (local only)` and leave it; update it the same turn a remote is actually added, so `checkpoint.sh`'s cross-check stays meaningful.
+5. **`create_project` never creates a git repo or a remote.** Whether a project goes to GitHub is the user's call, made explicitly. Fill the `## Repo` line with `none (local only)` and leave it; update it the same turn a remote is actually added, so `checkpoint.sh`'s cross-check stays meaningful. It does not create `machine-notes` and does not invent a notes key. No origin means a later notes sync skips.
 6. **Model tracking:** at `create_project`, record the active model + effort in `session_compact.md` (read the tool's config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask the user once). The **Models used** list in compact is CUMULATIVE: preserve it across rewrites, mark the current one, add a line whenever model or effort changes. Every switch also goes to `session_transcript.md` (old → new, reason if known) — the transcript is the lossless copy. If the user says they switched models, log it immediately.
 
 ---
@@ -288,14 +288,15 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
 2. **Residue / conflict check (all tools):**
    - Memory: if `~/cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE` or `~/.agents/backups/claude-residue/PENDING.md` or `<path>/claude_memory_import.md` exists → process memory residue merge (Memory policy) **before** relying on project files.
    - Symlinks: if `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` exists → process symlink conflict merge (see Cron guards) before editing global rules.
-3. **Read, in order** (only if the file exists):
+3. **Notes pull, before any read:** `bash ~/.agents/hooks/notes-sync.sh pull <path>`. A missing clone prints `notes: skipped` and is not created. Exit `23`: both machines changed the same file. Stop. Do not overwrite it and do not read past it. The file the pull installed is the one you then read. Foreign "write the missing `AGENTS.md`" runs only after this pull, and only if that path is still absent.
+4. **Read, in order** (only if the file exists):
    1. `<path>/session_compact.md` — where we left off (AI handoff; **required read when present**)
    2. `<path>/AGENTS.md` — project rules/conventions
    3. `<path>/docs/DECISIONS.md` — durable choices + why
-4. **Do NOT** open `<path>/session_transcript.md` unless the user explicitly asks (Transcript privacy HARD RULE).
-5. If none of the three files exist: a git root is not a new project. Do not offer `create_project`. Follow Foreign checkouts. Anything else → say the path has no project session layout; offer `create_project` there (or fix the path).
-6. After reading: brief status (current state + where we left off + open issues from compact), then wait for / take the user's next instruction. Do not invent state that is not in those files.
-7. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
+5. **Do NOT** open `<path>/session_transcript.md` unless the user explicitly asks (Transcript privacy HARD RULE).
+6. If none of the three files exist: a git root is not a new project. Do not offer `create_project`. Follow Foreign checkouts. Anything else → say the path has no project session layout; offer `create_project` there (or fix the path).
+7. After reading: brief status (current state + where we left off + open issues from compact), then wait for / take the user's next instruction. Do not invent state that is not in those files.
+8. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
 
 Same trigger for all tools (Grok / Claude Code / OpenCode). No tool-specific continue step.
 
@@ -328,7 +329,8 @@ Read its exit code and report accordingly:
 | exit | meaning | what happened |
 |---|---|---|
 | `0` | remote backup completed | committed new changes and/or pushed existing local commits |
-| `3` | clean tree; `HEAD` has no commit absent from local remote-tracking refs | no local work to back up |
+| `3` | clean tree; `HEAD` has no commit absent from local remote-tracking refs | no project commit to push. Notes sync still runs |
+| `23` | **notes diverge** — this checkout and the notes repo both changed the same file | notes repo unchanged. Project commit is not rolled back |
 | `10` | **not a git repo** | nothing done, no `git init` |
 | `11` | project is inside another repo, not its root | nothing done |
 | `12` | no remote | committed locally, not pushed |
@@ -339,7 +341,9 @@ Read its exit code and report accordingly:
 | `21` | commit or push failed | any commit made is safe; not retried, not forced |
 | `22` | **refused** — this checkout is the brain | nothing done; publish with `sync.sh` |
 
-`--dry-run` prints the plan and changes nothing. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
+`--dry-run` prints the plan and changes nothing. It returns before any notes stat. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
+
+Exits `0`, `3`, `12`, `13`, `14`, and `21` run `hooks/notes-sync.sh push` after the project half. Exits `10`, `11`, `15`, `20`, and `22` do not. A missing notes clone prints `notes: skipped` and keeps the exit above. Exit `23` is the notes half: both sides changed the same file, nothing in the notes repo was written. A notes failure does not roll back a project commit.
 
 Exit `3` is a local-ref statement, not proof that a live remote is reachable or unchanged: the script does not fetch. A clean tree with commits absent from local remote-tracking refs continues to the remote and push path.
 
@@ -389,6 +393,25 @@ git push                        # -u origin <branch> if the branch has no upstre
 - **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out. On a foreign checkout those private files go in `.git/info/exclude`, not in their `.gitignore`. A dirty hunk in a file they already track is copied aside, the checkpoint runs, and the hunk is copied back. Do not set skip-worktree.
 
 Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.
+
+### Machine notes
+
+Untracked notes move through one private repo, `FirstIntegral/machine-notes`, cloned at `~/.local/share/machine-notes`. `checkpoint.sh` never creates that repo. Each machine clones it once:
+
+```sh
+git clone git@github.com:FirstIntegral/machine-notes.git ~/.local/share/machine-notes
+```
+
+Then `bash ~/.agents/hooks/notes-sync.sh backfill`, or let `continue_project` pull one project. `hooks/notes-sync.sh` is the behaviour.
+
+- Key is lowercase `host/owner/repo` from `origin` pushurl, else `origin` url. `ssh.github.com` folds to `github.com`. Not the directory name. Not `@{upstream}`. No origin, or an unparsed URL, prints `notes: skipped`.
+- A file rides only when this checkout does not track it. Defaults: `session_compact.md`, `session_transcript.md` (raw bytes; the commit message and stdout must not quote the body; agents still do not read it), `AGENTS.md`, `docs/DECISIONS.md`. Gitignored `notes.allow` lists extra relative paths and is itself synced. No globs, no `..`, no absolute path, no symlink that resolves outside. A directory line is walked file by file.
+- Out, even if listed: `claude_memory_import.md`, the retired session file the template `.gitignore` already names, `docs/session-archive/`, `docs/session-flushes/`, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `keystore.properties`, `credentials*`, and a play-store key json.
+- A tracked or unignored `notes.allow` is exit 20. Foreign exclude includes `/notes.allow`.
+- Three blob ids per checkout: last sync, notes `HEAD`, worktree. Both changed since last sync → exit 23, write nothing. A fresh checkout installs. A local delete is not put back and is not a remote delete. No mtime winner. No `--force`. v1 does not propagate deletes. A later `git remote set-url` does not move the old notes directory.
+- One signed commit per project when bytes changed. Subject `notes: <host>/<owner>/<repo>`. `git add` only the paths this run wrote. Never `git add -A`. No AI attribution. Do not set `commit.gpgsign false` on the real notes repo.
+- Sync only when the project realpath is under the passwd-home `~/Projects/`. `/tmp` and a faked `$HOME` do not sync. `--dry-run` does not stat the notes clone. A missing clone keeps the checkpoint's exit code.
+- `create_project` does not sync. The first push is the first checkpoint after an origin URL exists. A project outside `~/Projects/` is out of v1.
 
 ---
 
@@ -487,7 +510,7 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 
 - Do not run `create_project` on a foreign checkout. Do not add our lines to their `.gitignore`.
 - `continue_project` on a git root never offers `create_project`. If `origin` is on the list and `AGENTS.md` or `docs/DECISIONS.md` is missing, write those local files in the same turn and do not commit. If either file is already tracked, stop and name it. If the git root is not on the list and the session files are missing, name the paths and stop.
-- Before `git add`, checkpoint writes a marked block in `.git/info/exclude`: `/AGENTS.md`, `/docs/DECISIONS.md`, `/session_compact.md`, `/session_transcript.md`, `/claude_memory_import.md`. It does that for a listed fork, and also when the push URL's owner is not ours, so a later retarget cannot publish notes this commit already captured. It does not do that under `~/Projects/sites/*`. It does not add `AGENTS.md` to the exit 20 leak list. If `AGENTS.md` or `docs/DECISIONS.md` is already tracked, it exits 15 and commits nothing.
+- Before `git add`, checkpoint writes a marked block in `.git/info/exclude`: `/AGENTS.md`, `/docs/DECISIONS.md`, `/session_compact.md`, `/session_transcript.md`, `/claude_memory_import.md`, `/notes.allow`. It does that for a listed fork, and also when the push URL's owner is not ours, so a later retarget cannot publish notes this commit already captured. It does not do that under `~/Projects/sites/*`. It does not add `AGENTS.md` to the exit 20 leak list. If `AGENTS.md` or `docs/DECISIONS.md` is already tracked, it exits 15 and commits nothing.
 - The push URL is the branch upstream, otherwise `origin`. If that URL parses and the owner is not on a `BRAIN_REMOTE` URL, the commit stays and the push does not run. That exits 14, before the reachability check. It does not retarget and does not add a remote. An unparsed URL is not a veto. omalauncher `main` tracks Simon, so a checkpoint there exits 14.
 - A local edit inside a file they already track is not an ignore line. Copy those hunks aside, run the checkpoint, copy them back. Do not set skip-worktree. The script cannot tell those bytes from a real fix.
 
@@ -498,6 +521,7 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 ### On session start
 
 0. **Residue / conflict check:** memory (`NEEDS-MEMORY-MERGE` / `PENDING.md` / project `claude_memory_import.md`) and/or symlink (`NEEDS-SYMLINK-MERGE`) — process first (Memory policy + Cron guards).
+0.5. **Notes pull** when the project root is a git checkout: `bash ~/.agents/hooks/notes-sync.sh pull <project-root>`, before reading `session_compact.md`. Missing clone: `notes: skipped`. Exit `23`: stop, do not overwrite the file.
 1. If `session_compact.md` exists in the project root, read it first — it says where we left off.
 2. Read project `AGENTS.md` and `docs/DECISIONS.md` if they exist.
 3. Do NOT open `session_transcript.md` (Transcript privacy rule above).

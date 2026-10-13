@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-10-13 — Untracked notes ride one private repo
+
+**Decision:** Files a project git does not track move between machines through one private repo, `FirstIntegral/machine-notes`, cloned at `~/.local/share/machine-notes`. The key is `host/owner/repo` from `origin`. `hooks/notes-sync.sh` is the only writer. `checkpoint.sh` calls it on the exits that already finished the project half, and never creates the repo. `continue_project` pulls before it reads `session_compact.md`. A checkout outside passwd-home `~/Projects/` does not sync. Both sides changed since that checkout's base → exit 23, write nothing.
+
+**Why:** The other machine is usually off, so a peer sync has no mailbox. The public fork cannot hold `session_compact.md` or `CONTRIB-LOG.md`. One repo is the mailbox. Per-project repos were the other live option and stay available if a leak must be isolated. The base is per checkout because two worktrees share one clone.
+
+**Rejected:** Notes on the public fork (orphan branch, hidden ref, encrypted blob). Syncthing or Unison as the primary. restic or borg. chezmoi or yadm. A bundle mailed as a release asset. Parking the files in grokbot-brain. An mtime winner. `git add -A` in the notes repo. A uuid for a project with no origin.
+
 ## 2026-10-12 — Foreign checkouts stay out of their repo
 
 **Decision:** A foreign checkout is a clone we contribute back to, listed in `fork-parents.txt` as `ourOwner/repo parentOwner/repo`. Checkpoint writes our notes into that clone's `.git/info/exclude` and, when the push URL's owner is not on a `BRAIN_REMOTE` URL, commits if needed and exits 14 without pushing. A tracked `AGENTS.md` or `docs/DECISIONS.md` on that checkout exits 15. Sites and repos we own are unchanged.

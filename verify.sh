@@ -175,7 +175,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -266,6 +266,11 @@ fi
 # checkpoint.sh behaviour, not just presence. The failure that matters is the one that
 # publishes something, so the two refusals are exercised for real against a scratch dir.
 echo "[checkpoint.sh behaviour]"
+_notes_pin=""
+_notes_real="$(getent passwd "$(id -un)" | awk -F: '{print $6; exit}')/.local/share/machine-notes"
+if [ -d "$_notes_real/.git" ]; then
+  _notes_pin="$(git -C "$_notes_real" rev-parse HEAD 2>/dev/null || true)"
+fi
 if [ -x "$HOOKS/checkpoint.sh" ]; then
   _cptmp="$(mktemp -d)"
   # This file runs under `set -e`, and checkpoint.sh exits nonzero BY DESIGN on every
@@ -350,7 +355,8 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
      && printf '%s\n' "$_names" | grep -qx tracked.txt \
      && ! printf '%s\n' "$_names" | grep -qx AGENTS.md \
      && grep -qx '/AGENTS.md' "$_fxwork/.git/info/exclude" \
-     && grep -qx '/docs/DECISIONS.md' "$_fxwork/.git/info/exclude"; then
+     && grep -qx '/docs/DECISIONS.md' "$_fxwork/.git/info/exclude" \
+     && grep -qx '/notes.allow' "$_fxwork/.git/info/exclude"; then
     ok "foreign fork commits the tracked fix and not our notes"
   else
     bad "foreign fork leaked notes or did not push (exit $_rc, bare $_bare_n)"
@@ -439,6 +445,140 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
 else
   bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
 fi
+
+echo "[notes-sync]"
+if [ -x "$HOOKS/notes-sync.sh" ] && bash -n "$HOOKS/notes-sync.sh" 2>/dev/null; then
+  ok "notes-sync.sh parses"
+else
+  bad "notes-sync.sh missing or does not parse"
+fi
+if grep -q '### Machine notes' "$CANON" && grep -q 'hooks/notes-sync.sh' "$SETUP" \
+   && grep -q '| `23`' "$CANON" && grep -q 'notes diverge' "$SETUP"; then
+  ok "machine-notes documented in AGENTS.md and SETUP.md"
+else
+  bad "machine-notes missing from AGENTS.md or SETUP.md"
+fi
+if grep -q 'private machine-notes' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "infographic names private machine-notes"
+else
+  bad "infographic missing private machine-notes"
+fi
+_ns="$(mktemp -d)"; _nbare="$(mktemp -d)"; _np="$(mktemp -d)"
+git init -q --bare "$_nbare/n.git"
+git init -q "$_ns"
+git -C "$_ns" config user.email verify@local
+git -C "$_ns" config user.name verify
+git -C "$_ns" config commit.gpgsign false
+echo readme > "$_ns/README.md"
+git -C "$_ns" add README.md && git -C "$_ns" commit -qm readme
+git -C "$_ns" remote add origin "$_nbare/n.git"
+git -C "$_ns" push -q -u origin HEAD
+git init -q "$_np"
+git -C "$_np" config user.email verify@local
+git -C "$_np" config user.name verify
+git -C "$_np" config commit.gpgsign false
+echo code > "$_np/a.txt"
+printf 'session_compact.md\nsession_transcript.md\nnotes.allow\n.env\n.local/\n' > "$_np/.gitignore"
+git -C "$_np" add a.txt .gitignore && git -C "$_np" commit -qm code
+git -C "$_np" remote add origin 'git@github.com:FirstIntegral/notes-fixture.git'
+echo alpha-compact > "$_np/session_compact.md"
+printf 'alpha-transcript\n' > "$_np/session_transcript.md"
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pushed" ] \
+   && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/firstintegral/notes-fixture" ] \
+   && [ "$(git -C "$_ns" log -1 --format='%b')" = "$(printf 'session_compact.md\nsession_transcript.md\n')" ] \
+   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/session_compact.md")" = "alpha-compact" ] \
+   && ! git -C "$_ns" log -1 --format='%b' | grep -q 'alpha-compact'; then
+  ok "notes push copies bytes and does not quote them"
+else
+  bad "notes push (exit $_rc, out $_out)"
+fi
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: current" ]; then
+  ok "second notes push is current"
+else
+  bad "second notes push (exit $_rc, out $_out)"
+fi
+printf '%s\n' '.env' 'a.txt' > "$_np/notes.allow"
+echo SECRETKEY > "$_np/.env"
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-warn.txt)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pushed" ] \
+   && ! git -C "$_ns" ls-files | grep -q '/.env$' \
+   && grep -q 'denied .env' /tmp/notes-warn.txt \
+   && grep -q 'tracked a.txt' /tmp/notes-warn.txt; then
+  ok "notes.allow denies .env and skips a tracked path"
+else
+  bad "notes.allow filter (exit $_rc)"
+fi
+_np2="$(mktemp -d)"
+git init -q "$_np2"
+git -C "$_np2" config user.email verify@local
+git -C "$_np2" config user.name verify
+git -C "$_np2" config commit.gpgsign false
+echo x > "$_np2/a.txt"
+printf 'session_compact.md\nsession_transcript.md\nnotes.allow\n' > "$_np2/.gitignore"
+git -C "$_np2" add a.txt .gitignore && git -C "$_np2" commit -qm x
+git -C "$_np2" remote add origin 'git@github.com:FirstIntegral/notes-fixture.git'
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" pull "$_np2" 2>/dev/null)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pulled" ] \
+   && [ "$(cat "$_np2/session_compact.md")" = "alpha-compact" ] \
+   && [ "$(cat "$_np2/session_transcript.md")" = "alpha-transcript" ]; then
+  ok "fresh checkout installs notes"
+else
+  bad "fresh notes pull (exit $_rc, out $_out)"
+fi
+echo remote-side > "$_ns/github.com/firstintegral/notes-fixture/session_compact.md"
+git -C "$_ns" add github.com/firstintegral/notes-fixture/session_compact.md
+git -C "$_ns" commit -qm remote
+git -C "$_ns" push -q origin HEAD
+echo local-side > "$_np/session_compact.md"
+_rc=0
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >/tmp/notes-div.out 2>/tmp/notes-div.err || _rc=$?
+if [ "$_rc" -eq 23 ] && [ "$(cat "$_np/session_compact.md")" = "local-side" ] \
+   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/session_compact.md")" = "remote-side" ]; then
+  ok "notes diverge exits 23 and writes nothing"
+else
+  bad "notes diverge (exit $_rc)"
+fi
+_before_ns="$(git -C "$_ns" rev-parse HEAD)"
+# Raw origin URL stays the notes key. insteadOf keeps checkpoint's ls-remote off the network.
+git -C "$_np" config url."$_nbare/n.git".insteadOf "git@github.com:FirstIntegral/notes-fixture.git"
+_rc=0
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" --dry-run >/tmp/notes-dry.out 2>&1 || _rc=$?
+if [ "$_rc" -eq 0 ] || [ "$_rc" -eq 3 ] || [ "$_rc" -eq 12 ] || [ "$_rc" -eq 13 ] || [ "$_rc" -eq 14 ]; then
+  if grep -q 'notes:' /tmp/notes-dry.out; then
+    bad "dry-run mentioned notes"
+  elif [ "$(git -C "$_ns" rev-parse HEAD)" != "$_before_ns" ]; then
+    bad "dry-run moved the notes clone"
+  else
+    ok "dry-run returns before notes"
+  fi
+else
+  bad "dry-run exit $_rc"
+fi
+_rc=0
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" >/tmp/notes-live.out 2>&1 || _rc=$?
+if grep -q 'notes: skipped' /tmp/notes-live.out \
+   && [ "$(git -C "$_ns" rev-parse HEAD)" = "$_before_ns" ]; then
+  ok "checkpoint drops NOTES_SYNC_TEST_ROOT and skips /tmp"
+else
+  bad "checkpoint test-root guard (exit $_rc)"
+fi
+if [ -n "$_notes_pin" ]; then
+  if [ "$(git -C "$_notes_real" rev-parse HEAD)" = "$_notes_pin" ]; then
+    ok "fixtures did not write the real machine-notes clone"
+  else
+    bad "fixtures moved the real machine-notes clone"
+  fi
+else
+  ok "no machine-notes clone yet (fixture pin skipped)"
+fi
+rm -rf "$_ns" "$_nbare" "$_np" "$_np2"
+rm -f /tmp/notes-warn.txt /tmp/notes-div.out /tmp/notes-div.err /tmp/notes-dry.out /tmp/notes-live.out
 
 echo "[rule oracles]"
 if [ -x "$HOOKS/rule-oracles.sh" ]; then

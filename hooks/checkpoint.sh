@@ -21,6 +21,11 @@
 #   push URL owner is not ours      -> commit if needed, do not push        (exit 14)
 #   push fails                      -> commit stays, report                 (exit 21)
 #   otherwise                       -> commit if needed + push              (exit  0)
+#   notes diverge                   -> notes repo unchanged                 (exit 23)
+#
+# After the leak check passes, exits 0, 3, 12, 13, 14, and 21 call
+# hooks/notes-sync.sh push. Exits 10, 11, 15, 20, and 22 do not. --dry-run
+# returns before any notes stat. A missing notes clone keeps the exit above.
 #
 # NEVER, under any circumstance: create a repo, add a remote, create a GitHub repo,
 # force-push, rebase, reset, amend, or bypass commit signing. A project without a repo or
@@ -145,6 +150,7 @@ $FOREIGN_BEGIN
 /session_compact.md
 /session_transcript.md
 /claude_memory_import.md
+/notes.allow
 $FOREIGN_END
 EOF
   mv "$tmp" "$ex"
@@ -160,7 +166,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -m|--message) [ $# -ge 2 ] || die "$1 needs a value"; SUBJECT="$2"; shift 2 ;;
     --dry-run)    DRY=1; shift ;;
-    -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help)    sed -n '2,40p' "$0"; exit 0 ;;
     -*)           die "unknown flag: $1" ;;
     *)            [ -z "$PROJECT" ] || die "more than one project path given"; PROJECT="$1"; shift ;;
   esac
@@ -184,6 +190,37 @@ refuse_brain() {
   exit 22
 }
 BRAIN_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
+
+# Project commit already happened, or there was nothing to commit. Notes sync
+# never rolls that commit back. Dry-run does not stat the notes clone.
+finish() {
+  local want="$1" nrc=0
+  if [ "$DRY" = 1 ]; then
+    exit "$want"
+  fi
+  if [ ! -f "$BRAIN_DIR/hooks/notes-sync.sh" ]; then
+    echo "  notes    hooks/notes-sync.sh missing"
+    exit 21
+  fi
+  (
+    unset NOTES_SYNC_TEST_ROOT
+    bash "$BRAIN_DIR/hooks/notes-sync.sh" push "$PROJECT"
+  ) || nrc=$?
+  if [ "$nrc" -eq 23 ]; then
+    echo "== checkpoint: notes diverge (exit 23). Notes repo unchanged."
+    exit 23
+  fi
+  if [ "$nrc" -eq 20 ]; then
+    echo "== checkpoint: notes.allow would be published (exit 20)"
+    exit 20
+  fi
+  if [ "$nrc" -ne 0 ]; then
+    echo "== checkpoint: notes sync failed (exit $nrc). Project commit was not rolled back."
+    exit 21
+  fi
+  exit "$want"
+}
+
 if [ "$PROJECT" = "$BRAIN_DIR" ]; then
   refuse_brain
 fi
@@ -273,7 +310,7 @@ fi
 # The transcript is the user's private log. A checkpoint that publishes it is the one
 # failure here that cannot be walked back, so it is checked before `git add`, not after.
 LEAKED=()
-for f in session_compact.md session_transcript.md claude_memory_import.md; do
+for f in session_compact.md session_transcript.md claude_memory_import.md notes.allow; do
   [ -e "$PROJECT/$f" ] || continue
   if git -C "$PROJECT" ls-files --error-unmatch "$f" >/dev/null 2>&1; then
     LEAKED+=("$f (already tracked)")
@@ -301,7 +338,7 @@ if [ -z "$(git -C "$PROJECT" status --porcelain)" ]; then
   UNPUSHED="$(git -C "$PROJECT" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)"
   if [ "${UNPUSHED:-0}" -eq 0 ]; then
     echo "  tree     clean — nothing to commit, nothing unpushed"
-    exit 3
+    finish 3
   fi
   echo "  tree     clean — nothing to commit, but $UNPUSHED commit(s) not on any remote"
   NOTHING_TO_COMMIT=1
@@ -379,7 +416,7 @@ if [ "$DRY" != 1 ]; then
     bash "$HOME/.agents/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
     git -C "$PROJECT" commit -q -m "$SUBJECT" || {
       echo "  commit   FAILED — not bypassing signing. Unlock the key and re-run."
-      exit 21
+      finish 21
     }
   fi
   HASH="$(git -C "$PROJECT" rev-parse --short HEAD)"
@@ -396,22 +433,22 @@ fi
 if [ "$OUTSIDE_PUSH" = 1 ]; then
   echo "  push     skipped — push URL owner is not ours"
   echo "== checkpoint: ${HASH:-none} not pushed (exit 14)"
-  exit 14
+  finish 14
 fi
 if [ -z "$REMOTE" ]; then
   if [ "$UNREACHABLE" = 1 ]; then
     echo "  push     skipped — remote configured but not reachable"
     echo "           NOT creating it. If the repo should exist, create it yourself and re-run."
     echo "== checkpoint: $HASH not pushed (remote unreachable)"
-    exit 13
+    finish 13
   fi
   echo "  push     skipped — no remote; local only"
   echo "== checkpoint: $HASH not pushed (no remote)"
-  exit 12
+  finish 12
 fi
 if [ "$DRY" = 1 ]; then
   echo "  DRY    git -C $PROJECT push"
-  exit 0
+  finish 0
 fi
 if [ -n "$UPSTREAM" ]; then
   PUSH_OUT="$(git -C "$PROJECT" push 2>&1)"; RC=$?
@@ -423,7 +460,7 @@ if [ $RC -ne 0 ]; then
   # session, never force-resolved at the end of a day.
   echo "$PUSH_OUT" | sed 's/^/           /'
   echo "  push     FAILED — commit $HASH is safe locally. Not retrying, not forcing."
-  exit 21
+  finish 21
 fi
 echo "  push     ok -> $REMOTE/$BRANCH"
 if [ "$NOTHING_TO_COMMIT" = 1 ]; then
@@ -431,4 +468,4 @@ if [ "$NOTHING_TO_COMMIT" = 1 ]; then
 else
   echo "== checkpoint: committed and pushed $HASH"
 fi
-exit 0
+finish 0

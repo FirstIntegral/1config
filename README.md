@@ -119,7 +119,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. |
 | `permissions.json` | One policy, fanned out to all three tools. `bash_without_prompt` is true. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
-| `hooks/` | GPG unlock, checkpoint, guards, heredoc rewrite. |
+| `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |

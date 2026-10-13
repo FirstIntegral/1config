@@ -737,6 +737,19 @@ else
   log "WARNING: hooks/checkpoint.sh missing"
 fi
 
+echo "[notes] notes-sync.sh (private machine-notes half of checkpoint / continue)"
+NS_SRC="$AGENTS_HOME/hooks/notes-sync.sh"
+if [ -f "$NS_SRC" ]; then
+  chmod +x "$NS_SRC"
+  if bash -n "$NS_SRC" 2>/dev/null; then
+    log "ready   hooks/notes-sync.sh"
+  else
+    log "WARNING: hooks/notes-sync.sh has a syntax error"
+  fi
+else
+  log "WARNING: hooks/notes-sync.sh missing"
+fi
+
 # --- staleness watch (direct-reference, armed beside every detached run) ------
 echo "[watch-stale] watch-stale.sh (staleness watch for detached runs)"
 WS_SRC="$AGENTS_HOME/hooks/watch-stale.sh"
