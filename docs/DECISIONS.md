@@ -408,3 +408,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Grok Bot keeps a separate weekly meter from the CLI's `creditUsagePercent`. On 2026-10-12 the CLI snapshot was 1% and reset on 2026-10-18, while the Bot cache was 100% and reset the same evening. One Grok row cannot show both.
 
 **Rejected:** Folding the Bot percent into the Grok credits row. Fetching the Bot meter over the network. Reading the transcript blobs next to the usage cache.
+
+## 2026-10-13 — Grok Bot cache from a previous week is dropped
+
+**Decision:** The Grok Bot card also drops a `weekly-usage.cache` reading whose `nextResetMs` is already in the past, even when `expiresAtMs` is still in the future. The card then shows "Usage cache predates this week" instead of the dead percent.
+
+**Why:** The laptop hibernated through the weekly reset. The app had not rewritten its cache yet, so the last slice (100% from the week that just ended) still looked "not expired" and the card kept showing 100% after the meter had cleared to ~5%. `expiresAtMs` alone cannot detect a week boundary the app slept through; `nextResetMs` in the past is exactly that boundary.
+
+**Rejected:** Shortening the trust window below `expiresAtMs` (fabricates a TTL the app did not set). Ignoring the cache until the app rewrites it (indistinguishable from a genuinely full week).

@@ -467,10 +467,17 @@ def grokbot_agent(home: Path, now: datetime) -> dict:
         # The app keeps the file after the window rolls. An old 100% must not stick.
         card["status"] = "Usage cache expired"
         return card
+    resets = _ms_iso(usage.get("nextResetMs"))[:40]
+    rollover = parse_time(resets)
+    if rollover is not None and rollover <= now:
+        # The weekly window ended while the app was asleep (hibernation): expiresAtMs
+        # is still in the future, but this reading measures last week. An old 100%
+        # from before the reset must not stick either.
+        card["status"] = "Usage cache predates this week"
+        return card
     limits = []
     # percentUsed is already 0–100. 1 is 1%. Do not rescale.
     used = as_percent(usage.get("percentUsed"), fraction_if_unit=False)
-    resets = _ms_iso(usage.get("nextResetMs"))[:40]
     if used is not None:
         limits.append({"label": "Weekly", "usedPct": used, "resetsAt": resets})
     demand = usage.get("onDemand")
@@ -1572,10 +1579,11 @@ def self_test() -> None:
             fresh = grok_agent(home, now)
             assert fresh["limits"][0]["usedPct"] == expect, fresh["limits"]
 
-        def write_bot(percent: float, expires: datetime, demand: dict | None) -> None:
+        def write_bot(percent: float, expires: datetime, demand: dict | None, reset: datetime | None = None) -> None:
             cache_dir = home / ".config" / "Grok Bot" / "sand-client-persistence"
             cache_dir.mkdir(parents=True, exist_ok=True)
             stem = base64.b32encode(b"sand.client.slice.weekly-usage.cache").decode().rstrip("=").lower()
+            reset_time = reset or datetime(2026, 10, 16, tzinfo=timezone.utc)
             blob = {
                 "schemaVersion": 2,
                 "value": {
@@ -1583,7 +1591,7 @@ def self_test() -> None:
                     "reading": {
                         "usage": {
                             "percentUsed": percent,
-                            "nextResetMs": int(datetime(2026, 10, 16, tzinfo=timezone.utc).timestamp() * 1000),
+                            "nextResetMs": int(reset_time.timestamp() * 1000),
                             "hasNonZeroIncludedLimit": True,
                             "onDemand": demand,
                         },
@@ -1611,6 +1619,9 @@ def self_test() -> None:
         write_bot(100, datetime(2026, 10, 8, 14, tzinfo=timezone.utc), None)
         stale = grokbot_agent(home, now)
         assert stale["limits"] == [] and stale["status"] == "Usage cache expired", stale
+        write_bot(100, fresh_until, None, reset=datetime(2026, 10, 8, 14, tzinfo=timezone.utc))
+        rolled = grokbot_agent(home, now)
+        assert rolled["limits"] == [] and rolled["status"] == "Usage cache predates this week", rolled
     claude = payload["agents"][0]
     grok = payload["agents"][1]
     opencode = payload["agents"][2]

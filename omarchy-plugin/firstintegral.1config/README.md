@@ -14,7 +14,7 @@ The spend list is seven tools, in this order, with anything actually used pulled
 |---|---|
 | Claude, Codex | Omarchy's own usage records. Today tokens, 7-day message counts, limit percent and reset, and `modelUsage` when that file has it. |
 | Grok | `~/.grok/sessions/**/usage.json` turn totals for today and 7 days, plus the latest `creditUsagePercent` Grok already wrote to `~/.grok/logs/unified.jsonl`. That field is already a percent on 0–100 (`1` is 1% used). Up to six models. |
-| Grok Bot | Newest `weekly-usage.cache` slice in `~/.config/Grok Bot/sand-client-persistence`. `percentUsed` is already a percent on 0–100. One Weekly row, plus On demand when that cache has a cent cap. A cache past `expiresAtMs` is dropped. Other blobs in that directory are not read. |
+| Grok Bot | Newest `weekly-usage.cache` slice in `~/.config/Grok Bot/sand-client-persistence`. `percentUsed` is already a percent on 0–100. One Weekly row, plus On demand when that cache has a cent cap. A cache past `expiresAtMs` is dropped, and so is a reading whose `nextResetMs` is already in the past (the week it measures ended — an old 100% from before a reset must not stick). Other blobs in that directory are not read. |
 | OpenAI | Not installed here. The quiet toggle says "Not on this machine" and does not invent a number. |
 | Cursor | `cursor-agent` can be on `PATH`. There is no usage ledger for it yet, so the quiet toggle says "No usage record on this machine". |
 | OpenCode Go | `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key already in `auth.json`. Three windows: rolling, weekly, monthly. Cached ten minutes. A rolling window at 0% reads "Starts on first use". |
