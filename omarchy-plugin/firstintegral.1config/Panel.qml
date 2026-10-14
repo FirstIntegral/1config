@@ -335,6 +335,26 @@ Panel {
         }
 
         Text {
+          id: cardUsage
+          visible: !card.quiet && text !== ""
+          width: parent.width
+          text: {
+            var today = Number(card.agent.todayTokens || 0)
+            var week = Number(card.agent.weekTokens || 0)
+            if (today <= 0 && week <= 0) return ""
+            var bits = []
+            if (today > 0) bits.push("today " + String(card.agent.todayLabel || today))
+            if (week > 0) bits.push("7d " + String(card.agent.weekLabel || week))
+            return bits.join("  ·  ")
+          }
+          color: root.accent
+          opacity: 0.7
+          font.family: root.monoFamily
+          font.pixelSize: Style.font.title
+          font.bold: true
+        }
+
+        Text {
           visible: !card.quiet && String(card.agent.note || "") !== ""
           width: parent.width
           text: String(card.agent.note || "")

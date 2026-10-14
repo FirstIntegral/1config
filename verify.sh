@@ -1936,10 +1936,11 @@ if grep -q 'isUnifiedBillingUser' "$PLUGIN/bin/usage.py" \
    && grep -q 'One plan for X, Grok Build, Grok Bot, and Cursor' "$PLUGIN/bin/usage.py" \
    && grep -q 'agent.note' "$PLUGIN/Panel.qml" \
    && grep -q '"x"' "$PLUGIN/bin/usage.py" \
-   && grep -q '.cursor/AGENTS.md' "$PLUGIN/bin/usage.py"; then
-  ok "1config spend has the unified X plan card and the Cursor link"
+   && grep -q '.cursor/AGENTS.md' "$PLUGIN/bin/usage.py" \
+   && grep -q 'cardUsage' "$PLUGIN/Panel.qml"; then
+  ok "1config spend has the unified X plan card, the usage line, and the Cursor link"
 else
-  bad "1config spend missing the unified X plan card or the Cursor link"
+  bad "1config spend missing the unified X plan card, the usage line, or the Cursor link"
 fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then
