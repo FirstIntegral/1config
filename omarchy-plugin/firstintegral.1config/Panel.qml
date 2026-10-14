@@ -70,6 +70,45 @@ Panel {
   function refresh() { if (root.service) root.service.refresh() }
   function refreshLimits() { if (root.service) root.service.refreshLimits() }
 
+  // Non-ok vitals, one block the Fix button can hand to grok.
+  function faultLines() {
+    var lines = []
+    var vitals = root.brain.vitals || []
+    for (var i = 0; i < vitals.length; i++) {
+      var v = vitals[i]
+      if (!v || String(v.state || "") === "ok") continue
+      lines.push(String(v.name || v.id) + "  " + String(v.state || "") + "  " + String(v.detail || ""))
+      var more = v.more || []
+      for (var k = 0; k < more.length; k++) lines.push("  " + String(more[k]))
+    }
+    return lines
+  }
+  readonly property bool canFix: root.revision >= 0 && faultLines().length > 0
+
+  function askGrok() {
+    var lines = []
+    if (root.detailOpen && root.detailLines.length) {
+      lines.push(String(root.detailTitle || "Fault")
+        + (root.detailNote ? " — " + root.detailNote : ""))
+      for (var i = 0; i < root.detailLines.length; i++) lines.push(String(root.detailLines[i]))
+    } else {
+      lines = root.faultLines()
+    }
+    if (!lines.length) return
+    var home = String(Quickshell.env("HOME") || "")
+    var prompt = "The 1config panel on this machine reports a fault. Fix it.\n\n"
+      + lines.join("\n")
+      + "\n\nBrain checkout is ~/.agents (FirstIntegral/1config). If you edit that tree, run bash ~/.agents/setup.sh and then bash ~/.agents/sync.sh in the same turn. Signed commit, no AI attribution line."
+    Quickshell.execDetached([
+      "omarchy-launch-tui",
+      "--app-id=org.firstintegral.1config.fix",
+      "grok",
+      "--cwd",
+      home + "/.agents",
+      prompt
+    ])
+  }
+
   function tint(a) {
     return Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, a)
   }
@@ -156,6 +195,7 @@ Panel {
     }
     else if (t === "a" || t === "A") root.showQuiet = !root.showQuiet
     else if (t === "m" || t === "M") root.showModels = !root.showModels
+    else if ((t === "f" || t === "F") && root.canFix) root.askGrok()
   }
 
   readonly property var panelBorder: {
@@ -856,6 +896,7 @@ Panel {
                 height: Math.max(Style.space(60),
                   detailCol.height - detailTitleText.implicitHeight
                     - (detailNoteText.visible ? detailNoteText.implicitHeight + detailCol.spacing : 0)
+                    - (fixButton.visible ? fixButton.implicitHeight + detailCol.spacing : 0)
                     - detailEscText.implicitHeight - detailCol.spacing * 2)
                 contentWidth: width
                 contentHeight: detailLinesCol.implicitHeight
@@ -883,6 +924,31 @@ Panel {
                   }
                 }
               }
+              Rectangle {
+                id: fixButton
+                visible: root.detailLines.length > 0
+                width: fixLabel.implicitWidth + Style.space(28)
+                implicitHeight: fixLabel.implicitHeight + Style.space(14)
+                height: implicitHeight
+                radius: Style.space(6)
+                color: root.accentA(0.18)
+                border.width: 1
+                border.color: root.tileEdge(true, false)
+                Text {
+                  id: fixLabel
+                  anchors.centerIn: parent
+                  text: "Fix with Grok"
+                  color: root.contentForeground
+                  font.family: root.proseFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.askGrok()
+                }
+              }
               Text {
                 id: detailEscText
                 width: parent.width
@@ -904,18 +970,19 @@ Panel {
           spacing: Style.space(6)
           Repeater {
             model: [
-              { k: "esc", t: "close", spend: false },
-              { k: "r", t: "re-read", spend: false },
-              { k: "s", t: "spend", spend: false },
-              { k: "v", t: "vitals", spend: false },
-              { k: "u", t: "limits", spend: true },
-              { k: "a", t: "all", spend: true },
-              { k: "m", t: "models", spend: true }
+              { k: "esc", t: "close", spend: false, fix: false },
+              { k: "r", t: "re-read", spend: false, fix: false },
+              { k: "f", t: "fix", spend: false, fix: true },
+              { k: "s", t: "spend", spend: false, fix: false },
+              { k: "v", t: "vitals", spend: false, fix: false },
+              { k: "u", t: "limits", spend: true, fix: false },
+              { k: "a", t: "all", spend: true, fix: false },
+              { k: "m", t: "models", spend: true, fix: false }
             ]
             Rectangle {
               id: chip
               required property var modelData
-              visible: !modelData.spend || root.mode === "usage"
+              visible: (!modelData.spend || root.mode === "usage") && (!modelData.fix || root.canFix)
               implicitWidth: chipRow.implicitWidth + Style.space(12)
               implicitHeight: chipRow.implicitHeight + Style.space(6)
               radius: Style.space(4)
@@ -949,6 +1016,12 @@ Panel {
                   font.capitalization: Font.SmallCaps
                   font.letterSpacing: 0.3
                 }
+              }
+              MouseArea {
+                anchors.fill: parent
+                enabled: chip.modelData.fix === true
+                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: root.askGrok()
               }
             }
           }

@@ -24,7 +24,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **memory guard** | Claude/Grok residue clean |
 | **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. Runs **before** ecosystem so inventory refresh finishes first. |
 | **setup** | Only after a real fast-forward (`fast-forwarded N` on exit 0). Runs `bash ~/.agents/setup.sh` after tool updates and before ecosystem. Up to date, ahead, dirty, and diverged skip it. A failure is its own row. Does not run `sync.sh`. Quiet boots have no setup row. |
-| **ecosystem** | `verify.sh` PASS (after tool updates, and after setup on a fast-forward — avoids grading the pre-pull install) |
+| **ecosystem** | `verify.sh` PASS (after tool updates, and after setup on a fast-forward — avoids grading the pre-pull install). A run that prints `FAIL` lines is `verify FAIL (n)`. A run that dies before any `FAIL` line (no `== PASS` either) is `verify aborted`, with the exit code and the last output line — not `verify FAIL (0)`. |
 | **tool versions** | grok / claude / opencode on PATH |
 | **signing** | Runs **first**, before tool-update / verify. Unlocks the GPG signing key from the dedicated `gpg-signing` collection (key from `git config user.signingkey` / `$GPG_SIGNING_KEY`; migrates out of bricked default `.keyring` files). Warn: nothing stored / dbus down / passphrase rejected — not a generic "locked". Git commits themselves go through `hooks/gpg-git.sh` (loopback, no pinentry GUI). |
 

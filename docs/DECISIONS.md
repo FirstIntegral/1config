@@ -415,7 +415,7 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 
 ## 2026-10-10 — Skills follow-up: trims in UPSTREAM.md, OpenCode check, rules line
 
-**Decision:** Each `skills/<name>/UPSTREAM.md` lists its own trims (it pointed at a proposal file outside the repo). `verify.sh` checks OpenCode discovery with `opencode debug skill`. Grok has no listing command and is checked only through the shared dir (SETUP.md §4). `AGENTS.md` gets two short lines: skills wiring under tri-tool parity and the skills home under `global_brain_update` step 2. The figure shows the tracked skills.
+**Decision:** Each `skills/<name>/UPSTREAM.md` lists its own trims (it pointed at a proposal file outside the repo). `verify.sh` checked OpenCode discovery with `opencode debug skill` (that command is gone; the live check is the 2026-10-14 entry). Grok has no listing command and is checked only through the shared dir (SETUP.md §4). `AGENTS.md` gets two short lines: skills wiring under tri-tool parity and the skills home under `global_brain_update` step 2. The figure shows the tracked skills.
 
 **Why:** Tri-tool parity requires a verify check per tool. A pointer to a file outside the repo breaks on every other clone.
 
@@ -444,3 +444,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** The laptop hibernated through the weekly reset. The app had not rewritten its cache yet, so the last slice (100% from the week that just ended) still looked "not expired" and the card kept showing 100% after the meter had cleared to ~5%. `expiresAtMs` alone cannot detect a week boundary the app slept through; `nextResetMs` in the past is exactly that boundary.
 
 **Rejected:** Shortening the trust window below `expiresAtMs` (fabricates a TTL the app did not set). Ignoring the cache until the app rewrites it (indistinguishable from a genuinely full week).
+
+## 2026-10-14 — OpenCode skill list, and Fix with Grok
+
+**Decision:** `verify.sh` lists OpenCode skills with `opencode api skill.list --standalone`. The subshell exit is captured, so `set -e` cannot abort the script. A non-zero exit is a FAIL. An empty `data` array is an INFO. A non-empty list that omits a tracked name is a FAIL. The boot dashboard calls a verify run with no `== PASS` and no `FAIL` lines `verify aborted`, with the exit code and the last output line. The 1config detail layer has a Fix with Grok button (`f` does the same). It opens `omarchy-launch-tui` on `grok --cwd ~/.agents` with the open detail lines, or every non-ok vital when no detail is open. A close-slip line whose first field is `fail` is a fault on the Boot slip tile.
+
+**Why:** Login on 2026-10-14 printed `verify FAIL (0)` and NOT READY. OpenCode 2.0.28 removed `opencode debug skill` (the command exits 1 with help text). `verify.sh` is `set -euo pipefail`, so that exit killed the script before `bad()` and before the summary. The dashboard greps `^  FAIL  `, counts zero, and writes `verify FAIL (0)`. The replacement list command returns `"data":[]` because OpenCode scans with `{*.md,**/SKILL.md}` and Bun 1.4.2 matches nothing for that brace. Failing the boot on that empty list would stay red until upstream changes the glob. The skill files and the Claude symlinks are still checked. The button is how the next slip reaches grok without copying the lines by hand.
+
+**Rejected:** Keeping `opencode debug skill` and ignoring its exit (the check would pass on help text). Treating an empty `skill.list` as a FAIL (every boot stays NOT READY for a Bun glob this repo cannot patch). A headless `grok -p` that edits `~/.agents` from the panel (no one is watching the tools). Patching the OpenCode binary.

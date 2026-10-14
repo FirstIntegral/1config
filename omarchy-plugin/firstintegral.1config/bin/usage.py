@@ -1153,6 +1153,13 @@ def _slip_state(root: Path) -> tuple[str, str, list[str]]:
     if lines and lines[0].strip() == "CLEAN":
         return "ok", "clean", []
     shown = [text for text in (_more_line(line) for line in lines) if text][:8]
+    kinds = []
+    for line in lines:
+        head = line.split("  ", 1)[0].strip()
+        if head in {"fail", "warn"}:
+            kinds.append(head)
+    if "fail" in kinds:
+        return "fail", "fail", shown
     return "warn", "warn", shown
 
 
@@ -1800,6 +1807,14 @@ def self_test() -> None:
         assert worn_brain["verdict"] == "warn", worn_brain["verdict"]
         assert worn_slip["more"] == ["warn  omarchy dots  1 edited: hypr/bindings.lua — not applied"], worn_slip
         assert worn_tree["more"] == ["M boot-dashboard/dashboard.sh"], worn_tree
+        (slip_dir / "close-slip.txt").write_text(
+            "fail  ecosystem  verify aborted (exit 1) — dead command\n",
+            encoding="utf-8",
+        )
+        failed_brain = brain_status(healthy, which=finder, git=fake_git)
+        failed_slip = next(item for item in failed_brain["vitals"] if item["id"] == "slip")
+        assert failed_slip["state"] == "fail", failed_slip
+        assert failed_brain["verdict"] == "fault", failed_brain["verdict"]
     assert healthy_brain["verdict"] == "clear", [
         (item["id"], item["state"], item["detail"])
         for item in healthy_brain["vitals"]

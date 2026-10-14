@@ -1937,6 +1937,15 @@ if grep -q 'signal detailRequested' "$PLUGIN/Vitals.qml" \
 else
   bad "1config vitals detail-on-click missing (Vitals.qml/Panel.qml/usage.py)"
 fi
+if grep -q 'function askGrok' "$PLUGIN/Panel.qml" \
+   && grep -q 'omarchy-launch-tui' "$PLUGIN/Panel.qml" \
+   && grep -q 'Fix with Grok' "$PLUGIN/Panel.qml" \
+   && grep -q 'org.firstintegral.1config.fix' "$PLUGIN/Panel.qml" \
+   && grep -q 'verify aborted' "$BD/dashboard.sh"; then
+  ok "1config Fix with Grok opens the fault, and a verify abort is named"
+else
+  bad "1config Fix with Grok button missing, or the dashboard still says verify FAIL (0)"
+fi
 if [ -d "$HOME/.config/omarchy/plugins" ]; then
   if diff -rq "$PLUGIN" "$HOME/.config/omarchy/plugins/firstintegral.1config" >/dev/null; then
     ok "installed 1config plugin matches the brain copy"
@@ -2064,11 +2073,34 @@ for _m in omarchy diagnose-crash vigil; do
   fi
 done
 if command -v opencode >/dev/null 2>&1; then
-  # to a file, not $(...): opencode exits before flushing a >64 KB pipe
-  _ocf="$(mktemp)"; (cd /tmp && timeout 30 opencode debug skill >"$_ocf" 2>/dev/null); _oc="$(cat "$_ocf")"; rm -f "$_ocf"
-  for _s in $_skill_list; do
-    grep -q "\"name\": *\"$_s\"" <<<"$_oc" && ok "skill $_s: opencode discovers it" || bad "skill $_s: opencode debug skill does not list it"
-  done
+  # to a file, not $(...): opencode exits before flushing a >64 KB pipe.
+  # The subshell status must not abort this script. `opencode debug skill`
+  # was removed in 2.0.28 and exited 1; set -e then died here with no FAIL
+  # line, and the boot row said "verify FAIL (0)".
+  _ocf="$(mktemp)"
+  _oc_rc=0
+  (cd /tmp && timeout 40 opencode api skill.list --standalone >"$_ocf" 2>/dev/null) || _oc_rc=$?
+  _oc="$(cat "$_ocf" 2>/dev/null || true)"
+  rm -f "$_ocf"
+  if [ "$_oc_rc" -ne 0 ]; then
+    bad "opencode api skill.list exited $_oc_rc"
+  else
+    _missing=""
+    for _s in $_skill_list; do
+      grep -q "\"name\": *\"$_s\"" <<<"$_oc" || _missing="${_missing} ${_s}"
+    done
+    _missing="${_missing# }"
+    if [ -z "$_missing" ] && [ -n "$_skill_list" ]; then
+      ok "opencode skill.list includes the tracked skills"
+    else
+      _flat="$(printf '%s' "$_oc" | tr -d '[:space:]')"
+      if [ -z "$_flat" ] || printf '%s' "$_flat" | grep -q '"data":\[\]'; then
+        info "opencode skill.list is empty — 2.0.28 scans with a bun brace glob that matches nothing; skill files stay the check"
+      else
+        bad "opencode skill.list missing: ${_missing}"
+      fi
+    fi
+  fi
 else
   info "opencode not on PATH — skip skill discovery check"
 fi

@@ -202,15 +202,30 @@ check_verify() {
     row fail "verify" "verify.sh missing"
     return 1
   fi
-  local out rc
-  out="$(bash "$AGENTS_HOME/verify.sh" 2>&1)" || true
+  local out rc nfail last
+  rc=0
+  out="$(bash "$AGENTS_HOME/verify.sh" 2>&1)" || rc=$?
   if echo "$out" | grep -q '== PASS'; then
     row ok "ecosystem" "verify PASS"
     return 0
   fi
   # Count real check failures only ("  FAIL  ..."), not the "== FAIL ==" summary line.
-  local nfail
+  # Zero of those, and no PASS, means the script died (set -e) before bad().
+  # Reporting that as "verify FAIL (0)" hid the dead command.
   nfail="$(echo "$out" | grep -cE '^  FAIL  ' || true)"
+  if [ "$nfail" -eq 0 ]; then
+    last="$(printf '%s\n' "$out" | sed '/^$/d' | tail -1)"
+    last="${last#"${last%%[![:space:]]*}"}"
+    if [ "${#last}" -gt 90 ]; then
+      last="${last:0:87}..."
+    fi
+    if [ -n "$last" ]; then
+      row fail "ecosystem" "verify aborted (exit $rc) — $last"
+    else
+      row fail "ecosystem" "verify aborted (exit $rc) — no FAIL lines"
+    fi
+    return 1
+  fi
   row fail "ecosystem" "verify FAIL ($nfail) — bash ~/.agents/verify.sh"
   return 1
 }

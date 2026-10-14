@@ -2,7 +2,7 @@
 
 Omarchy bar plugin that ships with [1config](https://github.com/FirstIntegral/1config). The bar face is the ring. The panel is spend, and vitals for whether this checkout is actually correct.
 
-Left click opens a card under the bar icon, on vitals. Right click re-reads local files. `s` opens spend. `v` and `g` return to vitals. A tile marked `›` carries detail: Boot slip opens the warn/fail lines the boot dashboard wrote at its last exit, and a dirty Work tree opens the uncommitted files. `esc` (or a click on the detail) goes back.
+Left click opens a card under the bar icon, on vitals. Right click re-reads local files. `s` opens spend. `v` and `g` return to vitals. A tile marked `›` carries detail: Boot slip opens the warn/fail lines the boot dashboard wrote at its last exit, and a dirty Work tree opens the uncommitted files. A fail line makes that tile a fault. `esc` (or a click on the detail) goes back. The detail has a Fix with Grok button, and `f` does the same from the vitals page: it opens a terminal running `grok` in `~/.agents` with the open lines, or every non-ok vital when no detail is open.
 
 The bar shows the ring only, at the bar's own icon size. The tooltip still names the hottest plan (the self-test fixture produces `Claude 50%`) and starts with the brain verdict. An accent dot pulses on the bar when a limit is at 80% or more, and when a vital is a fault.
 
@@ -34,7 +34,7 @@ Vitals is the checkout, not a diagram of it. Each tile is one check and one shor
 | Permissions | `permissions.json` parses, including `bash_without_prompt`. `local.json` may override that flag |
 | Hooks | the nine install and guard scripts are in `hooks/` |
 | Scaffolds | project template, paper template, its build script, and the Lean lakefile are present |
-| Boot slip | the last boot dashboard exit wrote `CLEAN`, except an `ecosystem` or `setup` row that a later `verify.sh` or finished `setup.sh` has already replaced. Other rows stay until the next exit. A missing slip is a warn, not a fault; click for the warn/fail lines. The card re-reads the file about every 120s |
+| Boot slip | the last boot dashboard exit wrote `CLEAN`, except an `ecosystem` or `setup` row that a later `verify.sh` or finished `setup.sh` has already replaced. Other rows stay until the next exit. A missing slip is a warn, not a fault. A line that starts with `fail` is a fault. Click for the lines. Fix with Grok (`f`) opens those lines in a grok terminal. The card re-reads the file about every 120s |
 | Memory guard | the installed cron script is present and the residue flag is absent |
 | Symlink guard | the installed cron script is present and the stray flag is absent |
 | Boot dashboard | the installed autostart `Exec` line points at this checkout's `launch.sh` |
