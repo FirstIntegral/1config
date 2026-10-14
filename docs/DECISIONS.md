@@ -2,7 +2,7 @@
 
 ## 2026-10-14 — Welcome walkthrough in hooks/welcome.js with AI curation rule
 
-**Decision:** Ship the 8-page interactive terminal welcome walkthrough at `hooks/welcome.js` (`node ~/.agents/hooks/welcome.js`, with `--self-test` checking 80..106 column border alignment). On any future brain update (`global_brain_update` or any edit under `~/.agents/**`), the AI evaluates whether the change belongs in `hooks/welcome.js`: user-facing triggers, rules, hooks, or architectural changes update the walkthrough in the same turn, while internal plumbing stays out.
+**Decision:** Ship the 8-page interactive terminal welcome walkthrough at `hooks/welcome.js` (`node ~/.agents/hooks/welcome.js`, with `--self-test` checking 80..106 column border alignment). `setup.sh` runs it automatically at the end of a fresh machine's first interactive install (recording `~/.local/state/1config/welcome-shown` so subsequent `setup.sh` runs stay non-blocking). On any future brain update (`global_brain_update` or any edit under `~/.agents/**`), the AI evaluates whether the change belongs in `hooks/welcome.js`: user-facing triggers, rules, hooks, or architectural changes update the walkthrough in the same turn, while internal plumbing stays out.
 
 **Why:** A first-install or returning user needs a fast, self-contained terminal walkthrough of the whole brain without reading 70 KB of spec, and an uncurated auto-dump would bloat the 8 pages or overflow the box borders.
 

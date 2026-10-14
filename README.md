@@ -33,7 +33,7 @@ git clone https://github.com/FirstIntegral/1config.git ~/.agents
 #    then:    sudo systemctl enable --now cron     # Ubuntu
 #             sudo systemctl enable --now cronie   # Omarchy/Arch
 
-# 3. Wire the brain (idempotent)
+# 3. Wire the brain (idempotent; launches the 8-page welcome walkthrough on first interactive install)
 bash ~/.agents/setup.sh
 
 # 4. Machine-local, once
@@ -44,10 +44,7 @@ git config --global commit.gpgsign true
 bash ~/.agents/hooks/gpg-store-passphrase.sh        # dedicated gnome-keyring collection
 gh auth login                                       # so sync.sh can fetch/push
 
-# 5. Optional: interactive 8-page welcome walkthrough
-node ~/.agents/hooks/welcome.js
-
-# 6. Optional: resume-from-suspend updater (needs root once)
+# 5. Optional: resume-from-suspend updater (needs root once)
 sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh \
   /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh
 ```

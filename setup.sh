@@ -959,3 +959,14 @@ if [ -x "$AGENTS_HOME/hooks/close-slip.sh" ]; then
   bash "$AGENTS_HOME/hooks/close-slip.sh" clear setup ecosystem \
     || echo "close-slip update failed" >&2
 fi
+
+# On a fresh machine's first interactive setup, launch the 8-page welcome walkthrough
+# automatically as part of wiring the brain. Later setup.sh runs see the stamp and stay non-blocking.
+WELCOME_STAMP="$HOME/.local/state/1config/welcome-shown"
+if [ ! -f "$WELCOME_STAMP" ] && [ -x "$WELCOME_SRC" ] && command -v node >/dev/null 2>&1; then
+  mkdir -p "$(dirname "$WELCOME_STAMP")"
+  if [ -t 0 ] && [ -t 1 ] && [ "${SKIP_WELCOME:-0}" != 1 ]; then
+    node "$WELCOME_SRC" || true
+  fi
+  date -Iseconds > "$WELCOME_STAMP" 2>/dev/null || touch "$WELCOME_STAMP"
+fi
