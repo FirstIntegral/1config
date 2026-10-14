@@ -1,14 +1,14 @@
 # 1config
 
 <p align="center">
-  <img src="logo.svg" width="220" alt="1config. One circle, three tools, one machine.">
+  <img src="logo.svg" width="220" alt="1config. One circle, four tools, one machine.">
 </p>
 
-Canonical AI-terminal brain for **Claude Code**, **Grok**, and **OpenCode**. One rules file, one permission policy, one setup script. Lives at `~/.agents/`. Also called the global brain. The trigger `global_brain_update` edits this repo.
+Canonical AI-terminal brain for **Claude Code**, **Grok**, **OpenCode**, and **Cursor Code**. One rules file, one permission policy, one setup script. Lives at `~/.agents/`. Also called the global brain. The trigger `global_brain_update` edits this repo.
 
 License: [MIT](LICENSE). Use it, including commercially. Keep the copyright notice: Brusk Kawa Abdalla and `github:FirstIntegral/1config`. That notice is the credit.
 
-This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runtime rules the three tools load every session are [`AGENTS.md`](AGENTS.md). Opinionated choices and *why* are [`docs/DECISIONS.md`](docs/DECISIONS.md).
+This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runtime rules the four tools load every session are [`AGENTS.md`](AGENTS.md). Opinionated choices and *why* are [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Supported systems
 
@@ -117,7 +117,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `LICENSE` | MIT. Commercial use is fine. Keep the copyright notice. |
 | `BRAIN_REMOTE` | Origin allowlist. Forks change this file, not the scripts. |
 | `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. |
-| `permissions.json` | One policy, fanned out to all three tools. `bash_without_prompt` is true. |
+| `permissions.json` | One policy, fanned out to Claude, Grok, and OpenCode. Cursor Code autonomy is per-invocation (`--force`/`--sandbox`). `bash_without_prompt` is true. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
 | `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |

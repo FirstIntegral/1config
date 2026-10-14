@@ -114,6 +114,33 @@ link_one() {
 link_one "$HOME/.grok/AGENTS.md"
 link_one "$HOME/.config/opencode/AGENTS.md"
 link_one "$HOME/.claude/CLAUDE.md"
+link_one "$HOME/.cursor/AGENTS.md"
+
+# --- 1c Cursor user rule (alwaysApply mirror of canonical) ------------------
+# Cursor Code's global mechanism is a user rule; the ~/.cursor/AGENTS.md link
+# above covers its AGENTS.md discovery. This file is generated, never edited.
+echo "[1c] Cursor user rule → ~/.cursor/rules/1config.mdc"
+mkdir -p "$HOME/.cursor/rules"
+CURSOR_RULE="$HOME/.cursor/rules/1config.mdc"
+CURSOR_TMP="$(mktemp)"
+{
+  printf '%s\n' '---'
+  printf '%s\n' 'description: 1config global rules (generated — edit ~/.agents/AGENTS.md)'
+  printf '%s\n' 'alwaysApply: true'
+  printf '%s\n' '---'
+  printf '\n'
+  cat "$CANON"
+} > "$CURSOR_TMP"
+if cmp -s "$CURSOR_TMP" "$CURSOR_RULE"; then
+  log "ok       $CURSOR_RULE (matches canonical)"
+else
+  if [ -e "$CURSOR_RULE" ]; then
+    cp -p "$CURSOR_RULE" "$BACKUP_DIR/1config.mdc.pre"
+  fi
+  mv "$CURSOR_TMP" "$CURSOR_RULE"
+  log "wrote    $CURSOR_RULE"
+fi
+rm -f "$CURSOR_TMP"
 
 # --- 1b tracked on-demand skills → Claude ----------------------------------
 # Grok and OpenCode read ~/.agents/skills natively. Claude Code reads

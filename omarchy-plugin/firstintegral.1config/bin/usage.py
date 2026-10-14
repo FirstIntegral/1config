@@ -32,6 +32,7 @@ from pathlib import Path
 # Fixed roster. Anything else in the Omarchy usage directory is ignored.
 # Order is the display order. Used tools are pulled in front of this list.
 ROSTER = (
+    ("x", "X", (), ()),
     ("claude", "Claude", ("claude",), (".claude",)),
     ("grok", "Grok", ("grok",), (".grok",)),
     ("grokbot", "Grok Bot", ("grok-bot",), (".config/Grok Bot", ".grokbot")),
@@ -306,7 +307,76 @@ def omarchy_agent(path: Path, now: datetime) -> dict | None:
     }
 
 
-def grok_agent(home: Path, now: datetime) -> dict:
+def _billing_parts(billing: dict | None) -> tuple[dict, dict] | None:
+    if billing is None:
+        return None
+    ctx = billing.get("ctx") if isinstance(billing.get("ctx"), dict) else {}
+    config = ctx.get("config") if isinstance(ctx.get("config"), dict) else {}
+    return ctx, config
+
+
+def x_plan_agent(home: Path, now: datetime, billing: dict | None = None) -> dict:
+    """The unified X plan: one subscription for X, Grok Build, Grok Bot, Cursor.
+
+    When the Grok billing snapshot is a unified billing user, the plan's weekly
+    credits are the single meter and live on this card. The covered tools do not
+    each carry their own copy of the same meter.
+    """
+    card = {
+        "id": "x",
+        "name": "X",
+        "source": "none",
+        "sourceLabel": "",
+        "ready": False,
+        "present": False,
+        "used": False,
+        "status": "",
+        "todayTokens": 0,
+        "todayLabel": "0",
+        "weekTokens": None,
+        "weekLabel": "—",
+        "todayPrompts": 0,
+        "todaySessions": 0,
+        "updatedAt": "",
+        "limits": [],
+        "models": [],
+        "days": [],
+        "note": "",
+    }
+    if billing is None:
+        billing = last_billing(home / ".grok" / "logs" / "unified.jsonl")
+    parts = _billing_parts(billing)
+    if parts is None:
+        return card
+    ctx, config = parts
+    if not bool(config.get("isUnifiedBillingUser")):
+        return card
+    # Already a percent on 0–100. 1 is 1% used. Do not rescale.
+    used = as_percent(config.get("creditUsagePercent"), fraction_if_unit=False)
+    if used is None:
+        return card
+    period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else {}
+    resets = str(period.get("end") or config.get("billingPeriodEnd") or "")[:40]
+    tier = clean_model(ctx.get("subscriptionTier"))
+    note = "One plan for X, Grok Build, Grok Bot, and Cursor"
+    if tier:
+        note += " · " + tier
+    card.update(
+        {
+            "source": "grok-billing",
+            "sourceLabel": "Unified X billing snapshot",
+            "ready": True,
+            "used": True,
+            "updatedAt": str(billing.get("ts") or "")[:40],
+            "limits": [{"label": "Credits", "usedPct": used, "resetsAt": resets}],
+            "headline": f"{used:g}%",
+            "note": note,
+        }
+    )
+    return card
+
+
+def grok_agent(home: Path, now: datetime, billing: dict | None = None) -> dict:
     week_start = now - timedelta(days=7)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     slack = (week_start - timedelta(days=1)).timestamp()
@@ -344,18 +414,23 @@ def grok_agent(home: Path, now: datetime) -> dict:
                     models[model] += tokens
     limits = []
     measured = ""
-    billing = last_billing(home / ".grok" / "logs" / "unified.jsonl")
+    if billing is None:
+        billing = last_billing(home / ".grok" / "logs" / "unified.jsonl")
+    parts = _billing_parts(billing)
+    unified = parts is not None and bool(parts[1].get("isUnifiedBillingUser"))
+    note = ""
     if billing is not None:
-        ctx = billing.get("ctx") if isinstance(billing.get("ctx"), dict) else {}
-        config = ctx.get("config") if isinstance(ctx.get("config"), dict) else {}
+        ctx, config = parts
         # Already a percent on 0–100. 1.0 is 1% used. Rescaling (0, 1] turned a
         # fresh weekly 1% into 100%.
         used = as_percent(config.get("creditUsagePercent"), fraction_if_unit=False)
         period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else {}
         resets = str(period.get("end") or config.get("billingPeriodEnd") or "")[:40]
-        if used is not None:
+        if used is not None and not unified:
             limits.append({"label": "Credits", "usedPct": used, "resetsAt": resets})
         measured = str(billing.get("ts") or "")[:40]
+    if unified:
+        note = "Covered by the X plan"
     top = sorted(models.items(), key=lambda item: item[1], reverse=True)[:6]
     status = ""
     if not root.is_dir() and not limits:
@@ -377,6 +452,7 @@ def grok_agent(home: Path, now: datetime) -> dict:
         "updatedAt": measured,
         "limits": limits,
         "models": [{"id": name, "tokens": tokens, "label": format_tokens(tokens)} for name, tokens in top],
+        "note": note,
     }
 
 
@@ -922,6 +998,7 @@ LINK_RELS = (
     Path(".claude/CLAUDE.md"),
     Path(".grok/AGENTS.md"),
     Path(".config/opencode/AGENTS.md"),
+    Path(".cursor/AGENTS.md"),
 )
 
 
@@ -1271,26 +1348,26 @@ def brain_status(home: Path, which=None, git=None) -> dict:
         runner(root, ["rev-list", "--left-right", "--count", "origin/main...HEAD"])
     )
 
-    if links == 3:
-        link_state, link_detail = "ok", "3/3"
+    if links == 4:
+        link_state, link_detail = "ok", "4/4"
     elif links == 0:
-        link_state, link_detail = "fail", "0/3"
+        link_state, link_detail = "fail", "0/4"
     else:
-        link_state, link_detail = "warn", f"{links}/3"
+        link_state, link_detail = "warn", f"{links}/4"
 
     hook_state, hook_detail = _ratio(_count_files(root, HOOK_FILES), len(HOOK_FILES))
     scaffold_state, scaffold_detail = _ratio(_count_files(root, SCAFFOLD_FILES), len(SCAFFOLD_FILES))
-    tool_hits = sum(1 for name in ("claude", "grok", "opencode") if finder(name))
-    if tool_hits == 3:
-        tool_state, tool_detail = "ok", "3/3"
+    tool_hits = sum(1 for name in ("claude", "grok", "opencode", "cursor-agent") if finder(name))
+    if tool_hits == 4:
+        tool_state, tool_detail = "ok", "4/4"
     elif tool_hits == 0:
-        tool_state, tool_detail = "fail", "0/3"
+        tool_state, tool_detail = "fail", "0/4"
     else:
-        tool_state, tool_detail = "warn", f"{tool_hits}/3"
+        tool_state, tool_detail = "warn", f"{tool_hits}/4"
     tex_state, tex_detail = ("ok", "ready") if finder("latexmk") or finder("pdflatex") else ("fail", "missing")
     lean_ready = bool(finder("lean")) or (home / ".elan" / "bin" / "lean").is_file()
     lean_state, lean_detail = ("ok", "ready") if lean_ready else ("fail", "missing")
-    tools = [{"id": name, "present": finder(name) is not None} for name in ("claude", "grok", "opencode")]
+    tools = [{"id": name, "present": finder(name) is not None} for name in ("claude", "grok", "opencode", "cursor-agent")]
 
     tree_vital = _vital("tree", "checkout", "Work tree", tree_state, tree_detail)
     if tree_state != "ok" and tree_more:
@@ -1330,7 +1407,7 @@ def brain_status(home: Path, which=None, git=None) -> dict:
             None,
         ),
         _boot_vital(home, root),
-        _vital("tools", "machine", "Three tools", tool_state, tool_detail),
+        _vital("tools", "machine", "Agent tools", tool_state, tool_detail),
         _vital("tex", "machine", "TeX", tex_state, tex_detail),
         _vital("lean", "machine", "Lean", lean_state, lean_detail),
         _signing_vital(home),
@@ -1353,14 +1430,14 @@ def brain_status(home: Path, which=None, git=None) -> dict:
         )
     return {
         "name": "1config",
-        "oneLine": "One rules file for Claude, Grok, and OpenCode. This checkout is the global brain.",
+        "oneLine": "One rules file for Claude, Grok, OpenCode, and Cursor Code. This checkout is the global brain.",
         "remoteLabel": "FirstIntegral/1config",
         "present": present,
         "commit": commit,
         "branch": branch,
         "dirty": dirty,
         "links": links,
-        "linksExpected": 3,
+        "linksExpected": 4,
         "tools": tools,
         "slip": "clean" if slip == "ok" else slip,
         "verdict": verdict,
@@ -1395,6 +1472,7 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, 
                 continue
             by_id[agent["id"]] = agent
             loaded.add(agent["id"])
+    by_id["x"] = x_plan_agent(home, now)
     by_id["grok"] = grok_agent(home, now)
     by_id["grokbot"] = grokbot_agent(home, now)
     by_id["opencode"] = attach_go(opencode_agent(home, now), home, now, force=force_go)
@@ -1403,6 +1481,10 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, 
         agent = by_id.get(agent_id) or _blank_agent(agent_id, name)
         present = agent_id in loaded or _home_has_dir(home, rels) or _has_bin(finder, bins)
         roster.append(_mark_agent(agent, name, present))
+    if by_id["x"].get("used") is True:
+        for row in roster:
+            if row["id"] in ("grok", "grokbot", "cursor"):
+                row["note"] = "Covered by the X plan"
     agents = [item for item in roster if item["used"]] + [item for item in roster if not item["used"]]
     summary = bar_summary(agents)
     brain = brain_status(home, which=finder)
@@ -1416,7 +1498,7 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, 
         "tooltip": lines,
         "agents": agents,
         "brain": brain,
-        "note": "Each tool is its own box. Tools with no usage stay hidden until you ask. By model starts off. m shows the model boxes. OpenCode Go is rolling, weekly, and monthly. s is spend. u refreshes Claude and Codex, and reads Go again.",
+        "note": "Each tool is its own box. When the billing snapshot is unified, an X box leads the list with the one plan for X, Grok Build, Grok Bot, and Cursor, and those cards say they are covered by it. Tools with no usage stay hidden until you ask. By model starts off. m shows the model boxes. OpenCode Go is rolling, weekly, and monthly. s is spend. u refreshes Claude and Codex, and reads Go again.",
     }
 
 
@@ -1629,6 +1711,45 @@ def self_test() -> None:
         write_bot(100, fresh_until, None, reset=datetime(2026, 10, 8, 14, tzinfo=timezone.utc))
         rolled = grokbot_agent(home, now)
         assert rolled["limits"] == [] and rolled["status"] == "Usage cache predates this week", rolled
+        # Unified X plan: the billing snapshot is a unified billing user, so the
+        # one meter moves to an X card and the covered tools say so instead of
+        # each carrying its own copy of the same meter.
+        log_path.write_text(
+            json.dumps(
+                {
+                    "ts": "2026-10-12T17:00:00Z",
+                    "msg": "billing: fetched credits config",
+                    "ctx": {
+                        "config": {
+                            "creditUsagePercent": 60,
+                            "currentPeriod": {"end": "2026-10-16T00:00:00Z"},
+                            "isUnifiedBillingUser": True,
+                        },
+                        "subscriptionTier": "SuperGrok",
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        x_card = x_plan_agent(home, now)
+        assert x_card["used"] is True and x_card["ready"] is True, x_card
+        assert x_card["limits"][0]["usedPct"] == 60, x_card
+        assert x_card["limits"][0]["resetsAt"].startswith("2026-10-16"), x_card
+        assert x_card["headline"] == "60%", x_card
+        assert "SuperGrok" in x_card["note"], x_card
+        grok_unified = grok_agent(home, now)
+        assert grok_unified["limits"] == [], grok_unified
+        assert grok_unified["note"] == "Covered by the X plan", grok_unified
+        blank = x_plan_agent(home, now, billing={})
+        assert blank["used"] is False and blank["limits"] == [], blank
+        unified_payload = collect(home, now, which=lambda _name: None)
+        unified_ids = [item["id"] for item in unified_payload["agents"]]
+        assert unified_ids[0] == "x", unified_ids
+        assert unified_payload["bar"]["label"] == "X 60%", unified_payload["bar"]
+        for covered in ("grok", "grokbot", "cursor"):
+            covered_card = next(item for item in unified_payload["agents"] if item["id"] == covered)
+            assert covered_card["note"] == "Covered by the X plan", covered_card
     claude = payload["agents"][0]
     grok = payload["agents"][1]
     opencode = payload["agents"][2]
@@ -1663,6 +1784,7 @@ def self_test() -> None:
         "claude",
         "grok",
         "opencode",
+        "x",
         "grokbot",
         "openai",
         "codex",
@@ -1671,13 +1793,16 @@ def self_test() -> None:
     assert claude["models"][0]["id"] == "claude-opus", claude["models"]
     assert claude["models"][0]["tokens"] == 100, claude["models"]
     assert claude["days"][-1]["tokenLabel"] == "4 msgs", claude["days"]
-    assert payload["agents"][3]["id"] == "grokbot"
+    assert payload["agents"][3]["id"] == "x"
     assert payload["agents"][3]["used"] is False, payload["agents"][3]
-    assert payload["agents"][3]["present"] is False, payload["agents"][3]
     assert payload["agents"][3]["status"] == "Not on this machine", payload["agents"][3]
-    assert payload["agents"][4]["used"] is False and payload["agents"][4]["status"] == "Not on this machine"
+    assert payload["agents"][4]["id"] == "grokbot"
+    assert payload["agents"][4]["used"] is False, payload["agents"][4]
+    assert payload["agents"][4]["present"] is False, payload["agents"][4]
+    assert payload["agents"][4]["status"] == "Not on this machine", payload["agents"][4]
     assert payload["agents"][5]["used"] is False and payload["agents"][5]["status"] == "Not on this machine"
     assert payload["agents"][6]["used"] is False and payload["agents"][6]["status"] == "Not on this machine"
+    assert payload["agents"][7]["used"] is False and payload["agents"][7]["status"] == "Not on this machine"
     cursor_only = _mark_agent(_blank_agent("cursor", "Cursor"), "Cursor", True)
     assert cursor_only["status"] == "No usage record on this machine", cursor_only
     assert "fireworks" not in [item["id"] for item in payload["agents"]]
@@ -1692,7 +1817,7 @@ def self_test() -> None:
         "tree": ("fail", "no repo"),
         "remote": ("fail", "no list"),
         "level": ("warn", "no ref"),
-        "links": ("fail", "0/3"),
+        "links": ("fail", "0/4"),
         "permissions": ("fail", "broken"),
         "hooks": ("fail", "0/9"),
         "scaffolds": ("fail", "0/4"),
@@ -1700,7 +1825,7 @@ def self_test() -> None:
         "memory": ("fail", "not installed"),
         "symlinks": ("fail", "not installed"),
         "boot": ("fail", "missing"),
-        "tools": ("fail", "0/3"),
+        "tools": ("fail", "0/4"),
         "tex": ("fail", "missing"),
         "lean": ("fail", "missing"),
         "signing": ("fail", "unset"),
@@ -1783,7 +1908,7 @@ def self_test() -> None:
             return None
 
         def finder(name: str) -> str | None:
-            if name in {"claude", "grok", "opencode", "latexmk", "lean"}:
+            if name in {"claude", "grok", "opencode", "cursor-agent", "latexmk", "lean"}:
                 return "yes"
             return None
 

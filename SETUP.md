@@ -40,14 +40,14 @@ On exit, `dashboard.sh` overwrites `~/.agents/boot-dashboard/close-slip.txt`. On
 
 ## 2. Canonical rules file
 
-`~/.agents/AGENTS.md` — the ONE global rules file. All three tools read it every session via the symlinks in §3. Loaded once per session start. **Keep it LEAN** (cross-project rules only; project facts go in project files) — every extra paragraph costs context on every session of every tool.
+`~/.agents/AGENTS.md` — the ONE global rules file. All four tools read it every session via the symlinks in §3. Loaded once per session start. **Keep it LEAN** (cross-project rules only; project facts go in project files) — every extra paragraph costs context on every session of every tool.
 
 Sections, in order:
 1. Header — wiring map + migration one-liner
 2. Git/GitHub attribution — HARD RULE (no AI attribution in commits/PRs)
 3. Git commit signing — HARD RULE (never bypass signing; keyring auto-unlock; manual fallback)
-4. Permission policy — canonical `~/.agents/permissions.json`, fanned out to all three tools by `setup.sh` steps 5b/5c/5d (§4); includes the "prompts an allowlist cannot remove" subsection
-5. Tri-tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode, installed by `setup.sh`, checked by `verify.sh`
+4. Permission policy — canonical `~/.agents/permissions.json`, fanned out to Claude, Grok, and OpenCode by `setup.sh` steps 5b/5c/5d (§4); Cursor Code has no persistent permission file (per-invocation flags), and includes the "prompts an allowlist cannot remove" subsection
+5. Tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode + Cursor Code, installed by `setup.sh`, checked by `verify.sh`
 6. Machine toolchains — `texlive-full` + `tectonic` installed; Lean 4 via `elan` (user-space hook, not a distro pkg); write LaTeX directly, never ask for TeX/Lean installs
 7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
 8. Caveman mode — ALWAYS ON (full). `local.json` key `caveman` is the durable opt-out (`off`, `lite`, `ultra`)
@@ -67,11 +67,13 @@ Sections, in order:
 ln -s ~/.agents/AGENTS.md ~/.grok/AGENTS.md
 ln -s ~/.agents/AGENTS.md ~/.config/opencode/AGENTS.md
 ln -s ~/.agents/AGENTS.md ~/.claude/CLAUDE.md
+ln -s ~/.agents/AGENTS.md ~/.cursor/AGENTS.md
 ```
 
 - Back up any pre-existing regular file before replacing it.
 - Reads AND writes through any of these paths land in the canonical file.
 - Each tool only ever opens its own expected path; the OS resolves the link.
+- **Cursor user rule (step `1c`)**: Cursor Code's documented global mechanism is a User Rule, so `setup.sh` also writes `~/.cursor/rules/1config.mdc` — frontmatter (`description`, `alwaysApply: true`) plus the canonical file body. It is generated, never edited by hand; `verify.sh` compares it byte-for-byte against canonical. The `~/.cursor/AGENTS.md` link covers Cursor's AGENTS.md discovery.
 - **Tracked skills** (step `1b`): Grok and OpenCode read `~/.agents/skills` natively. Claude gets one symlink per tracked skill, `~/.claude/skills/<name>` → `~/.agents/skills/<name>`; the list is the `!skills/<name>/` lines in `.gitignore`. A real dir at the target is warned about, never replaced. Machine-local skills (omarchy, diagnose-crash, vigil) are not linked by 1config.
 
 ## 4. Tool-specific config
@@ -131,6 +133,15 @@ Reads `AGENTS.md` natively at global and project level — no rules wiring neede
 - **Permission rules** — `setup.sh` step `5d` replaces OpenCode's `permission.bash` map from canonical `Bash(X)` rules, making removals effective. Order: managed catch-all first (`"*": "ask"` normally, `"allow"` under full Bash autonomy), then allow, then ask (**omitted when `bash_without_prompt` is true** — last-match would re-prompt `git push` over `"*": allow`), then deny. OpenCode takes the last match, so deny still wins over the catch-all. Non-`Bash` rules are skipped. Other OpenCode config survives. Valid JSONC comments and trailing commas are accepted; output becomes plain JSON after a backup. Deny `rm -rf` rules are exact `/` `~` `$HOME` only — a trailing `/*` is a glob and would deny every `rm -rf /…` (glass 2026-09-05). Literal `rm -rf /*` is Vigil rm-root, not a harness glob.
 - **`external_directory`** — OpenCode-only gate that prompts on any file access outside the project cwd (e.g. `/tmp` scratch scripts, screenshots) regardless of the bash catch-all. Step `5d` sets `permission.external_directory` = `allow` while `bash_without_prompt` is true, else `ask`. Claude (`bypassPermissions`) and Grok (`always-approve`) cover out-of-tree access natively — recorded per the parity rule. Checked by `verify.sh` `[permission parity]` as `opencode-external_directory` (added 2026-09-05 after repeated `/tmp` prompts with autonomy on).
 
+### Cursor Code
+
+Cursor Code (the editor Agent and the `cursor-agent` CLI) reads the same rules through two generated paths, both from canonical `~/.agents/AGENTS.md`:
+
+- **Global rules** — `~/.cursor/AGENTS.md` symlink (§3) plus the generated User Rule `~/.cursor/rules/1config.mdc` (`alwaysApply: true`), written by `setup.sh` step `1c` and byte-checked by `verify.sh`. Project `AGENTS.md` files are read natively (project root and subdirectories). Cursor's own per-tool dirs under `~/.cursor/` (agents, skills-cursor, sandbox-policies) are left alone.
+- **Permissions** — no persistent permission file. Command autonomy is per-invocation (`cursor-agent --force` / `--yolo` / `--sandbox`), so `permissions.json` does not fan out to Cursor. Recorded per the parity rule.
+- **Skills / memory** — tracked `~/.agents/skills` are not linked into Cursor, and Cursor's `~/.cursor/skills-cursor/` is Cursor's own. Recorded per the parity rule.
+- **Vitals** — `usage.py` counts Cursor in the links check (4 symlinks) and the agent-tools check (`claude`, `grok`, `opencode`, `cursor-agent`), and the spend roster keeps a Cursor card (`cursor-agent` presence; `~/.cursor/ai-tracking/ai-code-tracking.db` has no usage rows on this machine, so the card says there is no usage record and notes it is covered by the unified X plan).
+
 ### GPG signing unlock (Secret Service keyring)
 
 - Passphrase lives in a **dedicated** gnome-keyring collection labelled `gpg-signing`, empty master (autologin has no PAM password, so a login-locked collection would never open). Isolated from the default collection on purpose.
@@ -146,7 +157,7 @@ Reads `AGENTS.md` natively at global and project level — no rules wiring neede
 
 ### §4b `hooks/checkpoint.sh` — the git half of `checkpoint_project`
 
-Steps 1-5 of that trigger need judgement (what happened today, which decisions to log) and stay with the AI. Step 6 is mechanical, has one correct answer per project state, and was being re-derived by hand inconsistently — so it is a script. All three tools call the same one, via the trigger in canonical `AGENTS.md`; nothing tool-specific.
+Steps 1-5 of that trigger need judgement (what happened today, which decisions to log) and stay with the AI. Step 6 is mechanical, has one correct answer per project state, and was being re-derived by hand inconsistently — so it is a script. All four tools call the same one, via the trigger in canonical `AGENTS.md`; nothing tool-specific.
 
 ```sh
 bash ~/.agents/hooks/checkpoint.sh <project-root> [-m SUBJECT] [--dry-run]
@@ -368,7 +379,7 @@ Before other work, the AI must (must match canonical `AGENTS.md` — that file w
 7. After reading: brief status (current state + where we left off + open issues from compact), then wait for / take the user’s next instruction. Do not invent state that is not in those files.
 8. Treat `<path>` as the project root for the rest of the session unless the user points elsewhere.
 
-Same for all three tools.
+Same for all four tools.
 
 ## 5c. `checkpoint_project`
 
@@ -382,7 +393,7 @@ Trigger: user says **`checkpoint_project`** (done for the day — leave and resu
 6. Run `bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"` to commit and push according to §4b. Half-finished work is expected and should still be backed up.
 7. Finish with: "Checkpoint saved — next step: <X>", plus the pushed commit hash or the script's exact non-push reason.
 
-Same for all three tools. Formalizes the "End of session / milestone" rule as an explicit trigger.
+Same for all four tools. Formalizes the "End of session / milestone" rule as an explicit trigger.
 
 ## 5d. `writepaper_project`
 
@@ -407,7 +418,7 @@ Trigger: user says **`global_brain_update <what to change>`**. Target is `~/.age
 1. Read the brain first (`AGENTS.md`, `SETUP.md`, plus whatever the request touches — `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`).
 2. Change the **canonical** home of the thing, never a tool-local copy.
 2b. If the change alters what `setup-infographic.svg` depicts (components, flows, toolchain), regenerate the figure in this turn, **before** setup/sync.
-3. Tri-tool parity: all three tools, installed by `setup.sh`, checked by `verify.sh`.
+3. Tool parity: all four tools, installed by `setup.sh`, checked by `verify.sh`.
 4. `bash ~/.agents/setup.sh` → must end `== PASS ==`, `warnings=0`.
 5. `bash ~/.agents/sync.sh -m "<subject>"` → signed commit + push.
 6. Report changed files, verify result, pushed commit.
@@ -428,7 +439,7 @@ It requires repository root + branch `main`, validates every origin fetch and pu
 
 ## 5f. Herd boards
 
-Standing rule, not a typed trigger. Full text in canonical `AGENTS.md` (`## Herd boards`) — that file wins if they diverge. All three tools read it through the symlinks. No per-tool copy. No installer step.
+Standing rule, not a typed trigger. Full text in canonical `AGENTS.md` (`## Herd boards`) — that file wins if they diverge. All four tools read it through the symlinks. No per-tool copy. No installer step.
 
 When the user asks for tens or hundreds of agents that should talk: one append-only flocked wall, waves so later seats can read earlier posts, honesty with public recants, a parseable last-line token, argument seats do not edit source, one hands seat codes only after a mechanical lock, and argument waves do not run the official measurement seeds. An empty lock is legal. A parallel blast on an empty wall is not a conversation.
 

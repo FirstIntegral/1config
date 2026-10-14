@@ -11,7 +11,7 @@
 set -u
 
 CANON="${CANON:-$HOME/.agents/AGENTS.md}"
-LINKS="${LINKS:-$HOME/.grok/AGENTS.md $HOME/.config/opencode/AGENTS.md $HOME/.claude/CLAUDE.md}"
+LINKS="${LINKS:-$HOME/.grok/AGENTS.md $HOME/.config/opencode/AGENTS.md $HOME/.claude/CLAUDE.md $HOME/.cursor/AGENTS.md}"
 DIR="${GUARD_DIR:-$HOME/cron-jobs/agents-symlink-guard}"
 LOG="$DIR/check-links.log"
 FLAG="$DIR/NEEDS-SYMLINK-MERGE"

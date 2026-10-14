@@ -867,13 +867,32 @@ fi
 
 # --- symlinks (tool-facing names stay AGENTS.md / CLAUDE.md) ---------------
 echo "[symlinks]"
-for link in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.claude/CLAUDE.md"; do
+for link in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.cursor/AGENTS.md"; do
   if [ -L "$link" ] && [ "$(readlink -f "$link")" = "$CANON" ]; then
     ok "$link → canonical"
   else
     bad "$link not a symlink to $CANON (run setup.sh)"
   fi
 done
+if [ -f "$HOME/.cursor/rules/1config.mdc" ]; then
+  cursor_tmp="$(mktemp)"
+  {
+    printf '%s\n' '---'
+    printf '%s\n' 'description: 1config global rules (generated — edit ~/.agents/AGENTS.md)'
+    printf '%s\n' 'alwaysApply: true'
+    printf '%s\n' '---'
+    printf '\n'
+    cat "$CANON"
+  } > "$cursor_tmp"
+  if cmp -s "$cursor_tmp" "$HOME/.cursor/rules/1config.mdc"; then
+    ok "cursor user rule matches canonical"
+  else
+    bad "cursor user rule DRIFT — ~/.cursor/rules/1config.mdc ≠ canonical (run setup.sh)"
+  fi
+  rm -f "$cursor_tmp"
+else
+  bad "cursor user rule missing — ~/.cursor/rules/1config.mdc (run setup.sh)"
+fi
 
 # --- hooks installed copies must match source byte-for-byte ----------------
 echo "[installed guards vs hooks/]"
@@ -1257,7 +1276,7 @@ else
   bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tri-tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**'; do
+  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
@@ -1910,6 +1929,17 @@ if grep -q 'function tileFill' "$PLUGIN/Panel.qml" \
   ok "1config spend boxes use the vitals tile colours"
 else
   bad "1config spend boxes still use a gray fill"
+fi
+if grep -q 'isUnifiedBillingUser' "$PLUGIN/bin/usage.py" \
+   && grep -q 'def x_plan_agent' "$PLUGIN/bin/usage.py" \
+   && grep -q 'Covered by the X plan' "$PLUGIN/bin/usage.py" \
+   && grep -q 'One plan for X, Grok Build, Grok Bot, and Cursor' "$PLUGIN/bin/usage.py" \
+   && grep -q 'agent.note' "$PLUGIN/Panel.qml" \
+   && grep -q '"x"' "$PLUGIN/bin/usage.py" \
+   && grep -q '.cursor/AGENTS.md' "$PLUGIN/bin/usage.py"; then
+  ok "1config spend has the unified X plan card and the Cursor link"
+else
+  bad "1config spend missing the unified X plan card or the Cursor link"
 fi
 if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
    || ! grep -q 'omarchy-plugin-validate' "$AGENTS_HOME/setup.sh"; then

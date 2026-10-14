@@ -5,8 +5,9 @@ This is the ONE global rules file. It is symlinked to every tool's expected path
 - `~/.grok/AGENTS.md` → this file
 - `~/.config/opencode/AGENTS.md` → this file
 - `~/.claude/CLAUDE.md` → this file
+- `~/.cursor/AGENTS.md` → this file (plus a generated user rule `~/.cursor/rules/1config.mdc`)
 
-Edit here (or via any of those paths — same bytes). Applies to Grok, OpenCode, and Claude Code alike.
+Edit here (or via any of those paths — same bytes). Applies to Grok, OpenCode, Claude Code, and Cursor Code alike.
 
 Project-level: `<repo>/AGENTS.md` is the ONLY project rules file. Grok and OpenCode read it natively. Claude Code 2.1.277 and later also reads it, unless a `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` sits in the project or a parent directory. `~/.claude/CLAUDE.md` is the user file and does not count. `hooks/load-project-agents.sh` prints the project file only when that native read will not happen (older Claude, instruction mode `claude-md` or `managed-only`, or one of those three files is present). **Never create a project CLAUDE.md** — it hides `AGENTS.md` from Claude's native reader.
 
@@ -72,9 +73,9 @@ Name the action and wait. An earlier yes covers only the action it named.
 
 ---
 
-## Permission policy (all three tools) — canonical file
+## Permission policy — canonical file
 
-Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` fans it out to every tool, deduped and idempotent. Canonical permission buckets and modes win so revocations propagate; unrelated non-permission config survives:
+Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` fans it out to every tool that has a persistent permission config, deduped and idempotent. Canonical permission buckets and modes win so revocations propagate; unrelated non-permission config survives:
 
 | Step | Tool | Lands in | Form |
 |------|------|----------|------|
@@ -84,6 +85,7 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
+- **Cursor Code has no persistent permission file.** Its command autonomy is per-invocation (`cursor-agent --force` / `--yolo` / `--sandbox`), so the policy does not fan out to it. The rules file still applies (see Tool parity).
 - Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; `permission.external_directory` (any file access outside the project cwd, e.g. `/tmp` scratch work) follows the same switch — OpenCode-only, the other two tools cover out-of-tree access with their autonomy modes. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude bypass already skips). Deny still fans out after `*` so last-match deny holds.
 - **The opinionated default is on.** `permissions.json` ships `bash_without_prompt` true. A fresh clone gets Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`, and no ask rules. Generic `git push` does not prompt. Deny still applies. Red lines still wait for a yes. Gitignored `local.json` may set the key false; `setup.sh` merges that into the live tools only. Missing `local.json` means the committed true.
 - `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
@@ -115,19 +117,19 @@ Wrappers stripped before matching: `timeout`, `time`, `nice`, `nohup`, `stdbuf`,
 
 ---
 
-## Tri-tool parity — HARD RULE
+## Tool parity — HARD RULE
 
-**Claude Code, Grok, and OpenCode must behave the same.** Same rules, same memory, same triggers, same allowlist. A feature that works in one tool and not the others is a bug, not a milestone.
+**Claude Code, Grok, OpenCode, and Cursor Code must behave the same.** Same rules, same memory, same triggers, same allowlist. A feature that works in one tool and not the others is a bug, not a milestone.
 
 Whenever anything is added to or changed in this setup:
 
-1. **Land it in all three, in the same turn.** Canonical source stays single (`~/.agents/…`); `setup.sh` fans it out per tool. Never write a per-tool copy by hand.
+1. **Land it in all four, in the same turn.** Canonical source stays single (`~/.agents/…`); `setup.sh` fans it out per tool. Never write a per-tool copy by hand.
 2. **If a tool has no native mechanism**, implement the closest equivalent (hook, config key, translated rule syntax) and record what differs — SETUP.md §4, one line. "Claude-only" is acceptable ONLY when the other two physically cannot do it, and only when written down.
-3. **`setup.sh` installs it for all three; `verify.sh` checks all three.** A feature with no verify check does not count as installed.
-4. **Rules and triggers live in the canonical `AGENTS.md`** (all three read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
-5. Same for memory: shared markdown only, identical for all three (see Memory policy). Tool-internal stores stay disabled everywhere.
+3. **`setup.sh` installs it for all four; `verify.sh` checks all four.** A feature with no verify check does not count as installed.
+4. **Rules and triggers live in the canonical `AGENTS.md`** (all four read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
+5. Same for memory: shared markdown only, identical for all four (see Memory policy). Tool-internal stores stay disabled everywhere.
 
-Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok, OpenCode, and Claude Code 2.1.277+ (the SessionStart hook prints it only when Claude will not); permissions → `permissions.json` fan-out (above); skills → `~/.agents/skills` (Grok, OpenCode native; Claude per-skill symlink, setup `1b`).
+Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok, OpenCode, Claude Code 2.1.277+, and Cursor Code (project root and subdirectories); permissions → `permissions.json` fan-out (above); skills → `~/.agents/skills` (Grok, OpenCode native; Claude per-skill symlink, setup `1b`). Cursor Code's global mechanism is the generated user rule `~/.cursor/rules/1config.mdc` (alwaysApply) plus the `~/.cursor/AGENTS.md` link; its command autonomy is per-invocation flags (`--force` / `--yolo` / `--sandbox`), so permissions.json does not fan out to it, and tracked skills are not linked into Cursor — both recorded in SETUP.md §4.
 
 ---
 
@@ -145,9 +147,9 @@ Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md
 
 ## Omarchy plugin — `firstintegral.1config`
 
-1config's own Omarchy bar widget lives at `omarchy-plugin/firstintegral.1config/`. On a machine with `~/.config/omarchy/plugins/`, `setup.sh` copies it there (Omarchy rejects symlinks inside a plugin) and adds the id to `bar.layout.right` in `~/.config/omarchy/shell.json` when it is missing. Ubuntu has no such directory, so setup skips the copy. The same rules file is what all three tools read; the widget is the Omarchy surface. The bar id also ships in the omarchy-dots pack (`omarchy/shell.json`). That pack does not install the plugin files. `setup.sh` does.
+1config's own Omarchy bar widget lives at `omarchy-plugin/firstintegral.1config/`. On a machine with `~/.config/omarchy/plugins/`, `setup.sh` copies it there (Omarchy rejects symlinks inside a plugin) and adds the id to `bar.layout.right` in `~/.config/omarchy/shell.json` when it is missing. Ubuntu has no such directory, so setup skips the copy. The same rules file is what all four tools read; the widget is the Omarchy surface. The bar id also ships in the omarchy-dots pack (`omarchy/shell.json`). That pack does not install the plugin files. `setup.sh` does.
 
-The bar face is the ring mark alone, drawn at the bar's icon size. Hover still says the hottest plan, such as `Grok 42%`. Open drops a card from that icon, on vitals. Spend is the other page, key `s`. The vitals page does not show limits, model rows, or the quiet toggle. The card is about 760 by 820. `v` opens vitals (`g` does the same): live checks that the checkout, the work tree, the listed remote, the local `origin/main` match, the three rules symlinks, permissions, hooks, scaffolds, the boot slip, both cron guards, boot autostart, the three tools, TeX, Lean, commit signing, and the installed plugin copy are actually correct. A fault pulses the bar dot. A tile with detail (`›`) — the boot slip's warn/fail lines, a dirty work tree's uncommitted files — opens them on click; `esc` goes back. A fail line in the slip is a fault, not a warn. `f`, the footer chip, and the Fix with Grok button on that detail open a terminal running `grok` in `~/.agents` with those lines as the prompt. A slip that is only warns still shows the button. The ring on that page is a small mark beside the verdict. Short rays run only while that view is open. Spend words use the proportional face. Numbers stay monospace. Each used tool is a light box. Inside it: each limit and each model as a lighter box. No today total. No box per weekday. Those boxes use the vitals tile colours: a foreground wash and an accent edge. Spend does not draw the accent pip. A limit at 80% uses the stronger edge. An error uses urgent. "By model" sits beside the quiet toggle and starts off. `m` is the same switch. The roster is Claude, Grok, Grok Bot, OpenAI, OpenCode, Codex, and Cursor. Used tools come first. Tools with no usage stay hidden until `a` (or the button) shows them at the end. OpenAI is not installed here, so that card says it is not on the machine. Cursor may have `cursor-agent` and still no ledger, so that card says there is no usage record. Neither invents a figure. Omarchy records other than Claude and Codex, including fireworks, are not listed. Claude and Codex come from Omarchy's usage records, including per-model buckets when the file has them. Grok comes from `~/.grok/sessions/**/usage.json` plus the last credits snapshot Grok already wrote. Grok Bot is a separate weekly meter: the newest `weekly-usage.cache` slice in `~/.config/Grok Bot/sand-client-persistence`. `percentUsed` is already a percent on 0–100. An expired cache is not shown, and neither is a reading whose `nextResetMs` is already in the past — the week it measures ended, so an old 100% from before the reset must not stick. OpenCode model rows still come from local `step-finish` rows. The spend card does not show a today total. The OpenCode Go plan (rolling, weekly, monthly, the same figures as the console) comes from `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key already on disk. That response is cached for ten minutes and the key is not written out. The prepaid credit balance on the console is a different wallet and has no key endpoint. Panel key `u` runs `omarchy-agent-usage-update --limits-only` and forces a fresh Go read. This is not `brwsk.brain` (that plugin belongs to grokbot-brain) and it is not a vendored copy of NixFred's Burn Bar or Infomarchy.
+The bar face is the ring mark alone, drawn at the bar's icon size. Hover still says the hottest plan, such as `Grok 42%`. Open drops a card from that icon, on vitals. Spend is the other page, key `s`. The vitals page does not show limits, model rows, or the quiet toggle. The card is about 760 by 820. `v` opens vitals (`g` does the same): live checks that the checkout, the work tree, the listed remote, the local `origin/main` match, the four rules symlinks, permissions, hooks, scaffolds, the boot slip, both cron guards, boot autostart, the four agent tools, TeX, Lean, commit signing, and the installed plugin copy are actually correct. A fault pulses the bar dot. A tile with detail (`›`) — the boot slip's warn/fail lines, a dirty work tree's uncommitted files — opens them on click; `esc` goes back. A fail line in the slip is a fault, not a warn. `f`, the footer chip, and the Fix with Grok button on that detail open a terminal running `grok` in `~/.agents` with those lines as the prompt. A slip that is only warns still shows the button. The ring on that page is a small mark beside the verdict. Short rays run only while that view is open. Spend words use the proportional face. Numbers stay monospace. Each used tool is a light box. Inside it: each limit and each model as a lighter box. No today total. No box per weekday. Those boxes use the vitals tile colours: a foreground wash and an accent edge. Spend does not draw the accent pip. A limit at 80% uses the stronger edge. An error uses urgent. "By model" sits beside the quiet toggle and starts off. `m` is the same switch. The roster is X, Claude, Grok, Grok Bot, OpenAI, OpenCode, Codex, and Cursor. Used tools come first. Tools with no usage stay hidden until `a` (or the button) shows them at the end. OpenAI is not installed here, so that card says it is not on the machine. Cursor may have `cursor-agent` and still no ledger, so that card says there is no usage record. Neither invents a figure. Omarchy records other than Claude and Codex, including fireworks, are not listed. Claude and Codex come from Omarchy's usage records, including per-model buckets when the file has them. Grok comes from `~/.grok/sessions/**/usage.json` plus the last credits snapshot Grok already wrote. When that snapshot is a unified billing user, an X card leads the spend page with the single plan meter — one plan for X, Grok Build, Grok Bot, and Cursor, tier on the note — and the Grok, Grok Bot, and Cursor cards say they are covered by the X plan instead of each carrying its own copy of the meter; a non-unified snapshot keeps the old per-Grok Credits box. Grok Bot is a separate weekly meter: the newest `weekly-usage.cache` slice in `~/.config/Grok Bot/sand-client-persistence`. `percentUsed` is already a percent on 0–100. An expired cache is not shown, and neither is a reading whose `nextResetMs` is already in the past — the week it measures ended, so an old 100% from before the reset must not stick. OpenCode model rows still come from local `step-finish` rows. The spend card does not show a today total. The OpenCode Go plan (rolling, weekly, monthly, the same figures as the console) comes from `GET https://opencode.ai/zen/go/v1/usage` with the `opencode-go` key already on disk. That response is cached for ten minutes and the key is not written out. The prepaid credit balance on the console is a different wallet and has no key endpoint. Panel key `u` runs `omarchy-agent-usage-update --limits-only` and forces a fresh Go read. This is not `brwsk.brain` (that plugin belongs to grokbot-brain) and it is not a vendored copy of NixFred's Burn Bar or Infomarchy.
 
 ---
 
@@ -251,7 +253,7 @@ Parent, every herd:
 
 These three stay out.
 
-- Do not split voice, user, or identity into `SOUL.md`, `USER.md`, or `IDENTITY.md`. The three tools load this file. Caveman mode is the voice.
+- Do not split voice, user, or identity into `SOUL.md`, `USER.md`, or `IDENTITY.md`. The four tools load this file. Caveman mode is the voice.
 - Do not add an agent-readable daily diary. The transcript stays private. `session_compact.md` is the handoff.
 - Do not add a personal heartbeat (mail, calendar, or a ping after hours of silence). Heartbeat here is machine health and job staleness.
 
@@ -473,7 +475,7 @@ When the user says **`global_brain_update <what to change>`**, the target is **t
 1. **Read before writing.** `AGENTS.md` (canonical rules) and `SETUP.md` (spec), plus whatever the request touches: `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`. Never patch the brain blind — half of it installs the other half.
 2. **Put the change in its canonical home**, never in a tool-local path: rules & triggers → `AGENTS.md` · spec / how it installs → `SETUP.md` · install logic → `setup.sh` · checks → `verify.sh` · permissions → `permissions.json` · scripts → `hooks/` (or `updater/`) · scaffolds → `project-template/` / `paper-template/` · on-demand process skills → `skills/<name>/` + one `!skills/<name>/` line in `.gitignore`; adopted ones keep `UPSTREAM.md` (pinned SHA, trims) and `LICENSE.upstream`.
 2b. **If the change alters what `setup-infographic.svg` depicts** (components, flows, toolchain), regenerate the figure in the same turn — it is part of the spec surface (verify checks it exists and stays referenced).
-3. **Tri-tool parity applies** (see that HARD RULE): land it for Claude Code + Grok + OpenCode, install it in `setup.sh`, check it in `verify.sh`. A brain change with no verify check is not done.
+3. **Tool parity applies** (see that HARD RULE): land it for Claude Code + Grok + OpenCode + Cursor Code, install it in `setup.sh`, check it in `verify.sh`. A brain change with no verify check is not done.
 4. `bash ~/.agents/setup.sh` → must end `== PASS ==` with `warnings=0`. Fix anything it reports before moving on.
 5. `bash ~/.agents/sync.sh -m "<commit subject>"` → re-runs setup+verify, signed commit, push to the origin listed in `BRAIN_REMOTE` (`main`).
 6. **Report:** what changed, which files, verify result, pushed commit hash.
@@ -566,7 +568,7 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 
 | Guard | Script source | Installed as | Flag (if AI/human work needed) | Job |
 |-------|---------------|--------------|--------------------------------|-----|
-| Symlink | `~/.agents/hooks/check-links.sh` | `~/cron-jobs/agents-symlink-guard/check-links.sh` | `NEEDS-SYMLINK-MERGE` | Keep the 3 AGENTS symlinks healthy |
+| Symlink | `~/.agents/hooks/check-links.sh` | `~/cron-jobs/agents-symlink-guard/check-links.sh` | `NEEDS-SYMLINK-MERGE` | Keep the 4 AGENTS symlinks healthy |
 | Tool memory | `~/.agents/hooks/check-claude-memory.sh` | `~/cron-jobs/claude-memory-guard/check-memory.sh` | `NEEDS-MEMORY-MERGE` | Detect Claude/Grok memory residue → archive → stage → wipe to stub |
 
 Both installed by `setup.sh` (copy from `hooks/`). Schedule: `@daily` + `@reboot` each. Stray merging is automated by `~/.agents/hooks/merge-strays.sh` (cron `@daily`, see Symlink conflict section below).

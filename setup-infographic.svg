@@ -24,42 +24,53 @@
   <!-- ===== title ===== -->
   <text x="800" y="56" text-anchor="middle" font-size="30" font-weight="bold" fill="url(#acc)" letter-spacing="5">UNIFIED AI TERMINAL SETUP</text>
   <rect x="520" y="70" width="560" height="3" rx="1.5" fill="url(#acc)"/>
-  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">3 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-10-13 — README + SETUP.md; figure same-turn when the brain changes</text>
+  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">4 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-10-14 — README + SETUP.md; figure same-turn when the brain changes</text>
 
   <!-- ===== converging symlink arrows ===== -->
-  <line x1="310" y1="268" x2="700" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="442" y="288" font-size="11" fill="#8b949e">symlink</text>
-  <line x1="800" y1="268" x2="800" y2="322" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="812" y="300" font-size="11" fill="#8b949e">symlink</text>
-  <line x1="1290" y1="268" x2="900" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="1130" y="288" font-size="11" fill="#8b949e">symlink</text>
+  <line x1="218" y1="268" x2="700" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="342" y="288" font-size="11" fill="#8b949e">symlink</text>
+  <line x1="606" y1="268" x2="800" y2="322" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="618" y="300" font-size="11" fill="#8b949e">symlink</text>
+  <line x1="994" y1="268" x2="900" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="1030" y="288" font-size="11" fill="#8b949e">symlink</text>
+  <line x1="1382" y1="268" x2="1024" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="1250" y="300" font-size="11" fill="#8b949e">symlink</text>
 
   <!-- ===== GROK ===== -->
-  <rect x="130" y="130" width="360" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
-  <circle cx="468" cy="152" r="5" fill="#39d3e0"/>
-  <text x="152" y="162" font-size="15" font-weight="bold" fill="#e6edf3">GROK</text>
-  <text x="152" y="186" font-size="13" fill="#79c0ff">~/.grok/AGENTS.md</text>
-  <text x="152" y="210" font-size="12" fill="#3fb950">native project AGENTS.md ✓</text>
-  <text x="152" y="230" font-size="12" fill="#8b949e">claude-compat <tspan fill="#d29922">OFF</tspan> · memory <tspan fill="#d29922">OFF</tspan></text>
-  <text x="152" y="250" font-size="12" fill="#8b949e">[ui] always-approve · Bash buckets fanned out</text>
+  <rect x="48" y="130" width="340" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <circle cx="366" cy="152" r="5" fill="#39d3e0"/>
+  <text x="70" y="162" font-size="15" font-weight="bold" fill="#e6edf3">GROK</text>
+  <text x="70" y="186" font-size="13" fill="#79c0ff">~/.grok/AGENTS.md</text>
+  <text x="70" y="210" font-size="12" fill="#3fb950">native project AGENTS.md ✓</text>
+  <text x="70" y="230" font-size="12" fill="#8b949e">claude-compat <tspan fill="#d29922">OFF</tspan> · memory <tspan fill="#d29922">OFF</tspan></text>
+  <text x="70" y="250" font-size="12" fill="#8b949e">[ui] always-approve · Bash buckets fanned out</text>
 
   <!-- ===== CLAUDE ===== -->
-  <rect x="620" y="130" width="360" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
-  <circle cx="958" cy="152" r="5" fill="#39d3e0"/>
-  <text x="642" y="162" font-size="15" font-weight="bold" fill="#e6edf3">CLAUDE CODE</text>
-  <text x="642" y="186" font-size="13" fill="#79c0ff">~/.claude/CLAUDE.md (global symlink)</text>
-  <text x="642" y="210" font-size="12" fill="#3fb950">native AGENTS.md · hook fallback ✓</text>
-  <text x="642" y="230" font-size="12" fill="#8b949e">auto-memory <tspan fill="#d29922">DISABLED</tspan> · stubs only</text>
-  <text x="642" y="250" font-size="12" fill="#8b949e">heredoc-rewrite PreToolUse hook</text>
+  <rect x="436" y="130" width="340" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <circle cx="754" cy="152" r="5" fill="#39d3e0"/>
+  <text x="458" y="162" font-size="15" font-weight="bold" fill="#e6edf3">CLAUDE CODE</text>
+  <text x="458" y="186" font-size="13" fill="#79c0ff">~/.claude/CLAUDE.md (global symlink)</text>
+  <text x="458" y="210" font-size="12" fill="#3fb950">native AGENTS.md · hook fallback ✓</text>
+  <text x="458" y="230" font-size="12" fill="#8b949e">auto-memory <tspan fill="#d29922">DISABLED</tspan> · stubs only</text>
+  <text x="458" y="250" font-size="12" fill="#8b949e">heredoc-rewrite PreToolUse hook</text>
 
   <!-- ===== OPENCODE ===== -->
-  <rect x="1110" y="130" width="360" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
-  <circle cx="1448" cy="152" r="5" fill="#39d3e0"/>
-  <text x="1132" y="162" font-size="15" font-weight="bold" fill="#e6edf3">OPENCODE</text>
-  <text x="1132" y="186" font-size="13" fill="#79c0ff">~/.config/opencode/AGENTS.md</text>
-  <text x="1132" y="210" font-size="12" fill="#3fb950">native AGENTS.md · zero config ✓</text>
-  <text x="1132" y="230" font-size="12" fill="#8b949e">opencode.jsonc = permissions fan-out</text>
-  <text x="1132" y="250" font-size="12" fill="#8b949e">edit=allow · bash *=allow (last-match wins)</text>
+  <rect x="824" y="130" width="340" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <circle cx="1142" cy="152" r="5" fill="#39d3e0"/>
+  <text x="846" y="162" font-size="15" font-weight="bold" fill="#e6edf3">OPENCODE</text>
+  <text x="846" y="186" font-size="13" fill="#79c0ff">~/.config/opencode/AGENTS.md</text>
+  <text x="846" y="210" font-size="12" fill="#3fb950">native AGENTS.md · zero config ✓</text>
+  <text x="846" y="230" font-size="12" fill="#8b949e">opencode.jsonc = permissions fan-out</text>
+  <text x="846" y="250" font-size="12" fill="#8b949e">edit=allow · bash *=allow (last-match wins)</text>
+
+  <!-- ===== CURSOR ===== -->
+  <rect x="1212" y="130" width="340" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <circle cx="1530" cy="152" r="5" fill="#39d3e0"/>
+  <text x="1234" y="162" font-size="15" font-weight="bold" fill="#e6edf3">CURSOR CODE</text>
+  <text x="1234" y="186" font-size="13" fill="#79c0ff">~/.cursor/AGENTS.md + rules/1config.mdc</text>
+  <text x="1234" y="210" font-size="12" fill="#3fb950">user rule alwaysApply · generated ✓</text>
+  <text x="1234" y="230" font-size="12" fill="#8b949e">project AGENTS.md native (root + subdirs)</text>
+  <text x="1234" y="250" font-size="12" fill="#8b949e">autonomy per-invocation: --force/--sandbox</text>
 
   <!-- ===== HUB ===== -->
   <rect x="580" y="338" width="440" height="196" rx="10" fill="none" stroke="#39d3e0" stroke-width="2.5" opacity="0.55" filter="url(#glow)"/>
@@ -69,7 +80,7 @@
   <text x="612" y="416" font-size="12" fill="#f85149">HARD: no AI attribution in commits/PRs</text>
   <text x="612" y="436" font-size="12" fill="#f85149">HARD: never bypass GPG commit signing</text>
   <text x="612" y="456" font-size="12" fill="#f85149">HARD: transcript = user-only, AI never reads</text>
-  <text x="612" y="476" font-size="12" fill="#e6edf3">caveman always on · tri-tool parity</text>
+  <text x="612" y="476" font-size="12" fill="#e6edf3">caveman always on · tool parity</text>
   <text x="612" y="496" font-size="12" fill="#e6edf3">triggers: create · continue · checkpoint ·</text>
   <text x="612" y="516" font-size="12" fill="#e6edf3">writepaper · global_brain_update</text>
 
@@ -77,7 +88,7 @@
   <rect x="1110" y="338" width="360" height="226" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
   <text x="1132" y="366" font-size="15" font-weight="bold" fill="#e6edf3">CRON GUARDS + UPDATER</text>
   <text x="1132" y="386" font-size="12" fill="#79c0ff">agents-symlink-guard @daily+@reboot</text>
-  <text x="1132" y="404" font-size="12" fill="#8b949e">heals 3 AGENTS.md symlinks · flock'd</text>
+  <text x="1132" y="404" font-size="12" fill="#8b949e">heals 4 AGENTS.md symlinks · flock'd</text>
   <text x="1132" y="424" font-size="12" fill="#79c0ff">merge-strays.sh @daily (headless LLM)</text>
   <text x="1132" y="442" font-size="12" fill="#8b949e">quarantined strays → merged → canonical</text>
   <text x="1132" y="462" font-size="12" fill="#79c0ff">claude-memory-guard @daily+@reboot</text>
@@ -96,7 +107,7 @@
   <text x="152" y="416" font-size="12" fill="#8b949e">idempotent · backs up replaced files</text>
   <text x="152" y="436" font-size="12" fill="#8b949e">symlinks · grok cfg · mem wipe · hooks</text>
   <text x="152" y="456" font-size="12" fill="#8b949e">guards + updater + cron · gpg hooks</text>
-  <text x="152" y="476" font-size="12" fill="#8b949e">permissions.json → 3-tool fan-out</text>
+  <text x="152" y="476" font-size="12" fill="#8b949e">permissions.json → 3-tool fan-out · cursor rule</text>
   <text x="152" y="496" font-size="12" fill="#79c0ff">SETUP.md = spec · verify.sh = gate</text>
   <text x="152" y="516" font-size="12" fill="#8b949e">git-versioned (public repo 1config)</text>
   <text x="152" y="536" font-size="12" fill="#3fb950">skills/ 5 tracked → ~/.claude/skills links</text>
@@ -129,7 +140,7 @@
   <text x="1062" y="596" font-size="15" font-weight="bold" fill="#e6edf3">PERMISSIONS — canonical</text>
   <text x="1062" y="620" font-size="12" fill="#79c0ff">permissions.json → allow / ask / deny</text>
   <text x="1062" y="640" font-size="12" fill="#8b949e">claude settings · grok toml · opencode jsonc</text>
-  <text x="1062" y="660" font-size="12" fill="#8b949e">verify byte-checks all three vs canonical</text>
+  <text x="1062" y="660" font-size="12" fill="#8b949e">verify byte-checks all three + cursor rule</text>
   <text x="1062" y="680" font-size="12" fill="#3fb950">edit_without_prompt = true ✓</text>
   <text x="1062" y="700" font-size="12" fill="#d29922">bash_without_prompt = true (opinionated default)</text>
 

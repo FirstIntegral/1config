@@ -335,6 +335,17 @@ Panel {
         }
 
         Text {
+          visible: !card.quiet && String(card.agent.note || "") !== ""
+          width: parent.width
+          text: String(card.agent.note || "")
+          color: root.contentForeground
+          opacity: 0.7
+          font.family: root.proseFamily
+          font.pixelSize: Style.font.subtitle
+          wrapMode: Text.WordWrap
+        }
+
+        Text {
           visible: card.quiet
           width: parent.width
           text: String(card.agent.status || (card.agent.present ? "No usage this week" : "Not on this machine"))
@@ -680,7 +691,7 @@ Panel {
               Stat {
                 value: root.pad2(root.brain.links)
                 label: "links"
-                hot: root.ready && Number(root.brain.links) < Number(root.brain.linksExpected || 3)
+                hot: root.ready && Number(root.brain.links) < Number(root.brain.linksExpected || 4)
                 family: root.monoFamily
                 tone: root.contentForeground
               }
