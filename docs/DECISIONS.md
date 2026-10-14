@@ -460,3 +460,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Login on 2026-10-14 printed `verify FAIL (0)` and NOT READY. OpenCode 2.0.28 removed `opencode debug skill` (the command exits 1 with help text). `verify.sh` is `set -euo pipefail`, so that exit killed the script before `bad()` and before the summary. The dashboard greps `^  FAIL  `, counts zero, and writes `verify FAIL (0)`. The replacement list command returns `"data":[]` because OpenCode scans with `{*.md,**/SKILL.md}` and Bun 1.4.2 matches nothing for that brace. Failing the boot on that empty list would stay red until upstream changes the glob. The skill files and the Claude symlinks are still checked. The button is how the next slip reaches grok without copying the lines by hand.
 
 **Rejected:** Keeping `opencode debug skill` and ignoring its exit (the check would pass on help text). Treating an empty `skill.list` as a FAIL (every boot stays NOT READY for a Bun glob this repo cannot patch). A headless `grok -p` that edits `~/.agents` from the panel (no one is watching the tools). Patching the OpenCode binary.
+
+## 2026-10-14 — First-letter hotkeys and full refresh on `r` in `firstintegral.1config`
+
+**Decision:** Every shortcut in the `firstintegral.1config` panel footer uses the first letter of its label as its hotkey (`r` `re-read`, `f` `fix`, `s` `spend`, `v` `vitals`, `l` `limits`, `q` `quiet`, `m` `models`; `esc` `close`/`back`), with legacy `g`, `u`, and `a` kept as aliases in `handleTextKey` and all footer chips clickable. Pressing `r` (or right-clicking the bar icon) calls `Service.refreshAll()`, which immediately runs `usage.py --refresh-go` and triggers `omarchy-agent-usage-update --limits-only` followed by another fresh read when it finishes.
+
+**Why:** Previously `r` only re-read local files without `--refresh-go` or provider limits, leaving cached limits stale unless the user separately knew to press `u`, while `limits` (`u`) and `quiet` (`a`) did not match the first letter of their labels.
+
+**Rejected:** Making `r` block the local vitals/ledger update until `omarchy-agent-usage-update` finishes (running both gives an immediate local + Go update and a second pass once provider limits return).

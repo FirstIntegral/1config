@@ -4,8 +4,8 @@ import Quickshell.Io
 
 // Headless reader for the 1config usage snapshot. Runs bin/usage.py on a timer.
 // That script reads local ledgers, and it refreshes OpenCode Go from
-// opencode.ai when the ten-minute cache is stale. The panel's `u` key also
-// runs omarchy-agent-usage-update and forces a fresh Go read.
+// opencode.ai when the ten-minute cache is stale. The panel's `r` and `l` keys
+// also run omarchy-agent-usage-update and force a fresh Go read.
 Item {
   id: root
 
@@ -25,6 +25,7 @@ Item {
   property string note: ""
   property var brain: ({})
   property int revision: 0
+  property bool _pendingForceRefresh: false
   property string _stdout: ""
   property string _stderr: ""
 
@@ -45,7 +46,11 @@ Item {
   }
 
   function refresh(forceGo) {
-    if (fetchProcess.running) return
+    if (fetchProcess.running) {
+      if (forceGo === true) _pendingForceRefresh = true
+      return
+    }
+    _pendingForceRefresh = false
     loading = true
     _stdout = ""
     _stderr = ""
@@ -59,6 +64,11 @@ Item {
     if (limitsProcess.running) return
     message = "Asking Omarchy for provider limits…"
     limitsProcess.running = true
+  }
+
+  function refreshAll() {
+    root.refresh(true)
+    root.refreshLimits()
   }
 
   function apply(raw) {
@@ -114,6 +124,10 @@ Item {
       } else {
         root.state = "error"
         root.message = stderr !== "" ? stderr.split("\n").slice(-1)[0] : "usage.py failed (exit " + exitCode + ")"
+      }
+      if (root._pendingForceRefresh) {
+        root._pendingForceRefresh = false
+        root.refresh(true)
       }
     }
     stdout: StdioCollector {

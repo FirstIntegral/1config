@@ -67,7 +67,11 @@ Panel {
       return root.bar.switchPanelFrom(root.barIdentity, direction)
     return false
   }
-  function refresh() { if (root.service) root.service.refresh() }
+  function refresh() {
+    if (!root.service) return
+    if (typeof root.service.refreshAll === "function") root.service.refreshAll()
+    else root.service.refresh(true)
+  }
   function refreshLimits() { if (root.service) root.service.refreshLimits() }
 
   // Non-ok vitals, one block the Fix button can hand to grok.
@@ -184,7 +188,7 @@ Panel {
   readonly property var spendAgents: filterSpend(root.agents, root.showQuiet)
   function handleTextKey(t) {
     if (t === "r" || t === "R") root.refresh()
-    else if (t === "u" || t === "U") root.refreshLimits()
+    else if (t === "l" || t === "L" || t === "u" || t === "U") root.refreshLimits()
     else if (t === "v" || t === "V" || t === "g" || t === "G") {
       root.mode = "vitals"
       root.detailOpen = false
@@ -193,7 +197,7 @@ Panel {
       root.mode = "usage"
       root.detailOpen = false
     }
-    else if (t === "a" || t === "A") root.showQuiet = !root.showQuiet
+    else if (t === "q" || t === "Q" || t === "a" || t === "A") root.showQuiet = !root.showQuiet
     else if (t === "m" || t === "M") root.showModels = !root.showModels
     else if ((t === "f" || t === "F") && root.canFix) root.askGrok()
   }
@@ -802,7 +806,7 @@ Panel {
                 width: parent.width
                 text: root.service && root.service.note
                   ? String(root.service.note)
-                  : "Each tool is its own box. a shows quiet tools. By model starts off."
+                  : "Each tool is its own box. q shows quiet tools. By model starts off."
                 color: root.contentForeground
                 opacity: 0.8
                 font.family: root.proseFamily
@@ -1006,8 +1010,8 @@ Panel {
               { k: "f", t: "fix", spend: false, fix: true },
               { k: "s", t: "spend", spend: false, fix: false },
               { k: "v", t: "vitals", spend: false, fix: false },
-              { k: "u", t: "limits", spend: true, fix: false },
-              { k: "a", t: "all", spend: true, fix: false },
+              { k: "l", t: "limits", spend: true, fix: false },
+              { k: "q", t: "quiet", spend: true, fix: false },
               { k: "m", t: "models", spend: true, fix: false }
             ]
             Rectangle {
@@ -1036,7 +1040,7 @@ Panel {
                   text: {
                     if (chip.modelData.k === "r" && root.service && root.service.loading) return "sync…"
                     if (chip.modelData.k === "esc" && root.detailOpen) return "back"
-                    if (chip.modelData.k === "a") return root.showQuiet ? "used" : "quiet"
+                    if (chip.modelData.k === "q") return root.showQuiet ? "used" : "quiet"
                     if (chip.modelData.k === "m") return root.showModels ? "on" : "off"
                     return chip.modelData.t
                   }
@@ -1050,9 +1054,13 @@ Panel {
               }
               MouseArea {
                 anchors.fill: parent
-                enabled: chip.modelData.fix === true
-                cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                onClicked: root.askGrok()
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  if (chip.modelData.k === "esc") {
+                    if (root.detailOpen) root.detailOpen = false
+                    else root.close()
+                  } else root.handleTextKey(chip.modelData.k)
+                }
               }
             }
           }

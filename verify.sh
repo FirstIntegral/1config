@@ -2050,6 +2050,14 @@ if grep -q 'function askGrok' "$PLUGIN/Panel.qml" \
 else
   bad "1config Fix with Grok button missing, or the dashboard still says verify FAIL (0)"
 fi
+if grep -q 'function refreshAll' "$PLUGIN/Service.qml" \
+   && grep -q 'service.refreshAll()' "$PLUGIN/Panel.qml" \
+   && grep -q '{ k: "l", t: "limits"' "$PLUGIN/Panel.qml" \
+   && grep -q '{ k: "q", t: "quiet"' "$PLUGIN/Panel.qml"; then
+  ok "1config r refreshes all and footer shortcuts use first-letter hotkeys"
+else
+  bad "1config r does not refresh all or footer shortcuts missing first-letter hotkeys"
+fi
 if [ -d "$HOME/.config/omarchy/plugins" ]; then
   if diff -rq "$PLUGIN" "$HOME/.config/omarchy/plugins/firstintegral.1config" >/dev/null; then
     ok "installed 1config plugin matches the brain copy"

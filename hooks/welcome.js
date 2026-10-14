@@ -275,9 +275,9 @@ const PAGES = [
     ],
     snippetTitle: 'Omarchy HUD controls (firstintegral.1config)',
     snippetItems: [
-      { key: '[v / g] Vitals view', val: '17 live machine & brain health checks; [f] launches Grok in ~/.agents to fix faults' },
+      { key: '[v / f] Vitals & Fix', val: '17 live machine & brain health checks; [f] launches Grok in ~/.agents to fix faults' },
       { key: '[s] Spend (usage.py)', val: 'OpenCode step-finish SQLite tokens+$, Claude 4-bucket sum, Grok 0-100%, Grok Bot base32 + hibernation guard' },
-      { key: '[m / a / u / r] Keys', val: '[m] Model rows   [a] Quiet tools   [u] Refresh limits   [r] Re-read close-slip.txt' },
+      { key: '[r / l / q / m] Keys', val: '[r] Re-read & refresh all   [l] Limits   [q] Quiet tools   [m] Model rows' },
     ],
   },
   {

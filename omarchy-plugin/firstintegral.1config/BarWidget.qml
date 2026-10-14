@@ -76,7 +76,7 @@ BarWidget {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
-    function refresh(): void { if (root.service) root.service.refresh() }
+    function refresh(): void { if (root.service) root.service.refreshAll() }
     function refreshLimits(): void { if (root.service) root.service.refreshLimits() }
     function isOpen(): bool { return root.opened }
   }
@@ -95,7 +95,7 @@ BarWidget {
     tooltipText: root.service ? root.service.tooltipText() : "1config"
     onPressed: function(b) {
       if (b === Qt.RightButton) {
-        if (root.service) root.service.refresh()
+        if (root.service) root.service.refreshAll()
       } else root.togglePanel()
     }
 
