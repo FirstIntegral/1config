@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-10-14 — Welcome walkthrough in hooks/welcome.js with AI curation rule
+
+**Decision:** Ship the 8-page interactive terminal welcome walkthrough at `hooks/welcome.js` (`node ~/.agents/hooks/welcome.js`, with `--self-test` checking 80..106 column border alignment). On any future brain update (`global_brain_update` or any edit under `~/.agents/**`), the AI evaluates whether the change belongs in `hooks/welcome.js`: user-facing triggers, rules, hooks, or architectural changes update the walkthrough in the same turn, while internal plumbing stays out.
+
+**Why:** A first-install or returning user needs a fast, self-contained terminal walkthrough of the whole brain without reading 70 KB of spec, and an uncurated auto-dump would bloat the 8 pages or overflow the box borders.
+
+**Rejected:** Keeping the walkthrough only in `/tmp`. Updating `welcome.js` on every trivial internal edit without AI judgment. Allowing unwrapped lines in the nested snippet boxes to overflow the right border.
+
 ## 2026-10-13 — Card cap is 760
 
 **Decision:** The open card caps at 760 wide and 820 tall. `Panel.qml` uses `Style.space(760)` and `Style.space(820)`. A narrower screen shrinks the width to the larger of 440 and 46% of the screen width. The sentence "about 640 by 820" in "2026-10-09 — Ring only on the bar, open week for OpenCode" is not the live size.

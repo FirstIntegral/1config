@@ -805,6 +805,24 @@ else
   log "WARNING: hooks/install-elan.sh missing"
 fi
 
+# --- welcome walkthrough (interactive 8-page terminal overview) ---------------
+echo "[welcome] welcome.js (interactive 8-page terminal walkthrough)"
+WELCOME_SRC="$AGENTS_HOME/hooks/welcome.js"
+if [ -f "$WELCOME_SRC" ]; then
+  chmod +x "$WELCOME_SRC"
+  if command -v node >/dev/null 2>&1; then
+    if node "$WELCOME_SRC" --self-test >/dev/null 2>&1; then
+      log "ready   hooks/welcome.js"
+    else
+      log "WARNING: hooks/welcome.js failed --self-test"
+    fi
+  else
+    log "ready   hooks/welcome.js (node not on PATH — skip self-test)"
+  fi
+else
+  log "WARNING: hooks/welcome.js missing"
+fi
+
 # --- boot dashboard autostart -----------------------------------------------
 echo "[boot-dashboard] install XDG autostart (Wayland + X11)"
 BD="$AGENTS_HOME/boot-dashboard"

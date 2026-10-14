@@ -44,7 +44,10 @@ git config --global commit.gpgsign true
 bash ~/.agents/hooks/gpg-store-passphrase.sh        # dedicated gnome-keyring collection
 gh auth login                                       # so sync.sh can fetch/push
 
-# 5. Optional: resume-from-suspend updater (needs root once)
+# 5. Optional: interactive 8-page welcome walkthrough
+node ~/.agents/hooks/welcome.js
+
+# 6. Optional: resume-from-suspend updater (needs root once)
 sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh \
   /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh
 ```
@@ -119,7 +122,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. |
 | `permissions.json` | One policy, fanned out to Claude, Grok, and OpenCode. Cursor Code autonomy is per-invocation (`--force`/`--sandbox`). `bash_without_prompt` is true. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
-| `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite. |
+| `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite, `welcome.js` walkthrough. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |

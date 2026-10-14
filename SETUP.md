@@ -421,6 +421,7 @@ Trigger: user says **`global_brain_update <what to change>`**. Target is `~/.age
 1. Read the brain first (`AGENTS.md`, `SETUP.md`, plus whatever the request touches — `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`).
 2. Change the **canonical** home of the thing, never a tool-local copy.
 2b. If the change alters what `setup-infographic.svg` depicts (components, flows, toolchain), regenerate the figure in this turn, **before** setup/sync.
+2c. Evaluate `hooks/welcome.js` (AI judgment): decide whether the new or changed item belongs in the 8-page welcome walkthrough (`hooks/welcome.js`). If it changes user-facing rules, triggers, hooks, or architecture, update the walkthrough in the same turn and keep `node ~/.agents/hooks/welcome.js --self-test` green; if it is internal-only plumbing, leave the walkthrough untouched.
 3. Tool parity: all four tools, installed by `setup.sh`, checked by `verify.sh`.
 4. `bash ~/.agents/setup.sh` → must end `== PASS ==`, `warnings=0`.
 5. `bash ~/.agents/sync.sh -m "<subject>"` → signed commit + push.

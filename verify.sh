@@ -1336,7 +1336,7 @@ else
   bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**'; do
+  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'welcome.js' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
@@ -1344,6 +1344,19 @@ for f in "$CANON" "$SETUP"; do
     fi
   done
 done
+if [ -x "$HOOKS/welcome.js" ]; then
+  if command -v node >/dev/null 2>&1; then
+    if node "$HOOKS/welcome.js" --self-test >/dev/null 2>&1; then
+      ok "hooks/welcome.js executable and passes --self-test"
+    else
+      bad "hooks/welcome.js failed --self-test"
+    fi
+  else
+    ok "hooks/welcome.js executable (node not on PATH)"
+  fi
+else
+  bad "hooks/welcome.js missing or not executable"
+fi
 if SETUP_MD="$SETUP" python3 - <<'PY'
 import os, pathlib, re, sys
 text = pathlib.Path(os.environ["SETUP_MD"]).read_text()

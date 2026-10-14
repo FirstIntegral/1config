@@ -180,7 +180,9 @@
       "Bash(bash ~/.agents/verify.sh)",
       "Bash(bash ~/.agents/sync.sh)",
       "Bash(bash ~/.agents/sync.sh *)",
-      "Bash(bash ~/.agents/hooks/brain-sync.sh)"
+      "Bash(bash ~/.agents/hooks/brain-sync.sh)",
+      "Bash(node ~/.agents/hooks/welcome.js)",
+      "Bash(node ~/.agents/hooks/welcome.js *)"
     ],
     "ask": [
       "Bash(git push)",
