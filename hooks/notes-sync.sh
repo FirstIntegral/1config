@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # notes-sync.sh — copy untracked project notes to the private machine-notes repo.
 #
+#   bash ~/.agents/hooks/notes-sync.sh setup     (one-time clone of NOTES_REMOTE)
 #   bash ~/.agents/hooks/notes-sync.sh push  <project>
 #   bash ~/.agents/hooks/notes-sync.sh pull  <project>
 #   bash ~/.agents/hooks/notes-sync.sh backfill
@@ -9,16 +10,16 @@
 # in either repo, never creates a GitHub repo, and never force-pushes.
 #
 # Stdout ends with one of:
-#   notes: skipped | notes: current | notes: pushed | notes: pulled | notes: merged
-# Exit 0  those five
+#   notes: skipped | notes: current | notes: pushed | notes: pulled | notes: merged | notes: ready
+# Exit 0  those six
 # Exit 20 notes.allow is tracked or not ignored
 # Exit 23 merge refused (delete versus edit, binary, or a non-markdown conflict); nothing written
-# Exit 1  fetch, sign, or push failed. A project commit is not rolled back.
+# Exit 1  fetch, sign, or push failed, or setup could not clone. A project commit is not rolled back.
 # A markdown conflict is merged and pushed in both push and pull. Stdout is notes: merged.
 #
-# NOTES_SYNC_TEST_ROOT is for verify.sh only. checkpoint.sh unsets it.
-# The real clone is $passwd_home/.local/share/machine-notes. A test root that
-# points at that clone is refused.
+# NOTES_SYNC_TEST_ROOT and NOTES_REMOTE_FILE are for verify.sh only.
+# checkpoint.sh unsets the former. A test root that points at the real clone is refused.
+# The real clone is $passwd_home/.local/share/machine-notes.
 set -uo pipefail
 
 export GIT_TERMINAL_PROMPT=0
@@ -124,6 +125,73 @@ warn() { echo "notes: warn $*" >&2; }
 
 skip_line() { echo "notes: skipped"; exit 0; }
 
+# Missing clone is a normal state on a fresh machine, but it must never be
+# silent forever: one stderr line names the single enablement path. Stdout
+# keeps the documented contract so checkpoint/continue keep working.
+skip_no_clone() {
+  echo "notes: no machine-notes clone at $1 — enable with: bash ~/.agents/hooks/notes-sync.sh setup" >&2
+  skip_line
+}
+
+cmd_setup() {
+  local brain home real target parent remote_file remote err tail_line
+  brain="$(cd "$(dirname "$0")/.." && pwd -P)"
+  home="$(passwd_home)"
+  [ -n "$home" ] || die "no passwd home"
+  real="$home/.local/share/machine-notes"
+  target="$real"
+  if [ -n "${NOTES_SYNC_TEST_ROOT:-}" ]; then
+    parent="$(cd "$(dirname "$NOTES_SYNC_TEST_ROOT")" && pwd -P)" || die "bad NOTES_SYNC_TEST_ROOT"
+    target="$parent/$(basename "$NOTES_SYNC_TEST_ROOT")"
+    if [ -d "$real" ]; then
+      realp="$(cd "$real" && pwd -P)"
+      if [ "$target" = "$realp" ]; then
+        echo "notes: test root is the real clone" >&2
+        exit 1
+      fi
+      case "$target" in
+        "$realp"/*)
+          echo "notes: test root is inside the real clone" >&2
+          exit 1
+          ;;
+      esac
+    fi
+  fi
+  if [ -e "$target/.git" ]; then
+    echo "notes: ready"
+    return 0
+  fi
+  remote_file="${NOTES_REMOTE_FILE:-$brain/NOTES_REMOTE}"
+  remote=""
+  if [ -f "$remote_file" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%$'\r'}"
+      case "$line" in ''|'#'*) continue ;; esac
+      remote="$line"
+      break
+    done < "$remote_file"
+  fi
+  if [ -z "$remote" ]; then
+    echo "notes: $remote_file missing or empty — put the notes repo URL there (pattern: git@github.com:owner/machine-notes.git)" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$target")"
+  err="$(mktemp)"
+  if git clone -q -- "$remote" "$target" 2>"$err"; then
+    rm -f "$err"
+    echo "notes: ready"
+    echo "notes: clone created at $target — seed existing projects with: bash $0 backfill" >&2
+    return 0
+  fi
+  if [ -s "$err" ]; then
+    tail_line="$(tail -n 1 "$err")"
+    [ -n "$tail_line" ] && echo "notes: $tail_line" >&2
+  fi
+  rm -f "$err"
+  echo "notes: clone failed — does the private repo exist at $remote? Create it on your git host first (a private repo for machine notes), then re-run: bash $0 setup" >&2
+  return 1
+}
+
 cmd_backfill() {
   local home g top c rc=0
   unset NOTES_SYNC_TEST_ROOT
@@ -133,7 +201,7 @@ cmd_backfill() {
     skip_line
   fi
   if [ ! -e "$home/.local/share/machine-notes/.git" ]; then
-    skip_line
+    skip_no_clone "$home/.local/share/machine-notes"
   fi
   while IFS= read -r g; do
     [ -n "$g" ] || continue
@@ -152,9 +220,10 @@ cmd_backfill() {
 
 MODE="${1:-}"
 case "$MODE" in
-  backfill) cmd_backfill ;;
+  backfill) cmd_backfill; exit $? ;;
+  setup) cmd_setup; exit $? ;;
   push|pull) ;;
-  *) die "usage: notes-sync.sh push|pull PROJECT | backfill" ;;
+  *) die "usage: notes-sync.sh push|pull PROJECT | backfill | setup" ;;
 esac
 [ $# -eq 2 ] || die "usage: notes-sync.sh $MODE PROJECT"
 PROJECT="$2"
@@ -193,7 +262,7 @@ if [ "$PROJECT" = "$BRAIN_DIR" ]; then
   skip_line
 fi
 if [ ! -e "$NOTES/.git" ]; then
-  skip_line
+  skip_no_clone "$NOTES"
 fi
 
 if ! git -C "$PROJECT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

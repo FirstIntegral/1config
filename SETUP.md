@@ -182,15 +182,18 @@ Invariants, all covered by `verify.sh`:
 
 ### §4c `hooks/notes-sync.sh` — private machine-notes
 
-Untracked notes for every current and future project under the passwd-home `~/Projects/` go to one private repo, `FirstIntegral/machine-notes`, cloned at `~/.local/share/machine-notes`. `checkpoint.sh` does not create it. `gh repo create` is not this script's job. Each machine clones once, then `bash ~/.agents/hooks/notes-sync.sh backfill` or `continue_project` pulls. Canonical rules: `AGENTS.md` "Machine notes". This section is the install spec.
+Untracked notes for every current and future project under the passwd-home `~/Projects/` go to one private repo, `FirstIntegral/machine-notes`, cloned at `~/.local/share/machine-notes`. `checkpoint.sh` does not create it. `gh repo create` is not this script's job. Each machine runs `notes-sync.sh setup` once, then `notes-sync.sh backfill` or `continue_project` pulls. Canonical rules: `AGENTS.md` "Machine notes". This section is the install spec.
 
 ```sh
-git clone git@github.com:FirstIntegral/machine-notes.git ~/.local/share/machine-notes
+bash ~/.agents/hooks/notes-sync.sh setup     # one-time clone, idempotent, prints notes: ready
 bash ~/.agents/hooks/notes-sync.sh push <project>
 bash ~/.agents/hooks/notes-sync.sh pull <project>
 bash ~/.agents/hooks/notes-sync.sh backfill
 ```
 
+- **`NOTES_REMOTE`** — brain-root file, one URL per line (comments allowed), same pattern as `BRAIN_REMOTE`. Default ships `git@github.com:FirstIntegral/machine-notes.git`; a fork edits the file to its own private notes repo. `setup` reads the first non-comment line; `NOTES_REMOTE_FILE` overrides for `verify.sh` only.
+- **`setup`** — clones `NOTES_REMOTE` into the passwd-home `~/.local/share/machine-notes`. Idempotent: an existing clone prints `notes: ready` and exits 0. Never `gh repo create`, never creates a GitHub repo — the private repo itself is created by hand on the git host, once, before setup. On clone failure it prints the last git error line plus actionable guidance ("create the private repo at <url> first, then re-run setup") and exits 1. A missing or empty `NOTES_REMOTE` exits 1 with the same kind of message. `NOTES_SYNC_TEST_ROOT` moves the clone target for fixtures; a target that is (or is inside) the real clone is refused.
+- **Missing clone on push/pull/backfill** — stdout keeps the contract word `notes: skipped`, stderr gets one line: `notes: no machine-notes clone at <path> — enable with: bash ~/.agents/hooks/notes-sync.sh setup`. Nothing is created, exit stays 0. The panel's vitals show a `Machine notes` warn tile (`not cloned`) until setup has run.
 - Key: lowercase `host/owner/repo` from `origin` pushurl, else `origin` url. `ssh` and `https` match. `ssh.github.com` folds to `github.com`. Not the directory. Not `@{upstream}`. Detached `HEAD` with a good origin still keys. No origin or an unparsed URL: `notes: skipped`.
 - Rides only if untracked. Defaults: `session_compact.md`, `session_transcript.md` (bytes only; commit body and stdout list paths, never file text), `AGENTS.md` and `docs/DECISIONS.md` when that checkout does not track them, plus gitignored `notes.allow` and the relative paths it lists. A directory line is walked. No globs, no `..`, no absolute path, no symlink outside the project.
 - Never: `claude_memory_import.md`, the retired session file the template `.gitignore` already names, `docs/session-archive/`, `docs/session-flushes/`, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `keystore.properties`, `credentials*`, play-store key json.

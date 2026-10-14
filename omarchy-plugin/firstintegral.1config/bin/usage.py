@@ -1193,6 +1193,20 @@ def _boot_vital(home: Path, root: Path) -> dict:
     return _vital("boot", "guards", "Boot dashboard", "warn", "drifted")
 
 
+def _notes_vital(home: Path) -> dict:
+    # The clone is optional until the user runs notes-sync.sh setup once, so a
+    # missing clone is a warn, not a fault. The detail line is the enablement
+    # path the panel hands to the Fix button.
+    clone = home / ".local" / "share" / "machine-notes" / ".git"
+    try:
+        cloned = clone.is_dir() or clone.is_file()
+    except OSError:
+        cloned = False
+    if cloned:
+        return _vital("notes", "machine", "Machine notes", "ok", "cloned")
+    return _vital("notes", "machine", "Machine notes", "warn", "not cloned")
+
+
 def _permissions_vital(root: Path) -> dict:
     path = root / "permissions.json"
     try:
@@ -1271,6 +1285,7 @@ VITAL_IDS = (
     "memory",
     "symlinks",
     "boot",
+    "notes",
     "tools",
     "tex",
     "lean",
@@ -1407,6 +1422,7 @@ def brain_status(home: Path, which=None, git=None) -> dict:
             None,
         ),
         _boot_vital(home, root),
+        _notes_vital(home),
         _vital("tools", "machine", "Agent tools", tool_state, tool_detail),
         _vital("tex", "machine", "TeX", tex_state, tex_detail),
         _vital("lean", "machine", "Lean", lean_state, lean_detail),
@@ -1825,6 +1841,7 @@ def self_test() -> None:
         "memory": ("fail", "not installed"),
         "symlinks": ("fail", "not installed"),
         "boot": ("fail", "missing"),
+        "notes": ("warn", "not cloned"),
         "tools": ("fail", "0/4"),
         "tex": ("fail", "missing"),
         "lean": ("fail", "missing"),
@@ -1883,6 +1900,8 @@ def self_test() -> None:
             guard.parent.mkdir(parents=True, exist_ok=True)
             guard.write_text("#!/bin/sh\n", encoding="utf-8")
             assert flag_parent
+        notes_clone = healthy / ".local" / "share" / "machine-notes" / ".git"
+        notes_clone.mkdir(parents=True)
         target = root / "AGENTS.md"
         for rel in LINK_RELS:
             link = healthy / rel

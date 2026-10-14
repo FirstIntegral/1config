@@ -171,7 +171,7 @@
   <text x="180" y="982" font-size="12" fill="#e6edf3">read FIRST at session start · REWRITE at end / milestone</text>
   <text x="180" y="1002" font-size="12" fill="#8b949e">state · left-off · next step · decisions · open issues</text>
   <text x="180" y="1022" font-size="12" fill="#8b949e">Models used = CUMULATIVE list (model + effort)</text>
-  <text x="180" y="1040" font-size="12" fill="#d29922">gitignored in the project · private machine-notes keeps both machines</text>
+  <text x="180" y="1040" font-size="12" fill="#d29922">gitignored in the project · private machine-notes (notes-sync.sh setup once) keeps both machines</text>
 
   <!-- session_transcript -->
   <rect x="813" y="932" width="627" height="118" rx="8" fill="#0d1117" stroke="#f85149" stroke-width="1.5"/>

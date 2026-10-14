@@ -464,6 +464,16 @@ if grep -q 'private machine-notes' "$AGENTS_HOME/setup-infographic.svg"; then
 else
   bad "infographic missing private machine-notes"
 fi
+if [ -f "$AGENTS_HOME/NOTES_REMOTE" ] \
+   && grep -q 'NOTES_REMOTE' "$HOOKS/notes-sync.sh" \
+   && grep -q 'setup)' "$HOOKS/notes-sync.sh" \
+   && grep -q 'notes-sync.sh setup' "$CANON" \
+   && grep -q 'notes-sync.sh setup' "$SETUP" \
+   && grep -q 'no machine-notes clone' "$HOOKS/notes-sync.sh"; then
+  ok "notes-sync setup path present in hook, NOTES_REMOTE, AGENTS.md, SETUP.md"
+else
+  bad "notes-sync setup path missing from hook, NOTES_REMOTE, AGENTS.md, or SETUP.md"
+fi
 _ns="$(mktemp -d)"; _nbare="$(mktemp -d)"; _np="$(mktemp -d)"
 git init -q --bare "$_nbare/n.git"
 git init -q "$_ns"
@@ -664,6 +674,56 @@ if [ -n "$_notes_pin" ]; then
 else
   ok "no machine-notes clone yet (fixture pin skipped)"
 fi
+# --- notes-sync setup: the one-time clone path for a fresh machine ---------
+_nsu="$(mktemp -d)"
+_nrf="$(mktemp)"
+_nbare2="$(mktemp -d)"
+_nclp="$(mktemp -d)"
+_nclone="$_nclp/machine-notes"
+git init -q --bare "$_nbare2/notes.git"
+printf '%s\n' "$_nbare2/notes.git" > "$_nrf"
+if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone" bash "$HOOKS/notes-sync.sh" setup >/tmp/notes-setup.out 2>/tmp/notes-setup.err \
+   && grep -q 'notes: ready' /tmp/notes-setup.out \
+   && [ -e "$_nclone/.git" ]; then
+  ok "notes-sync setup clones NOTES_REMOTE"
+else
+  bad "notes-sync setup failed to clone"
+fi
+if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone" bash "$HOOKS/notes-sync.sh" setup >/tmp/notes-setup2.out 2>/dev/null \
+   && grep -q 'notes: ready' /tmp/notes-setup2.out; then
+  ok "notes-sync setup is idempotent"
+else
+  bad "notes-sync setup is not idempotent"
+fi
+printf '%s\n' "$_nbare2/no-such-repo.git" > "$_nrf"
+_nclp2="$(mktemp -d)"
+_nclone2="$_nclp2/machine-notes"
+if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone2" bash "$HOOKS/notes-sync.sh" setup >/dev/null 2>/tmp/notes-setup-miss.err; then
+  bad "notes-sync setup cloned a missing remote"
+elif grep -q 'clone failed' /tmp/notes-setup-miss.err; then
+  ok "notes-sync setup names the missing private repo"
+else
+  bad "notes-sync setup failure message is not actionable"
+fi
+_npp="$(mktemp -d)"
+_nsproj="$_npp/proj"
+_nsempty="$(mktemp -d)"
+mkdir -p "$_nsproj"
+git -C "$_nsproj" init -q
+git -C "$_nsproj" config user.email verify@local
+git -C "$_nsproj" config user.name verify
+git -C "$_nsproj" remote add origin git@github.com:someone/nsproj.git
+git -C "$_nsproj" commit -qm x --allow-empty
+if NOTES_SYNC_TEST_ROOT="$_nsempty" bash "$HOOKS/notes-sync.sh" push "$_nsproj" >/tmp/notes-skip.out 2>/tmp/notes-skip.err \
+   && grep -q 'notes: skipped' /tmp/notes-skip.out \
+   && grep -q 'no machine-notes clone' /tmp/notes-skip.err \
+   && grep -q 'notes-sync.sh setup' /tmp/notes-skip.err; then
+  ok "missing clone prints the setup hint and exits 0"
+else
+  bad "missing clone hint wrong or exit non-zero"
+fi
+rm -rf "$_nsu" "$_nrf" "$_nbare2" "$_nclp" "$_nclp2" "$_npp" "$_nsempty"
+rm -f /tmp/notes-setup.out /tmp/notes-setup.err /tmp/notes-setup2.out /tmp/notes-setup-miss.err /tmp/notes-skip.out /tmp/notes-skip.err
 rm -rf "$_ns" "$_nbare" "$_np" "$_np2" "$_np3"
 rm -f /tmp/notes-warn.txt /tmp/notes-div.out /tmp/notes-div.err /tmp/notes-dry.out /tmp/notes-live.out
 
