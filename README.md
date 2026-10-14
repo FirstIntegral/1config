@@ -128,6 +128,26 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |
 | `skills/` | Three groups, see [Skills](#skills). Tracked: five on-demand process skills. Untracked: machine-local tool skills. |
 
+## Engineering details (how deep the checks go)
+
+A few examples of the mechanical guards in this repo so nothing silently drifts or hallucinates:
+
+- **Token & spend accounting without provider polling (`omarchy-plugin/firstintegral.1config/bin/usage.py`):**
+  - **OpenCode SQLite `step-finish` vs. `session` rollups:** queries `part` rows where `$.type = 'step-finish'` (`input + output + reasoning + cache.read + cache.write` and dollar `$.cost`) joined to `message` per model and per day. Querying the `session` table would double-count old turns whenever `time_updated` moves and miss dollar cost.
+  - **Claude 4-bucket token sum:** when `total` is absent in `modelUsage`, sums `inputTokens + outputTokens + cacheReadInputTokens + cacheCreationInputTokens`.
+  - **Grok `0–100` percent scale trap:** seeks the tail `1.5 MB` of `~/.grok/logs/unified.jsonl` for `"billing: fetched credits config"` and keeps `creditUsagePercent` on `0–100` (`1.0` = `1%`; rescaling `(0, 1]` turned a fresh `1.0%` week into `100%`). When `isUnifiedBillingUser` is true, one `X` card holds the shared meter for X, Grok, Grok Bot, and Cursor.
+  - **Grok Bot base32 blob + hibernation rollover:** base32-decodes `*.blob` stems in `sand-client-persistence/` to read only `.weekly-usage.cache` (leaving chat blobs untouched) and drops any slice where `nextResetMs <= now` even if `expiresAtMs > now`, so hibernating through a weekly reset never sticks last week's `100%` on the bar.
+- **Character-exact LaTeX measurement token gate (`hooks/digit-refuse.py`):**
+  - Unfolds `\frac{a}{b}` → `a/b`, `\num{...}`, `\,`, and en/em-dashes (`--`), strips the preamble before `\begin{document}`, and expands `\input`/`\include` plus `\newcommand`/`\def` (up to 6 passes) while preserving source line numbers.
+  - Extracts fractions (`100/135`), decimals (`0.212`), percents (`45%`), scientific notation (`1.2e3`), en-dash result pairs (`13--2`), and 3+ digit integers while ignoring years (`19xx`/`20xx`) and single-hyphen IDs (`02-23-20174`).
+  - Classifies every character into `prose`, `table`, `caption`, `mask` (`\TODO{...}`), or `skip`: every measurement token in `prose` must match a `table` or `caption` token in scope character-for-character, and `pdftotext -layout` verifies nothing in `digit-refuse.deny` rendered into `main.pdf`. Passing `--fuzzy`, `--near`, `--llm`, or `--repo` exits `2` immediately.
+- **Context budget & zero double-injection (`hooks/load-project-agents.sh`):**
+  - Global `AGENTS.md` is kept at ~1.4% of a 1M-token window (under the 3% ceiling).
+  - Claude Code `2.1.277+` loads project `AGENTS.md` natively unless a project `CLAUDE.md` suppresses it. To prevent injecting the file twice into the context window, the `SessionStart` hook checks `claude --version`, `pluginConfigs` instruction mode, and parent dirs for suppressing `CLAUDE.md` files — printing `AGENTS.md` (capped at `AGENTS_CAP=20480` bytes) only when native loading will not happen.
+- **Dual-signal staleness & retired token bans (`hooks/watch-stale.sh`, `hooks/kill-tokens.deny`):**
+  - `watch-stale.sh` declares `STALE` only when **both** log growth is 0 bytes and `/proc/<pid>/stat` fields 14+15 (`utime+stime`, parsed after the last `)` in `comm`) use `<1s` CPU over the 10-minute window.
+  - `hooks/kill-tokens.deny` blocks retired names from re-entering prompts, templates, or LLM stray merges (`merge-strays.sh`).
+
 ## Skills
 
 Skills load only when their `description` matches the task. Three groups, three homes:
