@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-15 — grokbot-brain tracker is retired
+
+**Decision:** `setup.sh` inserts `firstintegral.1config` after `brwsk.vigil`, else at the start of `bar.layout.right`. It does not look for `brwsk.brain`. That plugin and `FirstIntegral/grokbot-brain` are deleted. Do not reinstall them. This repo's own bar plugin stays.
+
+**Why:** Grok Bot re-sends the whole chat on every turn. A compact file on the bot computer does not shrink that payload, and the status board does not either. The user removed the tracker.
+
+**Rejected:** Keeping the board after the compact protocol failed. Anchoring this widget on a deleted plugin id.
+
+**Policy:** grokbot_brain=retired
+
 ## 2026-10-15 — machine-notes clone is automatic
 
 **Decision:** `setup.sh` and every boot-dashboard login run `notes-sync.sh setup`. `push`, `pull`, and `backfill` do the same once when the real checkout at `~/.local/share/machine-notes` is missing and `NOTES_SYNC_TEST_ROOT` is unset. A failed clone does not fail `setup.sh` or a checkpoint. The dashboard row is a warn, and the next login retries. The script still never creates the GitHub repo. SSH uses `BatchMode` and the clone is bound to 60s.

@@ -892,12 +892,9 @@ if '"id": "firstintegral.1config"' in text:
     raise SystemExit(0)
 lines = text.splitlines(keepends=True)
 anchor = None
-for needle in ('"id": "brwsk.brain"', '"id": "brwsk.vigil"'):
-    for i, line in enumerate(lines):
-        if needle in line:
-            anchor = i
-            break
-    if anchor is not None and needle == '"id": "brwsk.brain"':
+for i, line in enumerate(lines):
+    if '"id": "brwsk.vigil"' in line:
+        anchor = i
         break
 insert_at = None
 if anchor is not None:

@@ -48,8 +48,6 @@ The header still shows the short commit, the branch, the dirty bit, the link cou
 
 No prompt text or credentials leave the collector. Detail lines (slip text, `git status` paths relative to this checkout) are local-file names only, and an `@` never passes. Output is one JSON object on stdout.
 
-`brwsk.brain` is a different plugin (the grokbot-brain tracker). This one is 1config itself.
-
 ## Install
 
 `bash ~/.agents/setup.sh` copies this folder to `~/.config/omarchy/plugins/firstintegral.1config/` when that plugins directory exists, and adds `{ "id": "firstintegral.1config" }` to `bar.layout.right` in `~/.config/omarchy/shell.json` if it is missing. It does not reorder other widgets. Omarchy forbids symlinks inside a plugin, so this is a copy, not a link. The next `setup.sh` overwrites the copy.
