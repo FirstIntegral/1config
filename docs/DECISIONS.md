@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-15 — Android SDK root is HOME/Android/Sdk
+
+**Decision:** When a project needs an Android SDK, the only root is `$HOME/Android/Sdk`. Never `$HOME/android-sdk`, never a second tree, never inside a repo. `local.properties` `sdk.dir` is the absolute path of that directory and stays gitignored. A project command sets `ANDROID_HOME` to the same directory. Look there before installing anything. `setup.sh` does not download the SDK, does not probe it, and a missing tree is not a verify failure or a vitals fault. There is no install hook.
+
+**Why:** A 12 Oct omalauncher phone-test build found no SDK, then created `$HOME/android-sdk` (5.3G) in the home listing. That same session had already looked for `$HOME/Android/Sdk`. That is the directory Android Studio and the Gradle plugin use, so a later Studio install joins this tree. A hidden path would be missed the same way and produce a second copy. The SDK is a machine toolchain, not project files. It is not TeX: most machines never build an Android app, so a missing tree must stay quiet.
+
+**Rejected:** Inside the project checkout. `$HOME/.local/share/android-sdk`. Leaving `$HOME/android-sdk`. An install hook that `setup.sh` runs. A vitals tile or a verify failure when the tree is absent.
+
+**Policy:** android_sdk_root=HOME-Android-Sdk
+
 ## 2026-10-15 — continue_project fetches live GitHub
 
 **Decision:** `continue_project` reads the local files, then, when `origin` or `upstream` is a github.com URL, fetches open issues and pull requests before the status. Scope is the logged-in `gh` user's open items on those repos, plus any issue or pull request that the project's `AGENTS.md` or `CONTRIB-LOG.md` still calls open or waiting. The status leads with what changed. The fetch does not comment, react, post, push, or fast-forward. No GitHub remote, no `gh`, an empty list, or a failed fetch is one line, then the file-based status.

@@ -146,6 +146,7 @@ Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md
   - Pin: exact `leanprover/lean4:vX.Y.Z`. Never `stable`/`nightly`.
   - PATH: `~/.elan/bin`. Paper `build.sh` prepends it. Do not symlink into `~/.local/bin`.
   - Allowlisted. The install hook is the only install path. `leanlab` (PyPI) is unrelated — do not install it.
+- **Android SDK, when a project needs one:** `$HOME/Android/Sdk` only. Never `$HOME/android-sdk`, never a second tree, never inside a repo. `local.properties` `sdk.dir` is the absolute path of that directory and stays gitignored. A project build sets `ANDROID_HOME` to the same directory. Look there before installing anything. A missing SDK is normal. `setup.sh` does not download it, and a missing tree is not a verify failure or a vitals fault.
 
 ## Omarchy plugin — `firstintegral.1config`
 
