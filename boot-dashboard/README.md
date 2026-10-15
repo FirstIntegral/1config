@@ -23,7 +23,8 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **link guard** | `agents-symlink-guard` healthy |
 | **memory guard** | Claude/Grok residue clean |
 | **tool updates** | Watches boot updater (`~/cron-jobs/ai-terminal-tools-update-on-boot/`). Does **not** start upgrades. Runs **before** ecosystem so inventory refresh finishes first. |
-| **setup** | Only after a real fast-forward (`fast-forwarded N` on exit 0). Runs `bash ~/.agents/setup.sh` after tool updates and before ecosystem. Up to date, ahead, dirty, and diverged skip it. A failure is its own row. Does not run `sync.sh`. Quiet boots have no setup row. |
+| **setup** | Only after a real fast-forward (`fast-forwarded N` on exit 0). Runs `bash ~/.agents/setup.sh` after tool updates and before ecosystem. Up to date, ahead, dirty, and diverged skip it. A failure is its own row. Does not run `sync.sh`. Quiet boots have no setup row. `setup.sh` also clones machine-notes. |
+| **machine notes** | Every login. Runs `notes-sync.sh setup` when `~/.local/share/machine-notes` has no `.git`. Ok when the clone is already there. A failed clone is a warn (offline or key not loaded) and the next login retries. Does not create the GitHub repo. |
 | **ecosystem** | `verify.sh` PASS (after tool updates, and after setup on a fast-forward — avoids grading the pre-pull install). A run that prints `FAIL` lines is `verify FAIL (n)`. A run that dies before any `FAIL` line (no `== PASS` either) is `verify aborted`, with the exit code and the last output line — not `verify FAIL (0)`. |
 | **tool versions** | grok / claude / opencode on PATH |
 | **signing** | Runs **first**, before tool-update / verify. Unlocks the GPG signing key from the dedicated `gpg-signing` collection (key from `git config user.signingkey` / `$GPG_SIGNING_KEY`; migrates out of bricked default `.keyring` files). Warn: nothing stored / dbus down / passphrase rejected — not a generic "locked". Git commits themselves go through `hooks/gpg-git.sh` (loopback, no pinentry GUI). |
@@ -69,7 +70,10 @@ Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail —
 5. **brain sync — fetch failed / local ahead / behind + local edits**  
    `brain-sync.sh` only fast-forwards. Fetch failed = offline or the SSH key isn't in the agent yet. Local ahead = you have unpushed commits (run `bash ~/.agents/sync.sh -m "…"`). Behind + local edits = pull the repo manually (`git -C ~/.agents pull --ff-only`) once the edits are committed or stashed. Divergence is a hard fail — resolve by hand.
 
-6. **omarchy dots — fetch failed / ahead / dirty / live edit**  
+6. **machine notes — clone failed**  
+   `~/.local/share/machine-notes` is missing and `notes-sync.sh setup` could not clone it (offline, SSH key not loaded, or the private repo is unreachable). Work can continue. The next login retries. `continue_project` and `checkpoint_project` try once too.
+
+7. **omarchy dots — fetch failed / ahead / dirty / live edit**  
    Same fetch semantics as brain sync. The row color is `sync.sh`'s exit code (`|| true` used to force that code to 0, so a failure still looked green). `ahead` = pack repo has unpushed commits (hint printed: push or reset in `~/Projects/omarchy-dots`); `dirty` = uncommitted pack edits (hint: commit or stash). Exit 5 = a live `~/.config` file was edited here, or the pack and the live file both changed, so `sync.sh` applies nothing (an `apply.sh` run would overwrite the local edits on the way). The row reads `N edited: <first file under ~/.config> +M — not applied`, the same text lands in the close slip, and up to three files follow with their tag. Both exits are printed: **keep** them by copying the live files into `~/Projects/omarchy-dots` (commit, push), or **force** the pack with `~/Projects/omarchy-dots/apply.sh` (overwrites the local edits). Missing or incoming files are fixed by `apply.sh` at the next login, after this is resolved.
 
 ## After the window closes

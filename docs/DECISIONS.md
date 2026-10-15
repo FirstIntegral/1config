@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-15 — machine-notes clone is automatic
+
+**Decision:** `setup.sh` and every boot-dashboard login run `notes-sync.sh setup`. `push`, `pull`, and `backfill` do the same once when the real checkout at `~/.local/share/machine-notes` is missing and `NOTES_SYNC_TEST_ROOT` is unset. A failed clone does not fail `setup.sh` or a checkpoint. The dashboard row is a warn, and the next login retries. The script still never creates the GitHub repo. SSH uses `BatchMode` and the clone is bound to 60s.
+
+**Why:** A second machine that is behind on 1config still needed a hand-run `notes-sync.sh setup` after the boot dashboard fast-forwarded the brain. The fast-forward already runs `setup.sh`, so that boot is the clone. A machine that is already current still needs the login row, because a quiet boot does not run `setup.sh`.
+
+**Rejected:** Leaving the clone as a manual step. Failing `setup.sh` when GitHub or the SSH key is down. Auto-cloning a `NOTES_SYNC_TEST_ROOT` fixture. Creating `FirstIntegral/machine-notes` from the script.
+
+**Policy:** notes_clone=automatic
+
 ## 2026-10-15 — Android SDK root is HOME/Android/Sdk
 
 **Decision:** When a project needs an Android SDK, the only root is `$HOME/Android/Sdk`. Never `$HOME/android-sdk`, never a second tree, never inside a repo. `local.properties` `sdk.dir` is the absolute path of that directory and stays gitignored. A project command sets `ANDROID_HOME` to the same directory. Look there before installing anything. `setup.sh` does not download the SDK, does not probe it, and a missing tree is not a verify failure or a vitals fault. There is no install hook.

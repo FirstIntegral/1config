@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # notes-sync.sh — copy untracked project notes to the private machine-notes repo.
 #
-#   bash ~/.agents/hooks/notes-sync.sh setup     (one-time clone of NOTES_REMOTE)
+#   bash ~/.agents/hooks/notes-sync.sh setup     (clone NOTES_REMOTE; setup.sh and login do this)
 #   bash ~/.agents/hooks/notes-sync.sh push  <project>
 #   bash ~/.agents/hooks/notes-sync.sh pull  <project>
 #   bash ~/.agents/hooks/notes-sync.sh backfill
 #
 # The project git never receives these files. This script never runs `git add -A`
 # in either repo, never creates a GitHub repo, and never force-pushes.
+# A missing real clone is created once. NOTES_SYNC_TEST_ROOT never auto-clones.
+# NOTES_SYNC_HOME is verify-only and cannot be the real passwd home.
 #
 # Stdout ends with one of:
 #   notes: skipped | notes: current | notes: pushed | notes: pulled | notes: merged | notes: ready
@@ -23,11 +25,30 @@
 set -uo pipefail
 
 export GIT_TERMINAL_PROMPT=0
+# BatchMode: a login or a checkpoint must not sit on an SSH passphrase prompt.
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=10}"
 
 die() { echo "notes-sync: $*" >&2; exit 2; }
 
 passwd_home() {
-  getent passwd "$(id -un)" | awk -F: '{print $6; exit}'
+  local real fake
+  real="$(getent passwd "$(id -un)" | awk -F: '{print $6; exit}')"
+  if [ -z "${NOTES_SYNC_HOME:-}" ]; then
+    printf '%s\n' "$real"
+    return 0
+  fi
+  [ -d "$NOTES_SYNC_HOME" ] || die "bad NOTES_SYNC_HOME"
+  fake="$(cd "$NOTES_SYNC_HOME" && pwd -P)" || die "bad NOTES_SYNC_HOME"
+  if [ -n "$real" ] && [ -d "$real" ]; then
+    real="$(cd "$real" && pwd -P)"
+    case "$fake" in
+      "$real"|"$real"/*)
+        echo "notes: NOTES_SYNC_HOME is the real home" >&2
+        exit 1
+        ;;
+    esac
+  fi
+  printf '%s\n' "$fake"
 }
 
 # git@host:owner/repo, ssh://git@host/owner/repo, https://host/owner/repo.
@@ -177,7 +198,8 @@ cmd_setup() {
   fi
   mkdir -p "$(dirname "$target")"
   err="$(mktemp)"
-  if git clone -q -- "$remote" "$target" 2>"$err"; then
+  # Bound the clone. A hung SSH key prompt must not stall login or setup.sh.
+  if timeout 60 git clone -q -- "$remote" "$target" 2>"$err"; then
     rm -f "$err"
     echo "notes: ready"
     echo "notes: clone created at $target — seed existing projects with: bash $0 backfill" >&2
@@ -192,6 +214,21 @@ cmd_setup() {
   return 1
 }
 
+# Real checkout missing: clone once. Fixtures (NOTES_SYNC_TEST_ROOT) never clone.
+# Success stays quiet so push/pull stdout remains one status line.
+# Failure exits 0 via skip_no_clone. Never creates the GitHub repo.
+ensure_notes_clone() {
+  local path="$1"
+  [ -e "$path/.git" ] && return 0
+  if [ -n "${NOTES_SYNC_TEST_ROOT:-}" ]; then
+    skip_no_clone "$path"
+  fi
+  if ! cmd_setup >/dev/null; then
+    skip_no_clone "$path"
+  fi
+  [ -e "$path/.git" ] || skip_no_clone "$path"
+}
+
 cmd_backfill() {
   local home g top c rc=0
   unset NOTES_SYNC_TEST_ROOT
@@ -201,7 +238,7 @@ cmd_backfill() {
     skip_line
   fi
   if [ ! -e "$home/.local/share/machine-notes/.git" ]; then
-    skip_no_clone "$home/.local/share/machine-notes"
+    ensure_notes_clone "$home/.local/share/machine-notes"
   fi
   while IFS= read -r g; do
     [ -n "$g" ] || continue
@@ -262,7 +299,7 @@ if [ "$PROJECT" = "$BRAIN_DIR" ]; then
   skip_line
 fi
 if [ ! -e "$NOTES/.git" ]; then
-  skip_no_clone "$NOTES"
+  ensure_notes_clone "$NOTES"
 fi
 
 if ! git -C "$PROJECT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

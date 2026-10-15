@@ -474,6 +474,17 @@ if [ -f "$AGENTS_HOME/NOTES_REMOTE" ] \
 else
   bad "notes-sync setup path missing from hook, NOTES_REMOTE, AGENTS.md, or SETUP.md"
 fi
+if grep -q 'ensure_notes_clone' "$HOOKS/notes-sync.sh" \
+   && grep -q 'BatchMode=yes' "$HOOKS/notes-sync.sh" \
+   && grep -q 'timeout 60 git clone' "$HOOKS/notes-sync.sh" \
+   && grep -q 'NOTES_SYNC_HOME is the real home' "$HOOKS/notes-sync.sh" \
+   && grep -q 'unset NOTES_SYNC_TEST_ROOT NOTES_SYNC_HOME NOTES_REMOTE_FILE' "$HOOKS/checkpoint.sh" \
+   && grep -q 'NS_SRC" setup' "$AGENTS_HOME/setup.sh" \
+   && grep -q 'machine-notes clone failed' "$AGENTS_HOME/setup.sh"; then
+  ok "machine-notes clone is automatic and a failed clone does not fail setup"
+else
+  bad "automatic machine-notes clone is not wired through setup.sh"
+fi
 _ns="$(mktemp -d)"; _nbare="$(mktemp -d)"; _np="$(mktemp -d)"
 git init -q --bare "$_nbare/n.git"
 git init -q "$_ns"
@@ -717,12 +728,61 @@ git -C "$_nsproj" commit -qm x --allow-empty
 if NOTES_SYNC_TEST_ROOT="$_nsempty" bash "$HOOKS/notes-sync.sh" push "$_nsproj" >/tmp/notes-skip.out 2>/tmp/notes-skip.err \
    && grep -q 'notes: skipped' /tmp/notes-skip.out \
    && grep -q 'no machine-notes clone' /tmp/notes-skip.err \
-   && grep -q 'notes-sync.sh setup' /tmp/notes-skip.err; then
+   && grep -q 'notes-sync.sh setup' /tmp/notes-skip.err \
+   && [ ! -e "$_nsempty/.git" ]; then
   ok "missing clone prints the setup hint and exits 0"
 else
   bad "missing clone hint wrong or exit non-zero"
 fi
-rm -rf "$_nsu" "$_nrf" "$_nbare2" "$_nclp" "$_nclp2" "$_npp" "$_nsempty"
+# Auto-clone uses a fake home. No origin, so the run stops after the clone and does not commit.
+_autohome="$(mktemp -d)"
+_autobare="$(mktemp -d)"
+_autorf="$(mktemp)"
+mkdir -p "$_autohome/Projects/proj"
+git init -q --bare "$_autobare/notes.git"
+printf '%s\n' "$_autobare/notes.git" > "$_autorf"
+git -C "$_autohome/Projects/proj" init -q
+git -C "$_autohome/Projects/proj" config user.email verify@local
+git -C "$_autohome/Projects/proj" config user.name verify
+_rc=0
+_out="$(NOTES_SYNC_HOME="$_autohome" NOTES_REMOTE_FILE="$_autorf" bash "$HOOKS/notes-sync.sh" push "$_autohome/Projects/proj" 2>/tmp/notes-auto.err)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: skipped" ] \
+   && [ -e "$_autohome/.local/share/machine-notes/.git" ] \
+   && ! git -C "$_autohome/.local/share/machine-notes" rev-parse --verify HEAD >/dev/null 2>&1; then
+  ok "missing real clone is created on push and does not commit"
+else
+  bad "auto-clone push (exit $_rc, out $_out)"
+fi
+printf '%s\n' "$_autobare/missing.git" > "$_autorf"
+_autohome2="$(mktemp -d)"
+mkdir -p "$_autohome2/Projects/proj"
+git -C "$_autohome2/Projects/proj" init -q
+_rc=0
+_out="$(NOTES_SYNC_HOME="$_autohome2" NOTES_REMOTE_FILE="$_autorf" bash "$HOOKS/notes-sync.sh" push "$_autohome2/Projects/proj" 2>/tmp/notes-auto-miss.err)" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: skipped" ] \
+   && [ ! -e "$_autohome2/.local/share/machine-notes/.git" ] \
+   && grep -q 'clone failed' /tmp/notes-auto-miss.err \
+   && grep -q 'no machine-notes clone' /tmp/notes-auto-miss.err; then
+  ok "failed auto-clone still skips and exits 0"
+else
+  bad "failed auto-clone (exit $_rc, out $_out)"
+fi
+_realhome="$(getent passwd "$(id -un)" | awk -F: '{print $6; exit}')"
+_rc=0
+NOTES_SYNC_HOME="$_realhome" bash "$HOOKS/notes-sync.sh" setup >/dev/null 2>/tmp/notes-home-real.err || _rc=$?
+if [ "$_rc" -ne 0 ] && grep -q 'NOTES_SYNC_HOME is the real home' /tmp/notes-home-real.err; then
+  ok "NOTES_SYNC_HOME cannot retarget the real home"
+else
+  bad "NOTES_SYNC_HOME real-home guard (exit $_rc)"
+fi
+if [ -n "$_notes_pin" ]; then
+  if [ "$(git -C "$_notes_real" rev-parse HEAD)" = "$_notes_pin" ]; then
+    ok "auto-clone fixtures did not write the real machine-notes clone"
+  else
+    bad "auto-clone fixtures moved the real machine-notes clone"
+  fi
+fi
+rm -rf "$_nsu" "$_nrf" "$_nbare2" "$_nclp" "$_nclp2" "$_npp" "$_nsempty" "$_autohome" "$_autohome2" "$_autobare"
 rm -f /tmp/notes-setup.out /tmp/notes-setup.err /tmp/notes-setup2.out /tmp/notes-setup-miss.err /tmp/notes-skip.out /tmp/notes-skip.err
 rm -rf "$_ns" "$_nbare" "$_np" "$_np2" "$_np3"
 rm -f /tmp/notes-warn.txt /tmp/notes-div.out /tmp/notes-div.err /tmp/notes-dry.out /tmp/notes-live.out
@@ -1171,6 +1231,20 @@ if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
     ok "boot dashboard setup row runs setup.sh and not sync.sh"
   else
     bad "boot dashboard setup row must run setup.sh and must not run sync.sh"
+  fi
+  _notes_call="$(awk '/^main\(\)/{m=1} m && /check_notes_clone/{print NR; exit}' "$BD/dashboard.sh")"
+  if [ -n "$_su_call" ] && [ -n "$_notes_call" ] && [ -n "$_vr_call" ] \
+     && [ "$_su_call" -lt "$_notes_call" ] && [ "$_notes_call" -lt "$_vr_call" ] \
+     && grep -q 'notes-sync.sh' "$BD/dashboard.sh" \
+     && awk '
+       /^check_notes_clone\(\)/ { inside=1; next }
+       inside && /^}/ { exit }
+       inside && /notes-sync\.sh/ { saw=1 }
+       END { exit saw ? 0 : 1 }
+     ' "$BD/dashboard.sh"; then
+    ok "boot dashboard clones machine-notes every login"
+  else
+    bad "boot dashboard does not clone machine-notes every login"
   fi
   if bash "$BD/dashboard.sh" --slip-selftest; then
     ok "boot dashboard close slip records warn/fail and writes CLEAN"

@@ -383,6 +383,44 @@ check_brain_sync() {
   esac
 }
 
+check_notes_clone() {
+  # Every login. A fast-forward boot also clones from setup.sh; this row
+  # covers a machine that is already current and still has no clone.
+  # Failure is a warn. The next login retries. Never creates the GitHub repo.
+  local hook home clone out rc hint
+  hook="$AGENTS_HOME/hooks/notes-sync.sh"
+  home="$(getent passwd "$(id -un)" | awk -F: '{print $6; exit}')"
+  clone="$home/.local/share/machine-notes"
+  if [ ! -x "$hook" ]; then
+    row warn "machine notes" "hook missing"
+    return 1
+  fi
+  if [ -e "$clone/.git" ]; then
+    row ok "machine notes" "cloned"
+    return 0
+  fi
+  printf "  ${BLUE}…${R}  ${BOLD}%-18s${R}  ${DIM}%s${R}" \
+    "machine notes" "cloning…"
+  rc=0
+  out="$(env -u NOTES_SYNC_HOME -u NOTES_SYNC_TEST_ROOT -u NOTES_REMOTE_FILE bash "$hook" setup 2>&1)" || rc=$?
+  printf "\r\033[2K"
+  if [ "$rc" -eq 0 ] && [ -e "$clone/.git" ]; then
+    row ok "machine notes" "cloned"
+    return 0
+  fi
+  hint="$(printf '%s\n' "$out" | tail -1)"
+  hint="${hint#"${hint%%[![:space:]]*}"}"
+  if [ "${#hint}" -gt 70 ]; then
+    hint="${hint:0:67}..."
+  fi
+  if [ -n "$hint" ]; then
+    row warn "machine notes" "clone failed — $hint"
+  else
+    row warn "machine notes" "clone failed — offline or key not loaded"
+  fi
+  return 1
+}
+
 check_setup_after_ff() {
   # Install the tree this boot just fast-forwarded. Runs after the tool
   # updater so both writers of inventory.local.md are finished before verify.
@@ -594,6 +632,7 @@ main() {
   # inventory, and verify must see the installed tree, not the pre-pull copies.
   check_tool_updates
   check_setup_after_ff
+  check_notes_clone
   check_verify
   check_versions
 

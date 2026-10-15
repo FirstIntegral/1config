@@ -203,7 +203,7 @@ finish() {
     exit 21
   fi
   (
-    unset NOTES_SYNC_TEST_ROOT
+    unset NOTES_SYNC_TEST_ROOT NOTES_SYNC_HOME NOTES_REMOTE_FILE
     bash "$BRAIN_DIR/hooks/notes-sync.sh" push "$PROJECT"
   ) || nrc=$?
   if [ "$nrc" -eq 23 ]; then

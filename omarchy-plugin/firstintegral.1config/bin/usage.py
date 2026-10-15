@@ -1194,9 +1194,8 @@ def _boot_vital(home: Path, root: Path) -> dict:
 
 
 def _notes_vital(home: Path) -> dict:
-    # The clone is optional until the user runs notes-sync.sh setup once, so a
-    # missing clone is a warn, not a fault. The detail line is the enablement
-    # path the panel hands to the Fix button.
+    # setup.sh and the boot dashboard clone this. A missing clone stays a warn
+    # until one of those succeeds. The detail is what the Fix button shows.
     clone = home / ".local" / "share" / "machine-notes" / ".git"
     try:
         cloned = clone.is_dir() or clone.is_file()

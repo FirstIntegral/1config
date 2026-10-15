@@ -776,6 +776,18 @@ if [ -f "$NS_SRC" ]; then
 else
   log "WARNING: hooks/notes-sync.sh missing"
 fi
+# Best-effort. Offline or a missing key must not fail setup; the next setup
+# or login retries. Never creates the GitHub repo. Ignore fixture env.
+if [ -x "$NS_SRC" ] && bash -n "$NS_SRC" 2>/dev/null; then
+  _ns_rc=0
+  _ns_out="$(env -u NOTES_SYNC_HOME -u NOTES_SYNC_TEST_ROOT -u NOTES_REMOTE_FILE bash "$NS_SRC" setup 2>&1)" || _ns_rc=$?
+  if [ "$_ns_rc" -eq 0 ]; then
+    log "ready   machine-notes"
+  else
+    log "note    machine-notes clone failed — next setup or login retries"
+    printf '%s\n' "$_ns_out" | tail -n 2 | sed 's/^/  /' || true
+  fi
+fi
 
 # --- staleness watch (direct-reference, armed beside every detached run) ------
 echo "[watch-stale] watch-stale.sh (staleness watch for detached runs)"

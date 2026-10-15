@@ -186,14 +186,14 @@ const PAGES = [
       'Every project separates human session logs from AI handoff state using two gitignored files in the project root.',
       'session_transcript.md is an append-only chronological log written exclusively for the human; AI agents append at milestones but are strictly forbidden from reading it (enforced by hooks/rule-oracles.sh).',
       'session_compact.md is the AI handoff file, rewritten at milestones and before context compaction with current status, next steps, and a cumulative Models used list.',
-      'Untracked project files (plus optional paths in notes.allow, excluding secrets/.env/keys) sync across machines through a private machine-notes repo (NOTES_REMOTE) keyed by lowercase host/owner/repo via hooks/notes-sync.sh.',
+      'Untracked project files (plus optional paths in notes.allow, excluding secrets/.env/keys) sync across machines through a private machine-notes repo (NOTES_REMOTE) keyed by lowercase host/owner/repo. setup.sh and login clone it; a pull or checkpoint retries if the clone is still missing.',
       'When two machines edit session_compact.md offline, notes-sync.sh keeps both copies under notes-sync-merge without an LLM call so neither machine\'s open items are lost.',
     ],
     snippetTitle: 'Session file contract & notes-sync.sh',
     snippetItems: [
       { key: 'session_compact.md', val: 'AI handoff (read first on session start, rewritten at milestones, tracks model + effort)' },
       { key: 'session_transcript.md', val: 'Human-only narrative log (write-only for agents; rule-oracles.sh blocks hook reads)' },
-      { key: 'hooks/notes-sync.sh', val: 'Syncs untracked notes via NOTES_REMOTE; dedupes log prefixes & merges offline compact edits' },
+      { key: 'hooks/notes-sync.sh', val: 'NOTES_REMOTE clone via setup.sh and login; push retries; merges offline edits' },
     ],
   },
   {
@@ -292,7 +292,7 @@ const PAGES = [
       'Every commit is GPG-signed without GUI popups or AI co-author lines: gpg-git.sh signs in loopback mode using a dedicated gpg-signing keyring collection, and gpg-keyring.py (via vendored jeepney) scans raw *.keyring files on disk if D-Bus breaks.',
       'updater/ (boot-check.sh, update-apps.sh, on-resume.sh, system-sleep-shim.sh, refresh-inventory.py) upgrades grok/claude/opencode on @reboot and suspend-resume (skipping mise-managed shims) and writes live versions to gitignored inventory.local.md.',
       'Detached jobs must be armed same-turn with watch-stale.sh <pid> <log> (cries STALE only when both log growth and /proc/<pid>/stat fields 14+15 utime+stime after the last ")" use <1s CPU across 10m; idle preview servers are excluded), while Caveman mode stays always on (full).',
-      'At login, boot-dashboard unlocks GPG first, fast-forwards ~/.agents (running setup.sh if pulled), syncs omarchy-dots, and writes close-slip.txt (cleared incrementally by close-slip.sh); for multi-agent work, Herd Boards coordinate waves on a flock-locked wall where every post ends with a fixed parseable vote token.',
+      'At login, boot-dashboard unlocks GPG first, fast-forwards ~/.agents (running setup.sh if pulled), clones machine-notes when that checkout is missing, syncs omarchy-dots, and writes close-slip.txt (cleared incrementally by close-slip.sh); for multi-agent work, Herd Boards coordinate waves on a flock-locked wall where every post ends with a fixed parseable vote token.',
     ],
     snippetTitle: 'Under-the-hood hooks & daemons (~/.agents/)',
     snippetItems: [
