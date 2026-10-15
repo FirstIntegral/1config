@@ -299,10 +299,15 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
    3. `<path>/docs/DECISIONS.md` — durable choices + why
 5. **Do NOT** open `<path>/session_transcript.md` unless the user explicitly asks (Transcript privacy HARD RULE).
 6. If none of the three files exist: a git root is not a new project. Do not offer `create_project`. Follow Foreign checkouts. Anything else → say the path has no project session layout; offer `create_project` there (or fix the path).
-7. After reading: brief status (current state + where we left off + open issues from compact), then wait for / take the user's next instruction. Do not invent state that is not in those files.
-8. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
+7. **Live GitHub, when this checkout has any.** After the file reads, and only when `origin` or `upstream` is a `github.com` URL, fetch before the status. Local files are the baseline. GitHub is the news.
+   - Open pull requests and open issues authored by the logged-in `gh` user, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`, `--state open`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
+   - Also every issue or pull request that `<path>/AGENTS.md` or `<path>/CONTRIB-LOG.md` still calls open or waiting, including one someone else opened. If GitHub now says closed or merged, that is the update.
+   - Lead with what changed since `session_compact.md`: new comments, reviews, state, and who spoke. Nothing changed, no GitHub remote, `gh` missing, an empty list, or a failed fetch: one line, then the file-based status. Do not invent a comment the fetch did not return.
+   - Do not comment, react, post, push, or fast-forward during this fetch.
+8. After the fetch: brief status (current state + where we left off + open issues from compact and from the fetch), then wait for / take the user's next instruction. Do not invent state that is not in those files or in the fetch.
+9. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
 
-Same trigger for all tools (Grok / Claude Code / OpenCode). No tool-specific continue step.
+Same trigger for all four tools (Grok, Claude Code, OpenCode, Cursor Code). No tool-specific continue step.
 
 ---
 

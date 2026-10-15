@@ -1328,6 +1328,13 @@ if grep -q 'NEEDS-MEMORY-MERGE' "$SETUP" && grep -q 'continue_project' "$SETUP";
 else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
+if grep -qF 'GitHub is the news' "$CANON" && grep -qF 'GitHub is the news' "$SETUP" \
+   && grep -qF 'Do not comment, react, post, push, or fast-forward during this fetch' "$CANON" \
+   && grep -qF 'Do not comment, react, post, push, or fast-forward during this fetch' "$SETUP"; then
+  ok "continue_project fetches live GitHub issues and pull requests"
+else
+  bad "continue_project live GitHub fetch missing from AGENTS.md or SETUP.md"
+fi
 if grep -q 'only agrees is noise' "$AGENTS_HOME/docs/DECISIONS.md" \
    && grep -q 'SOUL.md' "$AGENTS_HOME/docs/DECISIONS.md" \
    && grep -q 'personal heartbeat' "$AGENTS_HOME/docs/DECISIONS.md"; then

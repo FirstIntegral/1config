@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-10-15 — continue_project fetches live GitHub
+
+**Decision:** `continue_project` reads the local files, then, when `origin` or `upstream` is a github.com URL, fetches open issues and pull requests before the status. Scope is the logged-in `gh` user's open items on those repos, plus any issue or pull request that the project's `AGENTS.md` or `CONTRIB-LOG.md` still calls open or waiting. The status leads with what changed. The fetch does not comment, react, post, push, or fast-forward. No GitHub remote, no `gh`, an empty list, or a failed fetch is one line, then the file-based status.
+
+**Why:** A local log was a day behind a reply on a pull request. A reminder only in one project's `AGENTS.md` does not fire for the next project, and `session_compact.md` is rewritten at a checkpoint.
+
+**Rejected:** A line only in each project's `AGENTS.md`. Fetching every issue on the parent repo. Commenting or pushing during resume. Treating a failed fetch as a reason to skip the rest of resume.
+
 ## 2026-10-14 — Welcome walkthrough in hooks/welcome.js with AI curation rule
 
 **Decision:** Ship the 8-page interactive terminal welcome walkthrough at `hooks/welcome.js` (`node ~/.agents/hooks/welcome.js`, with `--self-test` checking 80..106 column border alignment). `setup.sh` runs it automatically at the end of a fresh machine's first interactive install (recording `~/.local/state/1config/welcome-shown` so subsequent `setup.sh` runs stay non-blocking). On any future brain update (`global_brain_update` or any edit under `~/.agents/**`), the AI evaluates whether the change belongs in `hooks/welcome.js`: user-facing triggers, rules, hooks, or architectural changes update the walkthrough in the same turn, while internal plumbing stays out.

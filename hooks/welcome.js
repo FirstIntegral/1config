@@ -205,7 +205,7 @@ const PAGES = [
     accentColor: ANSI.amber,
     sentences: [
       'create_project <name> scaffolds ~/Projects/<name> from project-template/ (verified by hooks/rule-oracles.sh) and never runs git init or creates a remote.',
-      'continue_project <path> checks memory and symlink residue flags, pulls cross-machine notes via notes-sync.sh, and reads session_compact.md, AGENTS.md, and docs/DECISIONS.md in order.',
+      'continue_project <path> checks residue flags, pulls notes via notes-sync.sh, reads session_compact.md, AGENTS.md, and docs/DECISIONS.md, then fetches that checkout\'s open GitHub issues and pull requests and leads with what changed.',
       'checkpoint_project rewrites session_compact.md, appends a wrap-up entry to session_transcript.md, backfills docs/DECISIONS.md, and executes hooks/checkpoint.sh.',
       'checkpoint.sh enforces deterministic exit codes (0, 3, 10 through 23): git config always wins over AGENTS.md, session file leaks exit 20, and failed pushes never rebase or force-push.',
       'global_brain_update targets ~/.agents/ itself and requires running setup.sh and sync.sh in the same turn, plus regenerating setup-infographic.svg if architecture flows changed and evaluating whether hooks/welcome.js should mention the change.',
