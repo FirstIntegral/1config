@@ -175,7 +175,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -2274,18 +2274,76 @@ for _m in omarchy diagnose-crash vigil; do
     bad "machine-local skill $_m is not gitignored"
   fi
 done
+# 1.x has no `api` command (help on stderr, exit 1). 2.x removed
+# `debug skill`. hooks/opencode-skill-list.sh picks one. A captured
+# status must not abort this script: set -e used to die here with no
+# FAIL line, and the boot row said "verify FAIL (0)".
+_oc_helper="$HOOKS/opencode-skill-list.sh"
+_oc_fix="$(mktemp -d)"
+cat >"$_oc_fix/opencode" <<'EOF'
+#!/bin/sh
+if [ "$1" = "api" ]; then
+  printf '%s\n' 'Commands:' '  opencode debug               debugging' >&2
+  exit 1
+fi
+if [ "$1" = "debug" ] && [ "$2" = "skill" ]; then
+  printf '%s\n' '[{"name":"systematic-debugging"}]'
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$_oc_fix/opencode"
+_oc_prc=0
+_oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q 'systematic-debugging'; then
+  ok "opencode 1.x skill list falls back to debug skill"
+else
+  bad "opencode 1.x skill list did not fall back to debug skill"
+fi
+cat >"$_oc_fix/opencode" <<'EOF'
+#!/bin/sh
+if [ "$1" = "api" ]; then
+  echo 'skill.list failed' >&2
+  exit 1
+fi
+if [ "$1" = "debug" ]; then
+  printf '%s\n' '[{"name":"should-not-be-used"}]'
+  exit 0
+fi
+exit 1
+EOF
+_oc_prc=0
+_oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
+if [ "$_oc_prc" -ne 0 ]; then
+  ok "opencode 2.x skill.list failure does not fall back"
+else
+  bad "opencode 2.x skill.list failure fell back to debug skill"
+fi
+cat >"$_oc_fix/opencode" <<'EOF'
+#!/bin/sh
+if [ "$1" = "api" ]; then
+  printf '%s\n' '{"data":[]}'
+  exit 0
+fi
+exit 1
+EOF
+_oc_prc=0
+_oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q '"data":\[\]'; then
+  ok "opencode 2.x empty skill.list is returned for the INFO path"
+else
+  bad "opencode 2.x empty skill.list was not returned"
+fi
+rm -rf "$_oc_fix"
 if command -v opencode >/dev/null 2>&1; then
   # to a file, not $(...): opencode exits before flushing a >64 KB pipe.
-  # The subshell status must not abort this script. `opencode debug skill`
-  # was removed in 2.0.28 and exited 1; set -e then died here with no FAIL
-  # line, and the boot row said "verify FAIL (0)".
   _ocf="$(mktemp)"
   _oc_rc=0
-  (cd /tmp && timeout 40 opencode api skill.list --standalone >"$_ocf" 2>/dev/null) || _oc_rc=$?
+  bash "$_oc_helper" >"$_ocf" 2>/dev/null || _oc_rc=$?
   _oc="$(cat "$_ocf" 2>/dev/null || true)"
   rm -f "$_ocf"
   if [ "$_oc_rc" -ne 0 ]; then
-    bad "opencode api skill.list exited $_oc_rc"
+    bad "opencode skill list exited $_oc_rc"
   else
     _missing=""
     for _s in $_skill_list; do

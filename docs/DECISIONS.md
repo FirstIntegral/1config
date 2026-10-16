@@ -461,7 +461,7 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 
 ## 2026-10-10 — Skills follow-up: trims in UPSTREAM.md, OpenCode check, rules line
 
-**Decision:** Each `skills/<name>/UPSTREAM.md` lists its own trims (it pointed at a proposal file outside the repo). `verify.sh` checked OpenCode discovery with `opencode debug skill` (that command is gone; the live check is the 2026-10-14 entry). Grok has no listing command and is checked only through the shared dir (SETUP.md §4). `AGENTS.md` gets two short lines: skills wiring under tri-tool parity and the skills home under `global_brain_update` step 2. The figure shows the tracked skills.
+**Decision:** Each `skills/<name>/UPSTREAM.md` lists its own trims (it pointed at a proposal file outside the repo). `verify.sh` checked OpenCode discovery with `opencode debug skill` (OpenCode 2.x removed that command; 2.x uses the 2026-10-14 entry, 1.x uses the 2026-10-16 entry). Grok has no listing command and is checked only through the shared dir (SETUP.md §4). `AGENTS.md` gets two short lines: skills wiring under tri-tool parity and the skills home under `global_brain_update` step 2. The figure shows the tracked skills.
 
 **Why:** Tri-tool parity requires a verify check per tool. A pointer to a file outside the repo breaks on every other clone.
 
@@ -499,6 +499,8 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 
 **Rejected:** Keeping `opencode debug skill` and ignoring its exit (the check would pass on help text). Treating an empty `skill.list` as a FAIL (every boot stays NOT READY for a Bun glob this repo cannot patch). A headless `grok -p` that edits `~/.agents` from the panel (no one is watching the tools). Patching the OpenCode binary.
 
+**Scope:** OpenCode 2.x only. OpenCode 1.x is "2026-10-16 — OpenCode 1.x skill list falls back to debug skill".
+
 ## 2026-10-14 — First-letter hotkeys and full refresh on `r` in `firstintegral.1config`
 
 **Decision:** Every shortcut in the `firstintegral.1config` panel footer uses the first letter of its label as its hotkey (`r` `re-read`, `f` `fix`, `s` `spend`, `v` `vitals`, `l` `limits`, `q` `quiet`, `m` `models`; `esc` `close`/`back`), with legacy `g`, `u`, and `a` kept as aliases in `handleTextKey` and all footer chips clickable. Pressing `r` (or right-clicking the bar icon) calls `Service.refreshAll()`, which immediately runs `usage.py --refresh-go` and triggers `omarchy-agent-usage-update --limits-only` followed by another fresh read when it finishes.
@@ -506,3 +508,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Previously `r` only re-read local files without `--refresh-go` or provider limits, leaving cached limits stale unless the user separately knew to press `u`, while `limits` (`u`) and `quiet` (`a`) did not match the first letter of their labels.
 
 **Rejected:** Making `r` block the local vitals/ledger update until `omarchy-agent-usage-update` finishes (running both gives an immediate local + Go update and a second pass once provider limits return).
+
+## 2026-10-16 — OpenCode 1.x skill list falls back to debug skill
+
+**Decision:** `hooks/opencode-skill-list.sh` runs `opencode api skill.list --standalone`. When that command is absent — stderr is the top-level help (`Commands:`) and does not list `opencode api` — it runs `opencode debug skill` and returns that JSON. Any other non-zero exit stays a failure. Empty `data` stays an INFO only for the 2.x command. A 1.x list that omits a tracked name is a FAIL.
+
+**Why:** Boot on 2026-10-16 fast-forwarded the brain and verify printed NOT READY. This machine's OpenCode is 1.18.35. mise `latest` resolved to 2.0.29, and that GitHub release tag 404s, so the 2.x CLI cannot be installed. `opencode api` is not a 1.x command, so the 2026-10-14 check exited 1. `opencode debug skill` on 1.18.35 exits 0 and lists the tracked skills. The 2.x rule is unchanged: ignoring a `debug skill` exit would pass on help text.
+
+**Rejected:** Treating every `api` exit 1 as success. Installing OpenCode 2.0.29 from a tag that has no release asset. Leaving boot NOT READY until a 2.x package exists.
