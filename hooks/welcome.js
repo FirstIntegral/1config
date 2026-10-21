@@ -145,7 +145,7 @@ const PAGES = [
       '1config is a single canonical brain at ~/.agents/ that unifies Claude Code, Grok, OpenCode, and Cursor Code under one rules file, one permission policy, and one setup script.',
       'Running setup.sh symlinks ~/.agents/AGENTS.md into every tool\'s expected global path (plus generates ~/.cursor/rules/1config.mdc with alwaysApply: true) and fans out permissions.json into their respective configs.',
       'Tool parity is a hard rule: a feature that works in one tool and not the others is treated as a bug, and verify.sh checks all four tools on every run.',
-      'Skills split into three homes: 5 tracked process skills in ~/.agents/skills/ (adapted from obra/superpowers, linked into Claude via setup.sh 1b), gitignored machine-local skills (omarchy, vigil, diagnose-crash), and design skills in ~/Projects/skills/.',
+      'Skills split into three homes: 6 tracked process skills in ~/.agents/skills/ (five from obra/superpowers, plus security-audit from Cloudflare, linked into Claude via setup.sh 1b), gitignored machine-local skills (omarchy, vigil, diagnose-crash), and design skills in ~/Projects/skills/.',
     ],
     snippetTitle: 'Canonical fan-out (~/.agents/)',
     snippetItems: [

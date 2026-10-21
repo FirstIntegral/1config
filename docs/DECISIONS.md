@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-21 — security-audit skill pinned from Cloudflare
+
+**Policy:** security_audit_skill=c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
+
+**Decision:** Track `skills/security-audit/` from cloudflare/security-audit-skill at `c1c8a8c1471069fb0e188eeaff69b8e8db6564a8` (MIT, Copyright (c) 2025-2026 Cloudflare, Inc.). Same install path as the other process skills: `!skills/security-audit/` in `.gitignore`, `UPSTREAM.md`, `LICENSE.upstream`, Claude symlink via `setup.sh` step `1b`. Local trims live in that `UPSTREAM.md`. The description fires on an explicit audit, pen-test, or vulnerability hunt. A full run waits for a named agent budget and proposes profile `quick` with a cap of 40. `standard` and `deep` wait for a yes that names the profile. A tool with no subagents stops. Output stays under `~/security-audit-skill/`. Auditing `~/.agents` waits for a separate yes. Target-controlled execution stays off because Vigil is not the required OS sandbox, so those leads stay `needs_validation`. `verify.sh` reads the copyright phrase from each skill's `UPSTREAM.md` instead of requiring one fixed credit line.
+
+**Why:** The harness is maintained, schema-checked, and already refuses unsandboxed execution. One canonical skill dir keeps it on Claude, Grok, and OpenCode. A null-budget `standard` run is the token burn reported against this skill.
+
+**Rejected:** `npx skills add --global` (tool-local copies). The upstream description, which loads on ordinary security questions. A second hunter written here. The NØNOS proof-before-PID model from the same thread.
+
 ## 2026-10-21 — session_transcript is not collected
 
 **Decision:** 1config does not create, append, or sync `session_transcript.md`. `create_project` does not copy it. Checkpoints do not append a wrap-up. `notes-sync.sh` does not ride it, including a `notes.allow` line. Existing files in old projects and existing blobs in machine-notes stay. Do not delete them. If a file with that name exists, do not open it. `checkpoint.sh` still refuses to commit it. The template `.gitignore` still names it. `hooks/rule-oracles.sh` still fails if a hook reads it.

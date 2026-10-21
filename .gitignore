@@ -13,6 +13,7 @@ skills/*
 !skills/receiving-code-review/
 !skills/requesting-code-review/
 !skills/writing-plans/
+!skills/security-audit/
 
 # Live grok/claude/opencode versions — differ per machine, rewritten by setup/updater
 inventory.local.md

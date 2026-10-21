@@ -110,7 +110,7 @@
   <text x="152" y="476" font-size="12" fill="#8b949e">permissions.json → 3-tool fan-out · cursor rule</text>
   <text x="152" y="496" font-size="12" fill="#79c0ff">SETUP.md = spec · verify.sh = gate</text>
   <text x="152" y="516" font-size="12" fill="#8b949e">git-versioned (public repo 1config)</text>
-  <text x="152" y="536" font-size="12" fill="#3fb950">skills/ 5 tracked → ~/.claude/skills links</text>
+  <text x="152" y="536" font-size="12" fill="#3fb950">skills/ 6 tracked → ~/.claude/skills links</text>
   <line x1="490" y1="436" x2="576" y2="436" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
   <text x="510" y="424" font-size="11" fill="#8b949e">creates</text>
 

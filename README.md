@@ -125,7 +125,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |
-| `skills/` | Three groups, see [Skills](#skills). Tracked: five on-demand process skills. Untracked: machine-local tool skills. |
+| `skills/` | Three groups, see [Skills](#skills). Tracked: six on-demand process skills. Untracked: machine-local tool skills. |
 
 ## Engineering details (how deep the checks go)
 
@@ -154,7 +154,7 @@ Skills load only when their `description` matches the task. Three groups, three 
 | Group | Where | Git | Examples |
 |-------|-------|-----|----------|
 | Machine-local tool skills | `~/.agents/skills/<name>/` | Untracked (`skills/*` in `.gitignore`) | omarchy, diagnose-crash, vigil |
-| On-demand process skills | `~/.agents/skills/<name>/` | Tracked in 1config (one `!skills/<name>/` line each) | systematic-debugging, verification-before-completion, receiving-code-review, requesting-code-review, writing-plans |
+| On-demand process skills | `~/.agents/skills/<name>/` | Tracked in 1config (one `!skills/<name>/` line each) | systematic-debugging, verification-before-completion, receiving-code-review, requesting-code-review, writing-plans, security-audit |
 | Design skills | `~/Projects/skills/<name>/` | That repo | ambient-operations-design, brain-hud-design |
 
-The process skills are adapted from [obra/superpowers](https://github.com/obra/superpowers) at a pinned commit (MIT, Copyright (c) 2025 Jesse Vincent). Each dir keeps `UPSTREAM.md` and `LICENSE.upstream`. Grok and OpenCode read `~/.agents/skills` natively. `setup.sh` step `1b` symlinks each tracked skill into `~/.claude/skills/<name>` and leaves a real directory there untouched. `verify.sh` checks the frontmatter, the credit, and the symlinks. 1config does not link machine-local skills into Claude. Plans written by `writing-plans` go in the project's `docs/plans/` and are committed. To add a tracked skill: create the dir, add its `!skills/<name>/` line, run `setup.sh`.
+Five process skills are adapted from [obra/superpowers](https://github.com/obra/superpowers) at a pinned commit (MIT, Copyright (c) 2025 Jesse Vincent). `security-audit` is adapted from [cloudflare/security-audit-skill](https://github.com/cloudflare/security-audit-skill) at `c1c8a8c1` (MIT, Copyright (c) 2025-2026 Cloudflare, Inc.). A full audit waits for a named agent budget, proposes profile `quick` with a cap of 40, and does not run target code: Vigil is not the OS sandbox that skill requires, so those leads stay `needs_validation`. Each dir keeps `UPSTREAM.md` and `LICENSE.upstream`. Grok and OpenCode read `~/.agents/skills` natively. `setup.sh` step `1b` symlinks each tracked skill into `~/.claude/skills/<name>` and leaves a real directory there untouched. `verify.sh` checks the frontmatter, the copyright line named in `UPSTREAM.md`, and the symlinks. 1config does not link machine-local skills into Claude. Plans written by `writing-plans` go in the project's `docs/plans/` and are committed. To add a tracked skill: create the dir, add its `!skills/<name>/` line, run `setup.sh`.

@@ -2271,7 +2271,12 @@ for _s in $_skill_list; do
   for _f in UPSTREAM.md LICENSE.upstream; do
     [ -f "$_sd/$_f" ] || bad "skill $_s: $_f missing"
   done
-  grep -q 'MIT License, Copyright (c) 2025 Jesse Vincent' "$_sd/SKILL.md" || bad "skill $_s: MIT credit footer missing"
+  _credit="$(awk -F': MIT, ' '/^- License: MIT, /{sub(/\. Full text:.*/, "", $2); print $2; exit}' "$_sd/UPSTREAM.md")"
+  if [ -n "$_credit" ] && grep -qF "$_credit" "$_sd/SKILL.md"; then
+    ok "skill $_s: license credit in SKILL.md"
+  else
+    bad "skill $_s: SKILL.md missing UPSTREAM copyright${_credit:+ ($_credit)}"
+  fi
   if grep -rqiE 'superpowers:|Co-Authored-By' "$_sd"; then bad "skill $_s: superpowers: cross-ref or co-author line"; fi
   _cl="$HOME/.claude/skills/$_s"
   if [ -L "$_cl" ] && [ "$(readlink -f "$_cl")" = "$(readlink -f "$_sd")" ]; then
