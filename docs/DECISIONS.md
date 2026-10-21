@@ -22,11 +22,11 @@
 
 ## 2026-10-15 — Android SDK root is HOME/Android/Sdk
 
-**Decision:** When a project needs an Android SDK, the only root is `$HOME/Android/Sdk`. Never `$HOME/android-sdk`, never a second tree, never inside a repo. `local.properties` `sdk.dir` is the absolute path of that directory and stays gitignored. A project command sets `ANDROID_HOME` to the same directory. Look there before installing anything. `setup.sh` does not download the SDK, does not probe it, and a missing tree is not a verify failure or a vitals fault. There is no install hook.
+**Decision:** When a project needs an Android SDK, the only root is `$HOME/Android/Sdk`. Never `$HOME/android-sdk`, never a second tree, never inside a repo. `local.properties` `sdk.dir` is the absolute path of that directory and stays gitignored. A project command sets `ANDROID_HOME` to the same directory. Look there before installing anything. If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms. `setup.sh` does not download the SDK, does not probe it, and a missing tree is not a verify failure or a vitals fault. There is no install hook.
 
-**Why:** A 12 Oct omalauncher phone-test build found no SDK, then created `$HOME/android-sdk` (5.3G) in the home listing. That same session had already looked for `$HOME/Android/Sdk`. That is the directory Android Studio and the Gradle plugin use, so a later Studio install joins this tree. A hidden path would be missed the same way and produce a second copy. The SDK is a machine toolchain, not project files. It is not TeX: most machines never build an Android app, so a missing tree must stay quiet.
+**Why:** A 12 Oct omalauncher phone-test build found no SDK, then created `$HOME/android-sdk` (5.3G) in the home listing. That same session had already looked for `$HOME/Android/Sdk`. That is the directory Android Studio and the Gradle plugin use, so a later Studio install joins this tree. A hidden path would be missed the same way and produce a second copy. The SDK is a machine toolchain, not project files. It is not TeX: most machines never build an Android app, so a missing tree must stay quiet. On 21 Oct 2026 an agent looked at the right path, got a missing directory, and downloaded command-line tools into it. The sentence that names `setup.sh` did not stop the agent. The stop sentence names the agent.
 
-**Rejected:** Inside the project checkout. `$HOME/.local/share/android-sdk`. Leaving `$HOME/android-sdk`. An install hook that `setup.sh` runs. A vitals tile or a verify failure when the tree is absent.
+**Rejected:** Inside the project checkout. `$HOME/.local/share/android-sdk`. Leaving `$HOME/android-sdk`. An install hook that `setup.sh` runs. A vitals tile or a verify failure when the tree is absent. A second rule that says to re-read this file.
 
 **Policy:** android_sdk_root=HOME-Android-Sdk
 

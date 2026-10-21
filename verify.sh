@@ -1413,10 +1413,14 @@ if grep -qF '$HOME/Android/Sdk' "$CANON" && grep -qF '$HOME/Android/Sdk' "$SETUP
    && grep -qF '$HOME/Android/Sdk' "$AGENTS_HOME/README.md" \
    && grep -qF 'Never `$HOME/android-sdk`' "$CANON" \
    && grep -qF 'android_sdk_root=HOME-Android-Sdk' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$CANON" \
+   && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$SETUP" \
+   && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$AGENTS_HOME/README.md" \
+   && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -q 'sdkmanager' "$AGENTS_HOME/setup.sh"; then
-  ok "android sdk root is \$HOME/Android/Sdk and setup.sh does not install it"
+  ok "android sdk root is \$HOME/Android/Sdk and a missing tree stops the agent"
 else
-  bad "android sdk root rule missing, or setup.sh mentions sdkmanager"
+  bad "android sdk root rule missing, the stop sentence drifted, or setup.sh mentions sdkmanager"
 fi
 if grep -q 'only agrees is noise' "$AGENTS_HOME/docs/DECISIONS.md" \
    && grep -q 'SOUL.md' "$AGENTS_HOME/docs/DECISIONS.md" \

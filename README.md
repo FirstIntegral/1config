@@ -93,7 +93,7 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 | `create_project` / `checkpoint_project` | New simple names land in `~/Projects/<name>`; never `git init`, never add a remote | Project location and publishing are deliberate choices. | Give an explicit path when needed; ask before publishing. |
 | TeX | Assumed installed | Papers are LaTeX, never a Markdown fallback. New papers run digit-refuse after latexmk. | Install `texlive-full` (Ubuntu) or `texlive-meta` (Omarchy). |
 | Lean 4 | Default on new `writepaper_project` scaffolds | First paper copies `docs/paper/lean/`. Existing papers not backfilled. `setup.sh` does not install elan. | `bash ~/.agents/hooks/install-elan.sh` |
-| Android SDK | `$HOME/Android/Sdk` when a project needs one | One root, the path Studio already uses. Not inside a repo. A missing tree is normal. | `setup.sh` does not download it. |
+| Android SDK | `$HOME/Android/Sdk` when a project needs one | One root, the path Studio already uses. Not inside a repo. A missing tree is normal. | If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms. |
 | Paper author block | `git config user.name` and `user.email` | No personal name in the shared rules or the paper template. | Set those two git configs. Empty means stop and ask. |
 | Remote check | URLs in `BRAIN_REMOTE` | `sync.sh`, `verify.sh`, and boot sync refuse any other origin. | Forks: edit `BRAIN_REMOTE` only. |
 
@@ -104,7 +104,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 - No `apt` / `pacman` / `omarchy pkg` (prints the line, you run it).
 - No CLI download for grok/claude/opencode.
 - No elan/Lean download (`hooks/install-elan.sh` is the install path; setup only probes).
-- No Android SDK download. When a project needs one, the only root is `$HOME/Android/Sdk`.
+- No Android SDK download. When a project needs one, the only root is `$HOME/Android/Sdk`. If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.
 - No GPG key generation and no passphrase prompt (that's `gpg-store-passphrase.sh`).
 - No `gh auth login`.
 - No rewrite of *your* git `user.signingkey`.
