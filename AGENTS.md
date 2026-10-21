@@ -257,7 +257,7 @@ Parent, every herd:
 These three stay out.
 
 - Do not split voice, user, or identity into `SOUL.md`, `USER.md`, or `IDENTITY.md`. The four tools load this file. Caveman mode is the voice.
-- Do not add an agent-readable daily diary. The transcript stays private. `session_compact.md` is the handoff.
+- Do not add an agent-readable daily diary. `session_compact.md` is the handoff. Do not create `session_transcript.md`.
 - Do not add a personal heartbeat (mail, calendar, or a ping after hours of silence). Heartbeat here is machine health and job staleness.
 
 ---
@@ -269,19 +269,18 @@ When the user says **`create_project`** (starting a new project), always set up 
 | File | Audience | Maintenance |
 |------|----------|-------------|
 | `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code 2.1.277+ reads it natively — never create a project CLAUDE.md). Committed by default — **except** `~/Projects/sites/*` (see Sites rule). |
-| `session_transcript.md` | **human ONLY** | Append-only narrative log of each work session, newest at bottom. Written for the user to read back. AI agents NEVER read it (Transcript privacy HARD RULE). |
 | `session_compact.md` | **AI handoff** | Concise state: current status, where we left off, next steps, key decisions, open issues. Always records the active **model + effort**. **Rewrite** (not append) at end of session / major milestone / before context compaction. |
 | `docs/DECISIONS.md` | all AI tools | ADR log: decision + why + rejected alternatives, appended in the same turn a choice is made. Versioned (committed in repos). |
-| `.gitignore` | git | Must ignore session files (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md` + legacy session paths). Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/Projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
+| `.gitignore` | git | Must ignore session files (`session_compact.md`, `claude_memory_import.md`, a leftover `session_transcript.md`, + legacy session paths). Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/Projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
 
 Rules:
 
 1. **Session start in any project:** if `session_compact.md` exists, read it FIRST to restore where we left off — before doing other work.
-2. **During work:** append to `session_transcript.md` at milestones (human-readable, chronological, verbose OK).
+2. **During work:** do not write `session_transcript.md`. ADRs go to `docs/DECISIONS.md` in the same turn.
 3. **End of session / milestone / before compaction:** rewrite `session_compact.md` to reflect the latest state. It must always be accurate enough for a fresh AI session to resume work from it alone.
-4. Session files live in the project root. **Never commit them unless the user explicitly says otherwise** — `session_transcript.md` and `session_compact.md` are local-only; the template `.gitignore` enforces this. If copying files by hand (no template), add the same ignore lines.
+4. `session_compact.md` lives in the project root. **Never commit it unless the user explicitly says otherwise.** The template `.gitignore` enforces this, and it still names a leftover `session_transcript.md`. If copying files by hand (no template), add the same ignore lines. Do not create `session_transcript.md`.
 5. **`create_project` never creates a git repo or a remote.** Whether a project goes to GitHub is the user's call, made explicitly. Fill the `## Repo` line with `none (local only)` and leave it; update it the same turn a remote is actually added, so `checkpoint.sh`'s cross-check stays meaningful. It does not create `machine-notes` and does not invent a notes key. No origin means a later notes sync skips.
-6. **Model tracking:** at `create_project`, record the active model + effort in `session_compact.md` (read the tool's config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask the user once). The **Models used** list in compact is CUMULATIVE: preserve it across rewrites, mark the current one, add a line whenever model or effort changes. Every switch also goes to `session_transcript.md` (old → new, reason if known) — the transcript is the lossless copy. If the user says they switched models, log it immediately.
+6. **Model tracking:** at `create_project`, record the active model + effort in `session_compact.md` (read the tool's config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask the user once). The **Models used** list in compact is CUMULATIVE: preserve it across rewrites, mark the current one, add a line whenever model or effort changes. If the user says they switched models, log it in that list immediately.
 
 ---
 
@@ -298,7 +297,7 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
    1. `<path>/session_compact.md` — where we left off (AI handoff; **required read when present**)
    2. `<path>/AGENTS.md` — project rules/conventions
    3. `<path>/docs/DECISIONS.md` — durable choices + why
-5. **Do NOT** open `<path>/session_transcript.md` unless the user explicitly asks (Transcript privacy HARD RULE).
+5. **Do NOT** open a leftover `<path>/session_transcript.md`. Collection is retired. Do not create the file and do not append to it.
 6. If none of the three files exist: a git root is not a new project. Do not offer `create_project`. Follow Foreign checkouts. Anything else → say the path has no project session layout; offer `create_project` there (or fix the path).
 7. **Live GitHub, when this checkout has any.** After the file reads, and only when `origin` or `upstream` is a `github.com` URL, fetch before the status. Local files are the baseline. GitHub is the news.
    - Open pull requests and open issues authored by the logged-in `gh` user, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`, `--state open`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
@@ -317,9 +316,9 @@ Same trigger for all four tools (Grok, Claude Code, OpenCode, Cursor Code). No t
 When the user says **`checkpoint_project`** (done for the day — leave and resume later), apply to the **current** project (cwd walk-up to nearest project root, stopping before `$HOME`):
 
 1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts. Anything else → offer `create_project`.
-2. Read `session_compact.md` (state restore). NEVER open `session_transcript.md` (Transcript privacy HARD RULE).
+2. Read `session_compact.md` (state restore). Do not open a leftover `session_transcript.md`.
 3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, and the cumulative **Models used** list (current marked).
-4. Append a `## <YYYY-MM-DD> — wrap-up` entry to `session_transcript.md` (write-only): what was done today + the next step.
+4. Do not append to `session_transcript.md`. Collection is retired.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
 6. **Commit and push** (see below). Half-finished work is expected and fine — the point is that the machine is not the only copy.
 7. Finish with: "Checkpoint saved — next step: <X>", plus the pushed commit hash (or one line saying why nothing was pushed).
@@ -400,7 +399,7 @@ git push                        # -u origin <branch> if the branch has no upstre
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
 - **`git push` prompts only when the effective `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the effective flag is true, setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
 - **Clean with nothing locally unpushed** → exit `3`. Clean with commits absent from local remote-tracking refs → skip the commit but still push.
-- **Session files are never committed** (`session_compact.md`, `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes the private transcript. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out. On a foreign checkout those private files go in `.git/info/exclude`, not in their `.gitignore`. A dirty hunk in a file they already track is copied aside, the checkpoint runs, and the hunk is copied back. Do not set skip-worktree.
+- **Session files are never committed** (`session_compact.md`, a leftover `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes a private file. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out. On a foreign checkout those private files go in `.git/info/exclude`, not in their `.gitignore`. A dirty hunk in a file they already track is copied aside, the checkpoint runs, and the hunk is copied back. Do not set skip-worktree.
 
 Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.
 
@@ -409,10 +408,10 @@ Rationale for pushing unfinished work: a checkpoint fires when the day ends, whi
 Untracked notes move through one private repo, `FirstIntegral/machine-notes`, cloned at `~/.local/share/machine-notes`. `checkpoint.sh` never creates that GitHub repo. `setup.sh` and every boot-dashboard login run `bash ~/.agents/hooks/notes-sync.sh setup`, which clones the URL in `NOTES_REMOTE` (first non-comment line, same pattern as `BRAIN_REMOTE`; default `git@github.com:FirstIntegral/machine-notes.git`; a fork points that file at its own private notes repo) and prints `notes: ready`. Setup is idempotent and never creates a GitHub repo. A clone failure is a note from `setup.sh` and a warn on the dashboard; the next setup or login retries. `push`, `pull`, and `backfill` try that same clone once when the real checkout is missing and `NOTES_SYNC_TEST_ROOT` is unset. If the clone still fails, stdout stays `notes: skipped`, stderr keeps the `notes-sync.sh setup` hint, and the checkpoint exit does not change. The vitals tile stays `Machine notes / not cloned` until a clone exists. `hooks/notes-sync.sh` is the behaviour.
 
 - Key is lowercase `host/owner/repo` from `origin` pushurl, else `origin` url. `ssh.github.com` folds to `github.com`. Not the directory name. Not `@{upstream}`. No origin, or an unparsed URL, prints `notes: skipped`.
-- A file rides only when this checkout does not track it. Defaults: `session_compact.md`, `session_transcript.md` (raw bytes; the commit message and stdout must not quote the body; agents still do not read it), `AGENTS.md`, `docs/DECISIONS.md`. Gitignored `notes.allow` lists extra relative paths and is itself synced. No globs, no `..`, no absolute path, no symlink that resolves outside. A directory line is walked file by file.
-- Out, even if listed: `claude_memory_import.md`, the retired session file the template `.gitignore` already names, `docs/session-archive/`, `docs/session-flushes/`, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `keystore.properties`, `credentials*`, and a play-store key json.
+- A file rides only when this checkout does not track it. Defaults: `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`. `session_transcript.md` does not ride, including a `notes.allow` line. Gitignored `notes.allow` lists extra relative paths and is itself synced. No globs, no `..`, no absolute path, no symlink that resolves outside. A directory line is walked file by file. The commit message and stdout list paths and do not quote file text.
+- Out, even if listed: `session_transcript.md`, `claude_memory_import.md`, the retired session file the template `.gitignore` already names, `docs/session-archive/`, `docs/session-flushes/`, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `keystore.properties`, `credentials*`, and a play-store key json.
 - A tracked or unignored `notes.allow` is exit 20. Foreign exclude includes `/notes.allow`.
-- Three blob ids per checkout: last sync, notes `HEAD`, worktree. Same bytes, or only one side changed: that side wins. Both sides changed a markdown file, or `notes.allow`: keep both. A log (`session_transcript.md`, `docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise keep both full copies, labeled `notes-sync-merge`. The merged file is written on this machine and pushed. Stdout is `notes: merged`. The next checkpoint rewrites a merged compact to one current state and keeps every open item from both copies. A delete against an edit, a binary file, or a non-markdown path that will not 3-way clean: exit 23, write nothing. A fresh checkout with no local file installs. A local delete is not put back and is not a remote delete. No mtime winner. No `--force`. No model call. v1 does not propagate deletes. A later `git remote set-url` does not move the old notes directory.
+- Three blob ids per checkout: last sync, notes `HEAD`, worktree. Same bytes, or only one side changed: that side wins. Both sides changed a markdown file, or `notes.allow`: keep both. A log (`docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise keep both full copies, labeled `notes-sync-merge`. The merged file is written on this machine and pushed. Stdout is `notes: merged`. The next checkpoint rewrites a merged compact to one current state and keeps every open item from both copies. A delete against an edit, a binary file, or a non-markdown path that will not 3-way clean: exit 23, write nothing. A fresh checkout with no local file installs. A local delete is not put back and is not a remote delete. No mtime winner. No `--force`. No model call. v1 does not propagate deletes. A later `git remote set-url` does not move the old notes directory.
 - One signed commit per project when bytes changed. Subject `notes: <host>/<owner>/<repo>`. `git add` only the paths this run wrote. Never `git add -A`. No AI attribution. Do not set `commit.gpgsign false` on the real notes repo.
 - Sync only when the project realpath is under the passwd-home `~/Projects/`. `/tmp` and a faked `$HOME` do not sync. `--dry-run` does not stat the notes clone. A missing clone keeps the checkpoint's exit code.
 - `create_project` does not sync. The first push is the first checkpoint after an origin URL exists. A project outside `~/Projects/` is out of v1.
@@ -431,11 +430,11 @@ When the user says **`writepaper_project`** (optionally `writepaper_project <pat
 
 ### Procedure
 
-1. Resolve the project root (given path, else cwd walk-up stopping before `$HOME`). Read `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`, then the actual **code, tests, benchmarks, logs, and result files**. Never read `session_transcript.md` (Transcript privacy).
+1. Resolve the project root (given path, else cwd walk-up stopping before `$HOME`). Read `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`, then the actual **code, tests, benchmarks, logs, and result files**. Do not open a leftover `session_transcript.md`.
 2. Scaffold `docs/paper/` from `~/.agents/paper-template/` (`main.tex`, `build.sh`, `figures/`, `lean/`) if not already there; otherwise extend what exists — never silently overwrite a paper in progress. First scaffold **includes** `lean/`. Existing `docs/paper/` without `lean/` is not backfilled.
 3. Write the paper. Then **build it**: `bash docs/paper/build.sh` (latexmk → `main.pdf`; digit-refuse; `lake build` if `lean/` exists). Fix every LaTeX error, every digit-refuse miss, and every undefined reference/citation; a paper that does not compile is not delivered. `texlive-full` is installed — no package is missing, never stub one out.
 4. Report: page count, section list, and an explicit **Gaps** list (what is `\TODO` and why).
-5. Same turn: append the milestone to `session_transcript.md`, log paper-level choices (scope, claims, framing) in `docs/DECISIONS.md`, rewrite `session_compact.md`.
+5. Same turn: log paper-level choices (scope, claims, framing) in `docs/DECISIONS.md`, rewrite `session_compact.md`. Do not write `session_transcript.md`.
 
 ### Required structure (drop a section only if it truly does not apply, and say so)
 
@@ -464,7 +463,7 @@ After a project has a paper, **the paper is part of that project's definition of
 
 Scientifically relevant = anything the paper asserts: the method or algorithm, a definition, a theorem/lemma/proof, complexity, assumptions or their scope, experimental setup (hardware, versions, seeds, hyperparameters, datasets), any measured number, an ablation, a limitation, or a decision logged in `docs/DECISIONS.md` that the paper describes. Refactors, renames, tooling, and CI changes are **not** relevant unless they change a reported number or a stated claim.
 
-Each such update: patch the affected sections (and the abstract/contributions if the claim moved), rebuild with `bash docs/paper/build.sh`, and say in one line what the paper now says differently. Numbers that went stale but have not been re-measured become `\TODO{measure: …}` — never left silently wrong. Mention the paper update in `session_transcript.md` at the next milestone.
+Each such update: patch the affected sections (and the abstract/contributions if the claim moved), rebuild with `bash docs/paper/build.sh`, and say in one line what the paper now says differently. Numbers that went stale but have not been re-measured become `\TODO{measure: …}` — never left silently wrong.
 
 `docs/paper/` **is committed** (it is product, not session state) — for `~/Projects/sites/*` the Sites rule still applies to `AGENTS.md` only.
 
@@ -496,7 +495,7 @@ These rules apply to **every project**, all tools. Per-project `AGENTS.md` and `
 | Layer | Location | Git | Purpose |
 |-------|----------|-----|---------|
 | **Tracked project knowledge** | `docs/DECISIONS.md`; usually also `AGENTS.md` | Yes | Durable decisions, conventions — shareable |
-| **Local session files** | `session_compact.md`, `session_transcript.md`, `claude_memory_import.md` (+ legacy `docs/session-archive/`, `docs/session-flushes/`) | No (gitignored) | Session state + full log + residue staging. Never committed unless the user explicitly says otherwise |
+| **Local session files** | `session_compact.md`, `claude_memory_import.md` (+ legacy `docs/session-archive/`, `docs/session-flushes/`, and a leftover `session_transcript.md`) | No (gitignored) | Session state + residue staging. Never committed unless the user explicitly says otherwise. `session_transcript.md` is not collected. |
 
 ### Sites repos — `AGENTS.md` local-only (HARD RULE for `~/Projects/sites/*`)
 
@@ -519,9 +518,9 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 - The push URL is the branch upstream, otherwise `origin`. If that URL parses and the owner is not on a `BRAIN_REMOTE` URL, the commit stays and the push does not run. That exits 14, before the reachability check. It does not retarget and does not add a remote. An unparsed URL is not a veto. omalauncher `main` tracks Simon, so a checkpoint there exits 14.
 - A local edit inside a file they already track is not an ignore line. Copy those hunks aside, run the checkpoint, copy them back. Do not set skip-worktree. The script cannot tell those bytes from a real fix.
 
-### Transcript privacy — HARD RULE
+### `session_transcript.md` — retired
 
-`session_transcript.md` is the **user's private log**. AI agents NEVER open or read it unless the user explicitly asks. Appending at milestones is fine — reading is not. The only AI-facing session file is `session_compact.md`.
+Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does not copy it. Files already in old projects, and blobs already in machine-notes, stay. Do not delete them. If a file with that name exists, do not open it. `checkpoint.sh` still refuses to commit one. The template `.gitignore` still names it. The only session handoff is `session_compact.md`.
 
 ### On session start
 
@@ -529,7 +528,7 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 0.5. **Notes pull** when the project root is a git checkout: `bash ~/.agents/hooks/notes-sync.sh pull <project-root>`, before reading `session_compact.md`. Missing clone: the pull tries setup once; failure stays `notes: skipped`. `notes: merged`: the compact has both machines' copies. Keep every open item from both. Exit `23`: stop, do not overwrite the file.
 1. If `session_compact.md` exists in the project root, read it first — it says where we left off.
 2. Read project `AGENTS.md` and `docs/DECISIONS.md` if they exist.
-3. Do NOT open `session_transcript.md` (Transcript privacy rule above).
+3. Do not open a leftover `session_transcript.md`.
 
 ### During work
 
@@ -538,7 +537,7 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 - **A required file that is absent is said out loud.** Name the path; do not invent its contents.
 - **Durable fact** (commands, paths, conventions) → project `AGENTS.md`; global fact → this file.
 - **Project has `docs/paper/` and something scientifically relevant changed** (method, theorem, assumption, setup, measured number, limitation) → update the paper and rebuild it in the **same turn** (see `writepaper_project` → "Keeping the paper current").
-- **Milestone reached** → append to `session_transcript.md`.
+- **Milestone reached** → rewrite `session_compact.md`. Do not write `session_transcript.md`.
 - **Before compaction or ending a long session** → rewrite `session_compact.md`.
 
 ### End of session / milestone
@@ -602,9 +601,8 @@ Cron **cannot** judge “important facts” (no LLM). It only stages. **You (the
    - current handoff / open work → `session_compact.md`
    - architecture choice + why → `docs/DECISIONS.md`
    - skip junk, duplicates, and “DISABLED” stubs
-3. If the project has `session_transcript.md`, append a one-line note that residue was imported (write-only; do not read the rest of the file). Skip if no transcript file exists.
-4. Delete processed `claude_memory_import.md`. Remove processed packet lines from `PENDING.md`; if empty, delete `PENDING.md` and the `NEEDS-MEMORY-MERGE` flag.
-5. Never re-create tool memory stores. Never leave durable facts only in the archive.
+3. Delete processed `claude_memory_import.md`. Remove processed packet lines from `PENDING.md`; if empty, delete `PENDING.md` and the `NEEDS-MEMORY-MERGE` flag.
+4. Never re-create tool memory stores. Never leave durable facts only in the archive. Do not write `session_transcript.md`.
 
 ### Symlink conflict → merge into canonical (AUTOMATED)
 

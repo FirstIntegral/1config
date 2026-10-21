@@ -100,7 +100,7 @@ trim() {
 
 blocked_rel() {
   case "$1" in
-    claude_memory_import.md|docs/SESSION.md) return 0 ;;
+    claude_memory_import.md|docs/SESSION.md|session_transcript.md) return 0 ;;
     docs/session-archive|docs/session-archive/*) return 0 ;;
     docs/session-flushes|docs/session-flushes/*) return 0 ;;
   esac
@@ -453,7 +453,7 @@ if aligned_contains(remote, local):
     emit(remote)
 
 name = rel.rsplit("/", 1)[-1]
-if name in ("session_transcript.md", "DECISIONS.md", "notes.allow"):
+if name in ("DECISIONS.md", "notes.allow"):
     kind = "log"
 elif name.endswith(".md"):
     kind = "prose"
@@ -602,7 +602,7 @@ add_tree() {
 
 # Defaults. A tracked file stays with the project. A missing local file is
 # installed when the notes repo has it and this checkout has no base yet.
-for rel in session_compact.md session_transcript.md AGENTS.md docs/DECISIONS.md; do
+for rel in session_compact.md AGENTS.md docs/DECISIONS.md; do
   add_file "$rel" quiet
 done
 

@@ -99,14 +99,19 @@ else
   bad "$AGENTS_HOME is not a git repo (brain must be versioned + pushed)"
 fi
 [ -d "$TEMPLATE" ] && ok "project-template/" || bad "project-template/ missing"
-for f in AGENTS.md session_compact.md session_transcript.md docs/DECISIONS.md .gitignore; do
+for f in AGENTS.md session_compact.md docs/DECISIONS.md .gitignore; do
   [ -e "$TEMPLATE/$f" ] && ok "template $f" || bad "template missing $f"
 done
+if [ -e "$TEMPLATE/session_transcript.md" ]; then
+  bad "template still ships session_transcript.md"
+else
+  ok "template does not ship session_transcript.md"
+fi
 # Presence on disk is not enough: project-template/.gitignore self-shadows its own
 # session files (they ARE its ignore patterns), so an untracked template silently
 # breaks every fresh clone — happened on the first migration to a new machine.
 if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
-  for f in AGENTS.md session_compact.md session_transcript.md docs/DECISIONS.md .gitignore; do
+  for f in AGENTS.md session_compact.md docs/DECISIONS.md .gitignore; do
     if git -C "$AGENTS_HOME" ls-files --error-unmatch "project-template/$f" >/dev/null 2>&1; then
       ok "template $f tracked in git"
     else
@@ -464,6 +469,15 @@ if grep -q 'private machine-notes' "$AGENTS_HOME/setup-infographic.svg"; then
 else
   bad "infographic missing private machine-notes"
 fi
+if grep -qF 'session_transcript=retired' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -qF 'session_transcript.md) return 0' "$HOOKS/notes-sync.sh" \
+   && ! grep -qF 'for rel in session_compact.md session_transcript.md' "$HOOKS/notes-sync.sh" \
+   && grep -qF 'Do not create `session_transcript.md`' "$CANON" \
+   && ! grep -q 'session_transcript.md — HUMAN ONLY' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "session_transcript is not collected"
+else
+  bad "session_transcript collection is still wired"
+fi
 if [ -f "$AGENTS_HOME/NOTES_REMOTE" ] \
    && grep -q 'NOTES_REMOTE' "$HOOKS/notes-sync.sh" \
    && grep -q 'setup)' "$HOOKS/notes-sync.sh" \
@@ -509,8 +523,9 @@ _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pushed" ] \
    && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/firstintegral/notes-fixture" ] \
-   && [ "$(git -C "$_ns" log -1 --format='%b')" = "$(printf 'session_compact.md\nsession_transcript.md\n')" ] \
+   && [ "$(git -C "$_ns" log -1 --format='%b')" = "$(printf 'session_compact.md\n')" ] \
    && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/session_compact.md")" = "alpha-compact" ] \
+   && [ ! -e "$_ns/github.com/firstintegral/notes-fixture/session_transcript.md" ] \
    && ! git -C "$_ns" log -1 --format='%b' | grep -q 'alpha-compact'; then
   ok "notes push copies bytes and does not quote them"
 else
@@ -548,7 +563,7 @@ _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" pull "$_np2" 2>/dev/null)" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pulled" ] \
    && [ "$(cat "$_np2/session_compact.md")" = "alpha-compact" ] \
-   && [ "$(cat "$_np2/session_transcript.md")" = "alpha-transcript" ]; then
+   && [ ! -e "$_np2/session_transcript.md" ]; then
   ok "fresh checkout installs notes"
 else
   bad "fresh notes pull (exit $_rc, out $_out)"
@@ -579,23 +594,16 @@ if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: current" ]; then
 else
   bad "second merge push (exit $_rc, out $_out)"
 fi
-printf 'alpha-transcript\nremote-entry\n' > "$_ns/github.com/firstintegral/notes-fixture/session_transcript.md"
-git -C "$_ns" add github.com/firstintegral/notes-fixture/session_transcript.md
-git -C "$_ns" commit -qm remote-log
-git -C "$_ns" push -q origin HEAD
-printf 'alpha-transcript\nlocal-entry\n' > "$_np/session_transcript.md"
+printf '%s\n' 'session_transcript.md' >> "$_np/notes.allow"
+printf 'new-transcript\n' > "$_np/session_transcript.md"
 _rc=0
-_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
-_tlog="$_np/session_transcript.md"
-_tnotes="$_ns/github.com/firstintegral/notes-fixture/session_transcript.md"
-if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: merged" ] \
-   && [ "$(grep -c '^alpha-transcript$' "$_tlog")" -eq 1 ] \
-   && grep -q '^local-entry$' "$_tlog" && grep -q '^remote-entry$' "$_tlog" \
-   && cmp -s "$_tlog" "$_tnotes" \
-   && ! git -C "$_ns" log -1 --format='%B' | grep -q 'local-entry'; then
-  ok "notes merge keeps both transcript tails once"
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-tr.txt)" || _rc=$?
+if [ "$_rc" -eq 0 ] && grep -q 'blocked session_transcript.md' /tmp/notes-tr.txt \
+   && ! git -C "$_ns" ls-files | grep -q 'session_transcript.md' \
+   && [ "$(cat "$_np/session_transcript.md")" = "new-transcript" ]; then
+  ok "notes push does not collect session_transcript.md"
 else
-  bad "notes transcript merge (exit $_rc, out $_out)"
+  bad "notes transcript block (exit $_rc, out $_out)"
 fi
 _np3="$(mktemp -d)"
 git init -q "$_np3"
@@ -1909,7 +1917,7 @@ m = re.search(r"## 5\. Per-project standard.*?(?=\n## 5b\.)", setup, re.S)
 if not m:
     print("section 5 not found"); sys.exit(1)
 blocks = re.findall(r"```[a-z]*\n(.*?)\n```", m.group(0), re.S)
-files = ["AGENTS.md", "session_compact.md", "session_transcript.md", "docs/DECISIONS.md", ".gitignore"]
+files = ["AGENTS.md", "session_compact.md", "docs/DECISIONS.md", ".gitignore"]
 if len(blocks) != len(files):
     print(f"expected {len(files)} template blocks, found {len(blocks)}"); sys.exit(1)
 for b, f in zip(blocks, files):

@@ -215,7 +215,7 @@ for d in "$CLAUDE_PROJECTS_ROOT"/*/memory; do
       echo
       echo "Auto-captured $TS by claude-memory-guard. **AI: merge durable facts into**"
       echo "\`AGENTS.md\` / \`session_compact.md\` / \`docs/DECISIONS.md\` as appropriate,"
-      echo "append a short note to \`session_transcript.md\`, then **delete this file**."
+      echo "then **delete this file**."
       echo
       echo "Global packet: \`$packet_dir/PACKET.md\`"
       echo
@@ -283,10 +283,8 @@ if [ "$packets_written" -gt 0 ] && [ -f "$packet_dir/PACKET.md" ]; then
     echo "   - project conventions/commands → project \`AGENTS.md\`"
     echo "   - current handoff state → \`session_compact.md\`"
     echo "   - architecture choices + why → \`docs/DECISIONS.md\`"
-    echo "3. If the project has \`session_transcript.md\`, append a one-line note"
-    echo "   that residue was imported (write-only; do not read the rest of the file)."
-    echo "4. Delete any project \`claude_memory_import.md\` you processed."
-    echo "5. Remove processed packet lines from this file; if none left, delete this"
+    echo "3. Delete any project \`claude_memory_import.md\` you processed."
+    echo "4. Remove processed packet lines from this file; if none left, delete this"
     echo "   file and \`$FLAG\`."
     echo
     echo "Flag file (memory only — not the symlink guard): \`$FLAG\`"

@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-21 — session_transcript is not collected
+
+**Decision:** 1config does not create, append, or sync `session_transcript.md`. `create_project` does not copy it. Checkpoints do not append a wrap-up. `notes-sync.sh` does not ride it, including a `notes.allow` line. Existing files in old projects and existing blobs in machine-notes stay. Do not delete them. If a file with that name exists, do not open it. `checkpoint.sh` still refuses to commit it. The template `.gitignore` still names it. `hooks/rule-oracles.sh` still fails if a hook reads it.
+
+**Why:** The log was write-only and had no reader. Collection kept a private file moving between machines. Old projects already have the file. Leaving those bytes in place is enough.
+
+**Rejected:** Deleting old project files or the notes history. A new diary under another name. Keeping the append rule so the file stays current.
+
+**Policy:** session_transcript=retired
+
 ## 2026-10-15 — grokbot-brain tracker is retired
 
 **Decision:** `setup.sh` inserts `firstintegral.1config` after `brwsk.vigil`, else at the start of `bar.layout.right`. It does not look for `brwsk.brain`. That plugin and `FirstIntegral/grokbot-brain` are deleted. Do not reinstall them. This repo's own bar plugin stays.
@@ -56,7 +66,7 @@
 
 ## 2026-10-13 — Two note copies merge
 
-**Decision:** When this checkout and the notes repo both have a different copy of the same untracked file, `notes-sync.sh` keeps both. A log (`session_transcript.md`, `docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise write both full copies into the file, labeled `notes-sync-merge`, then push that file. Stdout is `notes: merged`. Pull publishes the merge too, so `continue_project` does not leave it on one machine. The next checkpoint rewrites a merged `session_compact.md` to one current state and does not drop either copy's open items. A delete versus an edit, a binary file, or a non-markdown path that will not 3-way clean still exits 23 and writes nothing.
+**Decision:** When this checkout and the notes repo both have a different copy of the same untracked file, `notes-sync.sh` keeps both. A log (`docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_transcript.md` is no longer a synced log. That clause is superseded by "2026-10-21 — session_transcript is not collected". `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise write both full copies into the file, labeled `notes-sync-merge`, then push that file. Stdout is `notes: merged`. Pull publishes the merge too, so `continue_project` does not leave it on one machine. The next checkpoint rewrites a merged `session_compact.md` to one current state and does not drop either copy's open items. A delete versus an edit, a binary file, or a non-markdown path that will not 3-way clean still exits 23 and writes nothing.
 
 **Why:** Two machines each checkpoint a week apart. `session_compact.md` is rewritten, so a later push used to stop, and a winner would drop a week of the other machine. The transcript is append-only, so the shared head stays once. No model call: a transcript must not be sent out, and the merge must be the same bytes whichever machine runs it.
 

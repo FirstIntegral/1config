@@ -324,7 +324,7 @@ if [ ${#LEAKED[@]} -gt 0 ]; then
   echo "           add them to .gitignore (and 'git rm --cached' if tracked), then re-run."
   exit 20
 fi
-echo "  session  compact/transcript correctly excluded"
+echo "  session  private files correctly excluded"
 
 # --- 3. anything to do? -------------------------------------------------------------
 # A clean tree is not the same as nothing to do. Commits made earlier in the session and
