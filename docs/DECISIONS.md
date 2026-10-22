@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — grilling skill pinned from mattpocock
+
+**Policy:** grilling_skill=5beb35b040e3de97e54fa9e386d7e42d15c295c2
+
+**Decision:** Track `skills/grilling/` from mattpocock/skills at `5beb35b040e3de97e54fa9e386d7e42d15c295c2` (MIT, Copyright (c) 2026 Matt Pocock). Same install path as the other process skills. The description loads only when the user says grill, and it stops at a shared understanding for a later `writing-plans` run. It does not write the plan and it does not start on creative work.
+
+**Why:** A plan should be stress-tested on purpose. The word grill is the pointer. A skill that fires on every creative task is the brainstorming rejection.
+
+**Rejected:** `npx skills add --global`. The upstream description, which also loads when the user wants to stress-test thinking or uses any grill-like phrase. Porting brainstorming. Treating grill as an always-on design gate.
+
 ## 2026-10-22 — writing-for-agents skill pinned from mattpocock
 
 **Policy:** writing_for_agents_skill=5beb35b040e3de97e54fa9e386d7e42d15c295c2
