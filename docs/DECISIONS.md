@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — writing-for-agents skill pinned from mattpocock
+
+**Policy:** writing_for_agents_skill=5beb35b040e3de97e54fa9e386d7e42d15c295c2
+
+**Decision:** Track `skills/writing-for-agents/` from mattpocock/skills at `5beb35b040e3de97e54fa9e386d7e42d15c295c2` (MIT, Copyright (c) 2026 Matt Pocock). Same install path as the other process skills: `!skills/writing-for-agents/` in `.gitignore`, `UPSTREAM.md`, `LICENSE.upstream`, Claude symlink via `setup.sh` step `1b`. The description loads when `AGENTS.md`, `CLAUDE.md`, or a skill is created or edited, including `global_brain_update`. `SKILL-MECHANICS.md` stays. Frontmatter is only `name` and `description`, and the description starts with "Use when". A project `CLAUDE.md` stays forbidden.
+
+**Why:** This is the standard for the files this repo already edits. The description is the pointer, so it has to name the edit and the trigger.
+
+**Rejected:** `npx skills add --global` (tool-local copies). Pasting the standard into `AGENTS.md` (always loaded). `disable-model-invocation` (would hide the skill from Grok and OpenCode). The upstream description, which does not start with "Use when" and does not name `global_brain_update`. `agents/openai.yaml`.
+
 ## 2026-10-21 — security-audit skill pinned from Cloudflare
 
 **Policy:** security_audit_skill=c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
