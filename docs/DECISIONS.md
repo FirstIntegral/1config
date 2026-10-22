@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — Caveman section keeps upstream's sharper rules
+
+**Policy:** caveman_wording=bad48a0e1df55e05e3f52249afa35ecc1909ee76
+
+**Decision:** The Caveman section in `AGENTS.md` keeps three rules from JuliusBrussee/caveman at `bad48a0e1df55e05e3f52249afa35ecc1909ee76` (Apache-2.0, Copyright 2026 Julius Brussee): never drop not, never, no, or only; 20 words maximum per sentence; quote code, paths, commands, and errors exactly. The section already used that repo's voice. The credit line sits in the section, in this ADR, and in `README.md`. This is not a new skill. `skills/migration/` is the only tracked skill from that repo.
+
+**Why:** A dropped negation is a wrong answer, and a paraphrased path or error is a broken instruction. The section was already upstream's wording, so the Apache notice belongs with it.
+
+**Rejected:** Porting `skills/caveman/` (the section is the voice; ultracave, megacave, and the hook status line are not this repo). Dropping not/never/no/only to save tokens. A second always-on mode.
+
 ## 2026-10-22 — research-paper-writing skill pinned from Master-cai
 
 **Policy:** research_paper_writing_skill=77e7c2c1ba06f7d71844873147665437a03aac1b

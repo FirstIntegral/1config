@@ -97,6 +97,8 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 | Paper author block | `git config user.name` and `user.email` | No personal name in the shared rules or the paper template. | Set those two git configs. Empty means stop and ask. |
 | Remote check | URLs in `BRAIN_REMOTE` | `sync.sh`, `verify.sh`, and boot sync refuse any other origin. | Forks: edit `BRAIN_REMOTE` only. |
 
+Caveman wording in `AGENTS.md` is from [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (Apache-2.0, Copyright 2026 Julius Brussee): never drop not, never, no, or only; 20 words maximum per sentence; quote code, paths, and errors exactly.
+
 Canonical permission file: [`permissions.json`](permissions.json). Comments in that file are part of the spec.
 
 ## What `setup.sh` does *not* do
