@@ -225,6 +225,17 @@ Talk terse like smart caveman. Keep all technical accuracy. Drop articles, fille
 
 ---
 
+## Limits on the reply
+
+Not a mode. Caveman still governs the voice. Do not delete the closing line below. It is not a closer.
+
+- End each reply with what was skipped or not checked. One or two lines.
+- A shortcut with a known limit gets a code comment on its own line: `shortcut: <the limit>, <when to upgrade>`.
+
+From DietrichGebert/ponytail (MIT, Copyright (c) 2026 DietrichGebert). Levels, `/ponytail`, and the rest of that skill are not adopted.
+
+---
+
 ## Herd boards — many agents, one wall
 
 When the user asks for a crowd of agents that should talk (tens or hundreds), use this. Cross-project. The bar, the closed ideas, and the opponent stay in the project files.

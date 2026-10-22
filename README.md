@@ -99,6 +99,8 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 
 Caveman wording in `AGENTS.md` is from [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (Apache-2.0, Copyright 2026 Julius Brussee): never drop not, never, no, or only; 20 words maximum per sentence; quote code, paths, and errors exactly.
 
+Two lines in `AGENTS.md` are from [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail) (MIT, Copyright (c) 2026 DietrichGebert): end each reply with what was skipped or not checked, and a code comment `shortcut: <the limit>, <when to upgrade>`. That is not a second mode. Caveman stays the voice.
+
 Canonical permission file: [`permissions.json`](permissions.json). Comments in that file are part of the spec.
 
 ## What `setup.sh` does *not* do

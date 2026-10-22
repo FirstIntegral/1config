@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — reply limits from ponytail, not a second mode
+
+**Policy:** reply_limits=ponytail-09c434ab
+
+**Decision:** `AGENTS.md` has a short "Limits on the reply" section adapted from DietrichGebert/ponytail at `09c434ab73ca43761c5d8b0c5d341926c2fba710` (MIT, Copyright (c) 2026 DietrichGebert). End each reply with what was skipped or not checked. A shortcut with a known limit gets a code comment `shortcut: <the limit>, <when to upgrade>`. Caveman stays the only voice. The closing line is not ceremony, so caveman does not drop it.
+
+**Why:** Those two lines are the part that changes the work. A second always-on mode would fight Caveman.
+
+**Rejected:** Porting the ponytail skill. `/ponytail` levels. Making lazy-senior the voice. The rest of the "smallest change" ladder (already covered by the project's own rules when they apply).
+
 ## 2026-10-22 — session_compact points, lists skills, and redacts secrets
 
 **Decision:** `project-template/session_compact.md` carries three handoff lines adapted from mattpocock/skills `skills/productivity/handoff` at `5beb35b040e3de97e54fa9e386d7e42d15c295c2` (MIT, Copyright (c) 2026 Matt Pocock). Point at specs, ADRs, and commits by path instead of copying them. List the skills the next agent should load. Redact secrets. `SETUP.md` §5 mirrors the template. A rewrite keeps the three lines.

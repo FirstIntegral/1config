@@ -293,6 +293,7 @@ const PAGES = [
       'updater/ (boot-check.sh, update-apps.sh, on-resume.sh, system-sleep-shim.sh, refresh-inventory.py) upgrades grok/claude/opencode on @reboot and suspend-resume (skipping mise-managed shims) and writes live versions to gitignored inventory.local.md.',
       'Detached jobs must be armed same-turn with watch-stale.sh <pid> <log> (cries STALE only when both log growth and /proc/<pid>/stat fields 14+15 utime+stime after the last ")" use <1s CPU across 10m; idle preview servers are excluded), while Caveman mode stays always on (full).',
       'Caveman keeps not, never, no, and only, caps each sentence at 20 words, and quotes code, paths, and errors exactly.',
+      'End each reply with what was skipped or not checked. A shortcut comment names its limit and when to upgrade. That is not a second voice mode.',
       'At login, boot-dashboard unlocks GPG first, fast-forwards ~/.agents (running setup.sh if pulled), clones machine-notes when that checkout is missing, syncs omarchy-dots, and writes close-slip.txt (cleared incrementally by close-slip.sh); for multi-agent work, Herd Boards coordinate waves on a flock-locked wall where every post ends with a fixed parseable vote token.',
     ],
     snippetTitle: 'Under-the-hood hooks & daemons (~/.agents/)',

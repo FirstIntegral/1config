@@ -51,6 +51,7 @@ Sections, in order:
 6. Machine toolchains — `texlive-full` + `tectonic` installed; Lean 4 via `elan` (user-space hook, not a distro pkg); Android SDK, when a project needs one, is `$HOME/Android/Sdk` only. If that directory is absent, stop and name the path. Do not `mkdir` it, do not run `sdkmanager`, and do not download command-line tools or platforms. `setup.sh` does not download it; write LaTeX directly, never ask for TeX/Lean installs
 7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4c)
 8. Caveman mode — ALWAYS ON (full). Never drop not/never/no/only. 20 words per sentence. Quote code, paths, and errors exactly. Wording: JuliusBrussee/caveman, Apache-2.0, Copyright 2026 Julius Brussee. `local.json` key `caveman` is the durable opt-out (`off`, `lite`, `ultra`)
+   Limits on the reply (not a mode): end with what was skipped or not checked. Code comment `shortcut: <limit>, <when to upgrade>`. From DietrichGebert/ponytail, MIT, Copyright (c) 2026 DietrichGebert.
    Red lines sit with the hard rules: destructive acts and anything that leaves the machine wait for a yes, even when Bash autonomy is on.
    Herd boards sit after caveman and before the triggers (§5f): one wall, a post that only agrees is noise, a missing file said aloud. Kept out: `SOUL.md`, daily diary, personal heartbeat.
 9. `create_project` trigger (§5)
