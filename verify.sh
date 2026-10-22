@@ -2271,7 +2271,7 @@ for _s in $_skill_list; do
   for _f in UPSTREAM.md LICENSE.upstream; do
     [ -f "$_sd/$_f" ] || bad "skill $_s: $_f missing"
   done
-  _credit="$(awk -F': MIT, ' '/^- License: MIT, /{sub(/\. Full text:.*/, "", $2); print $2; exit}' "$_sd/UPSTREAM.md")"
+  _credit="$(awk '/^- License: (MIT|Apache-2\.0), /{sub(/^- License: (MIT|Apache-2\.0), /, ""); sub(/\. Full text:.*/, ""); print; exit}' "$_sd/UPSTREAM.md")"
   if [ -n "$_credit" ] && grep -qF "$_credit" "$_sd/SKILL.md"; then
     ok "skill $_s: license credit in SKILL.md"
   else

@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — migration skill pinned from JuliusBrussee/caveman
+
+**Policy:** migration_skill=bad48a0e1df55e05e3f52249afa35ecc1909ee76
+
+**Decision:** Track `skills/migration/` from JuliusBrussee/caveman at `bad48a0e1df55e05e3f52249afa35ecc1909ee76` (Apache-2.0, Copyright 2026 Julius Brussee). Same install path as the other process skills, plus the upstream `NOTICE` copied verbatim. `verify.sh` reads a copyright phrase from a `License:` line that is either MIT or Apache-2.0. The skill keeps a forward path and a rollback path, sequences expand, migrate, verify, then contract, and does not contract unless the user asks.
+
+**Why:** Reversible changes need an explicit stop before the destructive step. The Apache notice stays with the file because that is the upstream licence.
+
+**Rejected:** `npx skills add --global`. Dropping `NOTICE` (upstream has one). Rewriting the NOTICE down to the one line that pertains to this skill (the verbatim file is the notice; UPSTREAM.md says which lines do not pertain). Contracting in the same turn as expand.
+
 ## 2026-10-22 — grilling skill pinned from mattpocock
 
 **Policy:** grilling_skill=5beb35b040e3de97e54fa9e386d7e42d15c295c2
