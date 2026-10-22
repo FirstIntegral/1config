@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — research-paper-writing skill pinned from Master-cai
+
+**Policy:** research_paper_writing_skill=77e7c2c1ba06f7d71844873147665437a03aac1b
+
+**Decision:** Track `skills/research-paper-writing/` from Master-cai/Research-Paper-Writing-Skills at `77e7c2c1ba06f7d71844873147665437a03aac1b` (MIT, Copyright (c) 2026 Master-cai). Same install path as the other process skills. The description loads only inside `writepaper_project`, or while editing `docs/paper/` or `paper-template/`, and only for prose and claim checks. Digit-refuse still owns measurement tokens. Section guides for abstract, introduction, method, experiments, conclusion, related work, and paper review stay, each with a 1config override at the top. The example bank and the PDF flow extract do not.
+
+**Why:** The paragraph check and the claim-evidence map are what a paper pass needs. The example bank is other people's paper text, and the flow file is a PDF extract. Numbers in prose are already a build failure.
+
+**Rejected:** `npx skills add --global`. Loading the skill on any writing task. Vendoring `references/examples/` and `references/does-my-writing-flow-source.md`. Letting the skill write measurements that digit-refuse would then refuse. A second paper outline that replaces `writepaper_project`.
+
 ## 2026-10-22 — tdd skill pinned from mattpocock
 
 **Policy:** tdd_skill=5beb35b040e3de97e54fa9e386d7e42d15c295c2
