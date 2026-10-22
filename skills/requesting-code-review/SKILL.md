@@ -51,7 +51,7 @@ Dispatch a fresh reviewer subagent (whatever general-purpose subagent your tool 
 
 You: Let me request code review before proceeding.
 
-BASE_SHA=$(git log --oneline | grep "Task 1" | head -1 | awk '{print $1}')
+BASE_SHA=$(git log --oneline | grep "Task 1" | head -1 | cut -d' ' -f1)
 HEAD_SHA=$(git rev-parse HEAD)
 
 [Dispatch code reviewer subagent]
@@ -95,4 +95,4 @@ See template at: [code-reviewer.md](code-reviewer.md)
 
 ---
 
-Adapted from [obra/superpowers](https://github.com/obra/superpowers) `skills/requesting-code-review` at commit `8ca22dba9a94f28898bbce59f2537ff4d87c747d`. MIT License, Copyright (c) 2025 Jesse Vincent. See UPSTREAM.md.
+Adapted from [obra/superpowers](https://github.com/obra/superpowers) `skills/requesting-code-review` at commit `2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`. MIT License, Copyright (c) 2025 Jesse Vincent. See UPSTREAM.md.

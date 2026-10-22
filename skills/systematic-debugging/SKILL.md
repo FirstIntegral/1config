@@ -88,11 +88,11 @@ You MUST complete each phase before proceeding to the next.
    ```bash
    # Layer 1: Workflow
    echo "=== Secrets available in workflow: ==="
-   echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
+   echo "IDENTITY: $([ -n "${IDENTITY:-}" ] && echo SET || echo UNSET)"
 
    # Layer 2: Build script
    echo "=== Env vars in build script: ==="
-   env | grep IDENTITY || echo "IDENTITY not in environment"
+   printenv IDENTITY >/dev/null 2>&1 && echo "IDENTITY in environment" || echo "IDENTITY not in environment"
 
    # Layer 3: Signing script
    echo "=== Keychain state: ==="
@@ -284,4 +284,4 @@ These techniques are part of systematic debugging and available in this director
 
 ---
 
-Adapted from [obra/superpowers](https://github.com/obra/superpowers) `skills/systematic-debugging` at commit `8ca22dba9a94f28898bbce59f2537ff4d87c747d`. MIT License, Copyright (c) 2025 Jesse Vincent. See UPSTREAM.md.
+Adapted from [obra/superpowers](https://github.com/obra/superpowers) `skills/systematic-debugging` at commit `2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`. MIT License, Copyright (c) 2025 Jesse Vincent. See UPSTREAM.md.

@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — superpowers skills re-pinned at 2ce8aa15
+
+**Policy:** superpowers_skills_pin=2ce8aa15d05bd57213e6f746f953aafb7ded7a8b
+
+**Decision:** The five obra/superpowers skills are re-pinned from `8ca22dba` to `2ce8aa15d05bd57213e6f746f953aafb7ded7a8b` (committed 2026-10-21, one commit after `b739a8af`). `systematic-debugging` takes the secret-safe IDENTITY probe (`printenv`, and a test that does not expand the value). `requesting-code-review` takes `cut -d' ' -f1` on the example `BASE_SHA` line. `verification-before-completion`, `receiving-code-review`, and `writing-plans` had no upstream diff in the files we keep. Existing trims stay. `LICENSE.upstream` is unchanged.
+
+**Why:** The pin was a month behind. The two hunks are the only upstream edits in these five skills, and both fit the trims we already made.
+
+**Rejected:** Porting skills that were already rejected (using-superpowers, brainstorming, writing-skills). Taking any other file from the new commit. Rewriting the 2026-10-10 ADR, which still records the original pin.
+
 ## 2026-10-22 — reply limits from ponytail, not a second mode
 
 **Policy:** reply_limits=ponytail-09c434ab

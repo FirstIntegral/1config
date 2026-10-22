@@ -201,4 +201,4 @@ them to review the plan and choose an execution method before implementation.
 
 ---
 
-Adapted from [obra/superpowers](https://github.com/obra/superpowers) `skills/writing-plans` at commit `8ca22dba9a94f28898bbce59f2537ff4d87c747d`. MIT License, Copyright (c) 2025 Jesse Vincent. See UPSTREAM.md.
+Adapted from [obra/superpowers](https://github.com/obra/superpowers) `skills/writing-plans` at commit `2ce8aa15d05bd57213e6f746f953aafb7ded7a8b`. MIT License, Copyright (c) 2025 Jesse Vincent. See UPSTREAM.md.
