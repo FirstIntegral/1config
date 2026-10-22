@@ -17,6 +17,7 @@ skills/*
 !skills/writing-for-agents/
 !skills/grilling/
 !skills/migration/
+!skills/tdd/
 
 # Live grok/claude/opencode versions — differ per machine, rewritten by setup/updater
 inventory.local.md

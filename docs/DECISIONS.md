@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-22 — tdd skill pinned from mattpocock
+
+**Policy:** tdd_skill=5beb35b040e3de97e54fa9e386d7e42d15c295c2
+
+**Decision:** Track `skills/tdd/` from mattpocock/skills at `5beb35b040e3de97e54fa9e386d7e42d15c295c2` (MIT, Copyright (c) 2026 Matt Pocock). Same install path as the other process skills. `tests.md` and `mocking.md` stay verbatim. The description loads for test-first work, red-green-refactor, or a failing test before the change. References to `GLOSSARY.md`, `codebase-design`, and the Skill tool are removed.
+
+**Why:** The red-green loop and the seam rule are short enough to keep. The trimmed names point at files and skills this repo does not adopt. `writing-skills` stays rejected. It depends on this skill and it is long. Adopting the loop does not adopt that package.
+
+**Rejected:** `npx skills add --global`. Porting `writing-skills`. Keeping the Skill tool and `codebase-design` pointers. Dropping `tests.md` and `mocking.md` (both are short and they are what the skill tells you to read).
+
 ## 2026-10-22 — migration skill pinned from JuliusBrussee/caveman
 
 **Policy:** migration_skill=bad48a0e1df55e05e3f52249afa35ecc1909ee76
