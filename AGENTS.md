@@ -285,6 +285,7 @@ Rules:
 4. `session_compact.md` lives in the project root. **Never commit it unless the user explicitly says otherwise.** The template `.gitignore` enforces this, and it still names a leftover `session_transcript.md`. If copying files by hand (no template), add the same ignore lines. Do not create `session_transcript.md`.
 5. **`create_project` never creates a git repo or a remote.** Whether a project goes to GitHub is the user's call, made explicitly. Fill the `## Repo` line with `none (local only)` and leave it; update it the same turn a remote is actually added, so `checkpoint.sh`'s cross-check stays meaningful. It does not create `machine-notes` and does not invent a notes key. No origin means a later notes sync skips.
 6. **Model tracking:** at `create_project`, record the active model + effort in `session_compact.md` (read the tool's config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask the user once). The **Models used** list in compact is CUMULATIVE: preserve it across rewrites, mark the current one, add a line whenever model or effort changes. If the user says they switched models, log it in that list immediately.
+7. **Handoff shape:** point at specs, ADRs, and commits by path. Do not copy them into `session_compact.md`. List the skills the next agent should load. Redact secrets. Do not drop these three lines on a rewrite.
 
 ---
 
@@ -321,7 +322,7 @@ When the user says **`checkpoint_project`** (done for the day — leave and resu
 
 1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts. Anything else → offer `create_project`.
 2. Read `session_compact.md` (state restore). Do not open a leftover `session_transcript.md`.
-3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, and the cumulative **Models used** list (current marked).
+3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, and the cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
 4. Do not append to `session_transcript.md`. Collection is retired.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
 6. **Commit and push** (see below). Half-finished work is expected and fine — the point is that the machine is not the only copy.

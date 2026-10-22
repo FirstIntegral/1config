@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-10-22 — session_compact points, lists skills, and redacts secrets
+
+**Decision:** `project-template/session_compact.md` carries three handoff lines adapted from mattpocock/skills `skills/productivity/handoff` at `5beb35b040e3de97e54fa9e386d7e42d15c295c2` (MIT, Copyright (c) 2026 Matt Pocock). Point at specs, ADRs, and commits by path instead of copying them. List the skills the next agent should load. Redact secrets. `SETUP.md` §5 mirrors the template. A rewrite keeps the three lines.
+
+**Why:** The compact is already the handoff. Copying a spec into it makes two sources, and a secret in it would ride to machine-notes.
+
+**Rejected:** Porting the handoff skill. It writes a temp file, takes an argument hint, sets `disable-model-invocation`, and tells the agent to call the Skill tool. `session_compact.md` is the handoff. A second file in `/tmp`.
+
 ## 2026-10-22 — Caveman section keeps upstream's sharper rules
 
 **Policy:** caveman_wording=bad48a0e1df55e05e3f52249afa35ecc1909ee76

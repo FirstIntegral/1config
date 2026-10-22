@@ -185,7 +185,7 @@ const PAGES = [
     sentences: [
       'Every project keeps one gitignored handoff file, session_compact.md. 1config does not create or collect session_transcript.md.',
       'An old session_transcript.md stays on disk. Agents do not open it. notes-sync.sh does not copy it, and a notes.allow line for it is blocked. hooks/rule-oracles.sh still fails if a hook reads it.',
-      'session_compact.md is the AI handoff file, rewritten at milestones and before context compaction with current status, next steps, and a cumulative Models used list.',
+      'session_compact.md is the AI handoff file, rewritten at milestones and before context compaction with current status, next steps, and a cumulative Models used list. It points at specs, ADRs, and commits, lists the skills the next agent needs, and redacts secrets.',
       'Untracked project files (plus optional paths in notes.allow, excluding secrets/.env/keys and session_transcript.md) sync across machines through a private machine-notes repo (NOTES_REMOTE) keyed by lowercase host/owner/repo. setup.sh and login clone it; a pull or checkpoint retries if the clone is still missing.',
       'When two machines edit session_compact.md offline, notes-sync.sh keeps both copies under notes-sync-merge without an LLM call so neither machine\'s open items are lost.',
     ],

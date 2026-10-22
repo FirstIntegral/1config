@@ -287,6 +287,10 @@ Documentation, not authorisation: `checkpoint.sh` cross-checks this against `git
 
 AI handoff file. Read FIRST at session start. Rewrite (do not append) at end of session / milestone / before compaction.
 
+Point at specs, ADRs, and commits by path. Do not copy them into this file.
+List the skills the next agent should load.
+Redact secrets (API keys, passwords, tokens). Do not paste them here.
+
 ## Models used
 CUMULATIVE — preserve this list across rewrites; add a line whenever model or effort changes.
 - <model> · effort: <level> · since <YYYY-MM-DD>  ← current
@@ -347,6 +351,7 @@ docs/paper/lean/.lake/
 3. **End of session / milestone / before compaction:** rewrite `session_compact.md` — accurate enough for a fresh AI to resume from it alone.
 4. `session_compact.md` lives in the project root and is **never committed unless the user explicitly says otherwise**. The template `.gitignore` also names a leftover `session_transcript.md`. `docs/DECISIONS.md` IS committed in repos. Do not create `session_transcript.md`.
 5. **Model tracking:** at `create_project` record active model + effort (read tool config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask user once). The **Models used** list is CUMULATIVE: preserve across rewrites, mark current, add a line on any model/effort change. User says they switched → log it in that list immediately.
+6. **Handoff shape:** point at specs, ADRs, and commits by path. Do not copy them into `session_compact.md`. List the skills the next agent should load. Redact secrets. Do not drop these three lines on a rewrite.
 
 ## 5b. `continue_project <path>`
 
@@ -381,7 +386,7 @@ Trigger: user says **`checkpoint_project`** (done for the day — leave and resu
 
 1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts in `AGENTS.md`. Anything else → offer `create_project`.
 2. Read `session_compact.md` (state restore). Do not open a leftover `session_transcript.md`.
-3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, cumulative **Models used** list (current marked).
+3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
 4. Do not append to `session_transcript.md`. Collection is retired.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
 6. Run `bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"` to commit and push according to §4b. Half-finished work is expected and should still be backed up.
