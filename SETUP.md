@@ -292,21 +292,18 @@ Point at specs, ADRs, and commits by path. Do not copy them into this file.
 List the skills the next agent should load.
 Redact secrets (API keys, passwords, tokens). Do not paste them here.
 
+## How things are
+<one sentence: what this is, and where it stands>
+
+## Left to do
+1. <next action>
+
 ## Models used
 CUMULATIVE — preserve this list across rewrites; add a line whenever model or effort changes.
 - <model> · effort: <level> · since <YYYY-MM-DD>  ← current
 
-## Current state
-<where things stand right now>
-
-## Where we left off
-<last completed step + immediate next step>
-
 ## Key decisions
 - <decision + why>
-
-## Open issues / blockers
-- none yet
 ```
 
 ### `docs/DECISIONS.md`
@@ -374,9 +371,9 @@ Before other work, the AI must (must match canonical `AGENTS.md` — that file w
 7. **Live GitHub, when this checkout has any.** After the file reads, and only when `origin` or `upstream` is a `github.com` URL, fetch before the status. Local files are the baseline. GitHub is the news.
    - Open pull requests and open issues authored by the logged-in `gh` user, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`, `--state open`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
    - Also every issue or pull request that `<path>/AGENTS.md` or `<path>/CONTRIB-LOG.md` still calls open or waiting, including one someone else opened. If GitHub now says closed or merged, that is the update.
-   - Lead with what changed since `session_compact.md`: new comments, reviews, state, and who spoke. Nothing changed, no GitHub remote, `gh` missing, an empty list, or a failed fetch: one line, then the file-based status. Do not invent a comment the fetch did not return.
+   - Put that news only in the status card under **Since last time**. Do not invent a comment the fetch did not return.
    - Do not comment, react, post, push, or fast-forward during this fetch.
-8. After the fetch: brief status (current state + where we left off + open issues from compact and from the fetch), then wait for / take the user’s next instruction. Do not invent state that is not in those files or in the fetch.
+8. Speak the status card defined in canonical `AGENTS.md` (`### Status card`). **How things are** is one sentence. **Left to do** is at most 5 lines, then `N more in session_compact.md` when the list is longer. **Since last time** is the fetch. Do not read the rest of the compact aloud. Then wait. Do not invent state that is not in those files or in the fetch.
 9. Treat `<path>` as the project root for the rest of the session unless the user points elsewhere.
 
 Same for all four tools.
@@ -387,11 +384,11 @@ Trigger: user says **`checkpoint_project`** (done for the day — leave and resu
 
 1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts in `AGENTS.md`. Anything else → offer `create_project`.
 2. Read `session_compact.md` (state restore). Do not open a leftover `session_transcript.md`.
-3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
+3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone. The top is the status card (`## How things are`, `## Left to do`). Below it: key decisions and the cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
 4. Do not append to `session_transcript.md`. Collection is retired.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
 6. Run `bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"` to commit and push according to §4b. Half-finished work is expected and should still be backed up.
-7. Finish with: "Checkpoint saved — next step: <X>", plus the pushed commit hash or the script's exact non-push reason.
+7. Speak the status card. Then one line: `Checkpoint saved — next step: <item 1>`, plus the pushed commit hash or the script's exact non-push reason. Do not read the rest of the compact aloud.
 
 Same for all four tools. Formalizes the "End of session / milestone" rule as an explicit trigger.
 

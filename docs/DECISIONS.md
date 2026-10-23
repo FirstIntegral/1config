@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-23 — continue and checkpoint speak a status card
+
+**Policy:** status_card=how-and-left
+
+**Decision:** `continue_project` and `checkpoint_project` end on one status card. **How things are** is one sentence, at most 20 words. **Left to do** is spoken as at most 5 lines; the full ordered list stays under `## Left to do` in `session_compact.md`, and the last spoken line is `N more in session_compact.md` when the list is longer. `continue_project` adds **Since last time** only after the GitHub fetch runs: `nothing new`, or at most 3 change lines. The card is the whole status. The rest of the compact stays in the file. Every rewrite puts the two headings above `## Models used` and folds the old `## Current state`, `## Where we left off`, and `## Open issues / blockers` into them without dropping an open item. Continue does not rewrite the file. Checkpoint speaks the card, then `Checkpoint saved — next step: <item 1>` plus the hash or the script's non-push reason. The shape lives in `AGENTS.md` under `### Status card`. `SETUP.md` §5b and §5c point at it. `project-template/session_compact.md` starts with the two headings.
+
+**Why:** A continue on a busy repo was reciting every open issue, decision, and pull request. The user needs where things stand and what to do next.
+
+**Rejected:** A second handoff file. Reading the compact aloud with a "be brief" sentence (that is what already failed). Capping the file list at 5 (that drops work). Suspending Caveman for this reply (the 20-word line already fits the card).
+
 ## 2026-10-22 — superpowers skills re-pinned at 2ce8aa15
 
 **Policy:** superpowers_skills_pin=2ce8aa15d05bd57213e6f746f953aafb7ded7a8b

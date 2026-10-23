@@ -284,7 +284,7 @@ When the user says **`create_project`** (starting a new project), always set up 
 | File | Audience | Maintenance |
 |------|----------|-------------|
 | `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code 2.1.277+ reads it natively — never create a project CLAUDE.md). Committed by default — **except** `~/Projects/sites/*` (see Sites rule). |
-| `session_compact.md` | **AI handoff** | Concise state: current status, where we left off, next steps, key decisions, open issues. Always records the active **model + effort**. **Rewrite** (not append) at end of session / major milestone / before context compaction. |
+| `session_compact.md` | **AI handoff** | Top is the status card (`## How things are`, `## Left to do`). Below that: model + effort, decisions, pointers. **Rewrite** (not append) at end of session / major milestone / before context compaction. Every rewrite keeps the card at the top. |
 | `docs/DECISIONS.md` | all AI tools | ADR log: decision + why + rejected alternatives, appended in the same turn a choice is made. Versioned (committed in repos). |
 | `.gitignore` | git | Must ignore session files (`session_compact.md`, `claude_memory_import.md`, a leftover `session_transcript.md`, + legacy session paths). Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/Projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
 
@@ -318,12 +318,26 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
 7. **Live GitHub, when this checkout has any.** After the file reads, and only when `origin` or `upstream` is a `github.com` URL, fetch before the status. Local files are the baseline. GitHub is the news.
    - Open pull requests and open issues authored by the logged-in `gh` user, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`, `--state open`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
    - Also every issue or pull request that `<path>/AGENTS.md` or `<path>/CONTRIB-LOG.md` still calls open or waiting, including one someone else opened. If GitHub now says closed or merged, that is the update.
-   - Lead with what changed since `session_compact.md`: new comments, reviews, state, and who spoke. Nothing changed, no GitHub remote, `gh` missing, an empty list, or a failed fetch: one line, then the file-based status. Do not invent a comment the fetch did not return.
+   - Put that news only in the status card under **Since last time**. Do not invent a comment the fetch did not return.
    - Do not comment, react, post, push, or fast-forward during this fetch.
-8. After the fetch: brief status (current state + where we left off + open issues from compact and from the fetch), then wait for / take the user's next instruction. Do not invent state that is not in those files or in the fetch.
+8. Speak the status card, then wait. Do not invent state that is not in those files or in the fetch. Do not read the rest of the compact aloud.
 9. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
 
 Same trigger for all four tools (Grok, Claude Code, OpenCode, Cursor Code). No tool-specific continue step.
+
+### Status card
+
+`continue_project` and `checkpoint_project` speak this card and then stop. It is the whole status. Do not read the rest of the compact aloud.
+
+**How things are** — one sentence, at most 20 words. What this project is, and where it stands: working, stuck, or waiting.
+
+**Left to do** — the full ordered list lives under `## Left to do` in `session_compact.md`. Speak at most 5 lines. Item 1 is the next action. Each line is one action, at most 20 words. When the file has more, the last spoken line is `N more in session_compact.md`. N is the count you did not list.
+
+**Since last time** — `continue_project` only, and only when the GitHub fetch runs. One line, `nothing new`, or at most 3 change lines (who, and what moved). No GitHub remote: omit this heading.
+
+Say nothing that is not already in `session_compact.md`, `docs/DECISIONS.md`, or that fetch. A `notes-sync-merge` compact keeps both machines' open items in the file list. The spoken five still include both sides before older items.
+
+Every rewrite of `session_compact.md` puts `## How things are` and `## Left to do` at the top, above `## Models used`. Fold `## Current state`, `## Where we left off`, and `## Open issues / blockers` into those two headings. Keep every open item. Continue speaks the card and does not rewrite the file. After the checkpoint card, one line: `Checkpoint saved — next step: <item 1>`, plus the pushed hash or the script's exact non-push reason. An early stop (missing path, notes exit 23, no session layout) speaks the stop reason and skips the card.
 
 ---
 
@@ -333,11 +347,11 @@ When the user says **`checkpoint_project`** (done for the day — leave and resu
 
 1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts. Anything else → offer `create_project`.
 2. Read `session_compact.md` (state restore). Do not open a leftover `session_transcript.md`.
-3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone: current state, where we left off (concrete next step), key decisions, open issues, and the cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
+3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone. The top is the status card. Below it: key decisions and the cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
 4. Do not append to `session_transcript.md`. Collection is retired.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
 6. **Commit and push** (see below). Half-finished work is expected and fine — the point is that the machine is not the only copy.
-7. Finish with: "Checkpoint saved — next step: <X>", plus the pushed commit hash (or one line saying why nothing was pushed).
+7. Speak the status card. Then one line: `Checkpoint saved — next step: <item 1>`, plus the pushed commit hash (or one line saying why nothing was pushed).
 
 Same for all three tools. Formalizes the existing "End of session / milestone" rule as an explicit trigger.
 

@@ -185,13 +185,13 @@ const PAGES = [
     sentences: [
       'Every project keeps one gitignored handoff file, session_compact.md. 1config does not create or collect session_transcript.md.',
       'An old session_transcript.md stays on disk. Agents do not open it. notes-sync.sh does not copy it, and a notes.allow line for it is blocked. hooks/rule-oracles.sh still fails if a hook reads it.',
-      'session_compact.md is the AI handoff file, rewritten at milestones and before context compaction with current status, next steps, and a cumulative Models used list. It points at specs, ADRs, and commits, lists the skills the next agent needs, and redacts secrets.',
+      'session_compact.md starts with How things are (one sentence) and Left to do (the full list). continue_project and checkpoint_project speak that card, at most five left items, and leave models, decisions, and the rest of the list in the file.',
       'Untracked project files (plus optional paths in notes.allow, excluding secrets/.env/keys and session_transcript.md) sync across machines through a private machine-notes repo (NOTES_REMOTE) keyed by lowercase host/owner/repo. setup.sh and login clone it; a pull or checkpoint retries if the clone is still missing.',
       'When two machines edit session_compact.md offline, notes-sync.sh keeps both copies under notes-sync-merge without an LLM call so neither machine\'s open items are lost.',
     ],
     snippetTitle: 'Session file contract & notes-sync.sh',
     snippetItems: [
-      { key: 'session_compact.md', val: 'AI handoff (read first on session start, rewritten at milestones, tracks model + effort)' },
+      { key: 'session_compact.md', val: 'Top is How things are and Left to do. Continue and checkpoint speak that card' },
       { key: 'session_transcript.md', val: 'Retired. Old files stay. Do not read, create, or sync. rule-oracles.sh still blocks hook reads' },
       { key: 'hooks/notes-sync.sh', val: 'NOTES_REMOTE clone via setup.sh and login; push retries; merges offline edits' },
     ],
@@ -205,8 +205,8 @@ const PAGES = [
     accentColor: ANSI.amber,
     sentences: [
       'create_project <name> scaffolds ~/Projects/<name> from project-template/ (verified by hooks/rule-oracles.sh) and never runs git init or creates a remote.',
-      'continue_project <path> checks residue flags, pulls notes via notes-sync.sh, reads session_compact.md, AGENTS.md, and docs/DECISIONS.md, then fetches that checkout\'s open GitHub issues and pull requests and leads with what changed.',
-      'checkpoint_project rewrites session_compact.md, does not write session_transcript.md, backfills docs/DECISIONS.md, and executes hooks/checkpoint.sh.',
+      'continue_project <path> checks residue flags, pulls notes, reads the session files, fetches open GitHub issues and pull requests, then speaks the status card: How things are, Left to do (at most five), and Since last time.',
+      'checkpoint_project rewrites the status card at the top of session_compact.md, backfills docs/DECISIONS.md, runs hooks/checkpoint.sh, then speaks that same card.',
       'checkpoint.sh enforces deterministic exit codes (0, 3, 10 through 23): git config always wins over AGENTS.md, session file leaks exit 20, and failed pushes never rebase or force-push.',
       'global_brain_update targets ~/.agents/ itself and requires running setup.sh and sync.sh in the same turn, plus regenerating setup-infographic.svg if architecture flows changed and evaluating whether hooks/welcome.js should mention the change.',
     ],

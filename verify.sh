@@ -1417,6 +1417,26 @@ if grep -qF 'GitHub is the news' "$CANON" && grep -qF 'GitHub is the news' "$SET
 else
   bad "continue_project live GitHub fetch missing from AGENTS.md or SETUP.md"
 fi
+if grep -qF '### Status card' "$CANON" \
+   && grep -qF '### Status card' "$SETUP" \
+   && grep -qF 'Do not read the rest of the compact aloud.' "$CANON" \
+   && grep -qF 'Do not read the rest of the compact aloud.' "$SETUP" \
+   && grep -qF 'N more in session_compact.md' "$CANON" \
+   && grep -qF 'N more in session_compact.md' "$SETUP" \
+   && grep -qF 'at most 5' "$CANON" \
+   && grep -qF 'at most 5' "$SETUP" \
+   && grep -qF '## How things are' "$TEMPLATE/session_compact.md" \
+   && grep -qF '## Left to do' "$TEMPLATE/session_compact.md" \
+   && grep -qF '## How things are' "$SETUP" \
+   && grep -qF '## Left to do' "$SETUP" \
+   && grep -qF 'status_card=how-and-left' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && ! grep -qF '## Open issues / blockers' "$TEMPLATE/session_compact.md" \
+   && ! grep -qF 'brief status (current state' "$CANON" \
+   && ! grep -qF 'brief status (current state' "$SETUP"; then
+  ok "continue and checkpoint speak the status card"
+else
+  bad "status card missing from AGENTS.md, SETUP.md, the compact template, or the ADR"
+fi
 if grep -qF '$HOME/Android/Sdk' "$CANON" && grep -qF '$HOME/Android/Sdk' "$SETUP" \
    && grep -qF '$HOME/Android/Sdk' "$AGENTS_HOME/README.md" \
    && grep -qF 'Never `$HOME/android-sdk`' "$CANON" \
