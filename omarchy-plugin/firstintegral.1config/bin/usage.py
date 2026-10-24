@@ -2,8 +2,10 @@
 """Local AI-usage snapshot for the 1config Omarchy plugin.
 
 Reads ledgers already on this machine. Also reads the OpenCode Go plan from
-https://opencode.ai/zen/go/v1/usage with the key already in auth.json. That
-call is cached for ten minutes. The key never leaves the request header.
+https://opencode.ai/zen/go/v1/usage. The bearer token is the active opencode-go
+key in opencode.db. auth.json is used only when that row is absent. The call
+is cached for ten minutes. A failed live read keeps the cache and says so.
+The key never leaves the request header.
 Does not emit paths, prompts, credentials, or message text.
 
   usage.py                 one JSON object on stdout
@@ -607,20 +609,69 @@ def go_cache_path(home: Path) -> Path:
     return home / ".local" / "state" / "1config" / "opencode-go.json"
 
 
-def read_go_key(home: Path) -> str:
+def _clean_key(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    key = value.strip()
+    if not key or any(ch.isspace() for ch in key):
+        return ""
+    return key
+
+
+def _go_key_from_auth(home: Path) -> str:
     path = home / ".local" / "share" / "opencode" / "auth.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return ""
     entry = data.get("opencode-go") if isinstance(data, dict) else None
-    key = entry.get("key") if isinstance(entry, dict) else ""
-    if not isinstance(key, str):
+    if not isinstance(entry, dict):
         return ""
-    key = key.strip()
-    if not key or any(ch.isspace() for ch in key):
-        return ""
-    return key
+    return _clean_key(entry.get("key"))
+
+
+def _go_keys_from_db(home: Path) -> list[str]:
+    # OpenCode 2 marks the live Go key active in opencode.db. auth.json can keep a retired key.
+    path = home / ".local" / "share" / "opencode" / "opencode.db"
+    if not path.is_file():
+        return []
+    try:
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return []
+    try:
+        try:
+            rows = connection.execute(
+                """
+                select value from credential
+                where integration_id = 'opencode-go' and active = 1
+                order by time_updated desc
+                """
+            ).fetchall()
+        except sqlite3.Error:
+            return []
+    finally:
+        connection.close()
+    keys: list[str] = []
+    for (value,) in rows:
+        try:
+            parsed = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        key = _clean_key(parsed.get("key"))
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def go_keys(home: Path) -> list[str]:
+    keys = _go_keys_from_db(home)
+    file_key = _go_key_from_auth(home)
+    if file_key and file_key not in keys:
+        keys.append(file_key)
+    return keys
 
 
 def slim_go_usage(usage: dict) -> dict:
@@ -692,7 +743,22 @@ def write_go_cache(home: Path, now: datetime, usage: dict) -> None:
         return
 
 
-def fetch_go_usage(key: str) -> dict | None:
+def _go_http_problem(error: urllib.error.HTTPError) -> str:
+    code = ""
+    try:
+        body = json.loads(error.read(2048).decode("utf-8", "replace"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        body = None
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict) and isinstance(err.get("code"), str):
+            code = "".join(ch for ch in err["code"] if ch.isalnum() or ch in "-_")[:40]
+    if code:
+        return code
+    return f"http-{error.code}"
+
+
+def fetch_go_usage(key: str) -> tuple[dict | None, str]:
     # Cloudflare rejects the Python default client. curl's client is accepted.
     request = urllib.request.Request(
         GO_USAGE_URL,
@@ -705,29 +771,48 @@ def fetch_go_usage(key: str) -> dict | None:
     try:
         with urllib.request.urlopen(request, timeout=8) as response:
             payload = json.loads(response.read(16384).decode("utf-8", "replace"))
+    except urllib.error.HTTPError as error:
+        return None, _go_http_problem(error)
     except (OSError, urllib.error.URLError, json.JSONDecodeError, TimeoutError, ValueError):
-        return None
+        return None, "unreachable"
     usage = payload.get("usage") if isinstance(payload, dict) else None
-    return usage if isinstance(usage, dict) else None
+    if not isinstance(usage, dict):
+        return None, "unreadable"
+    return usage, ""
 
 
-def go_limits(home: Path, now: datetime, *, force: bool) -> list[dict]:
+def _cached_go_note(fetched_at: datetime | None, problem: str, now: datetime) -> str:
+    lead = "Go key expired" if problem == "api_key_expired" else "Go live read failed"
+    if fetched_at is None:
+        return lead + "."
+    day = as_local(fetched_at, now).strftime("%Y-%m-%d")
+    return f"{lead}. Cached {day}."
+
+
+def go_limits(home: Path, now: datetime, *, force: bool, fetch=None) -> tuple[list[dict], str]:
+    fetch = fetch_go_usage if fetch is None else fetch
     cached, fetched_at = read_go_cache(home)
     fresh = False
     if cached is not None and fetched_at is not None:
         age = now - as_local(fetched_at, now)
         fresh = timedelta(0) <= age < GO_TTL
     if cached is not None and fresh and not force:
-        return go_windows(cached)
-    key = read_go_key(home)
-    if key:
-        fetched = fetch_go_usage(key)
-        if fetched is not None:
+        return go_windows(cached), ""
+    problem = ""
+    for key in go_keys(home):
+        fetched, problem = fetch(key)
+        if isinstance(fetched, dict):
             write_go_cache(home, now, fetched)
-            return go_windows(fetched)
+            return go_windows(fetched), ""
+        if not isinstance(problem, str) or not problem:
+            problem = "unreachable"
     if cached is not None:
-        return go_windows(cached)
-    return []
+        return go_windows(cached), _cached_go_note(fetched_at, problem, now)
+    if problem == "api_key_expired":
+        return [], "Go key expired."
+    if problem:
+        return [], "Go live read failed."
+    return [], ""
 
 
 def _opencode_empty() -> dict:
@@ -1462,7 +1547,9 @@ def brain_status(home: Path, which=None, git=None) -> dict:
 
 
 def attach_go(card: dict, home: Path, now: datetime, *, force: bool) -> dict:
-    limits = go_limits(home, now, force=force)
+    limits, problem = go_limits(home, now, force=force)
+    if problem:
+        card["status"] = problem
     if not limits:
         return card
     card["limits"] = limits
@@ -1972,7 +2059,96 @@ def self_test() -> None:
     for banned in ("/tmp", "Bearer", "sk-", "usage.json", "@"):
         assert banned not in blob, banned
         assert banned not in healthy_blob, banned
+    _assert_go_key_source()
     print("self-test ok")
+
+
+def _assert_go_key_source() -> None:
+    now = datetime(2026, 10, 9, 15, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        home = Path(tmp)
+        share = home / ".local" / "share" / "opencode"
+        share.mkdir(parents=True)
+        (share / "auth.json").write_text(
+            json.dumps({"opencode-go": {"type": "key", "key": "file-key"}}),
+            encoding="utf-8",
+        )
+        connection = sqlite3.connect(share / "opencode.db")
+        connection.execute(
+            """
+            create table credential (
+              id text primary key,
+              integration_id text,
+              label text not null,
+              value text not null,
+              active integer,
+              time_created integer not null,
+              time_updated integer not null
+            )
+            """
+        )
+
+        def add(cid: str, label: str, key: str, active: int, updated: int) -> None:
+            connection.execute(
+                "insert into credential values (?, 'opencode-go', ?, ?, ?, 1, ?)",
+                (cid, label, json.dumps({"type": "key", "key": key}), active, updated),
+            )
+
+        add("a", "API key", "retired-key", 0, 10)
+        add("b", "OpenCode Go", "older-active", 1, 20)
+        add("c", "OpenCode Go", "new-key", 1, 30)
+        connection.commit()
+        connection.close()
+        assert go_keys(home) == ["new-key", "older-active", "file-key"], go_keys(home)
+        seen: list[str] = []
+
+        def fetch(key: str):
+            seen.append(key)
+            if key == "new-key":
+                return (
+                    {
+                        "rolling": {"status": "ok", "percent": 55, "resetsAt": ""},
+                        "weekly": {"status": "ok", "percent": 86, "resetsAt": ""},
+                        "monthly": {
+                            "status": "rate-limited",
+                            "percent": 100,
+                            "resetsAt": "2026-10-26T14:13:49Z",
+                        },
+                    },
+                    "",
+                )
+            return None, "api_key_expired"
+
+        limits, problem = go_limits(home, now, force=True, fetch=fetch)
+        assert seen == ["new-key"], seen
+        assert problem == "", problem
+        assert [item["usedPct"] for item in limits] == [55.0, 86.0, 100.0], limits
+        cache = home / ".local" / "state" / "1config" / "opencode-go.json"
+        cache.write_text(
+            json.dumps(
+                {
+                    "fetchedAt": "2026-10-01T00:00:00Z",
+                    "usage": {
+                        "rolling": {"status": "ok", "percent": 0, "resetsAt": ""},
+                        "weekly": {"status": "ok", "percent": 21, "resetsAt": ""},
+                        "monthly": {"status": "ok", "percent": 51, "resetsAt": ""},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        def dead(_key: str):
+            return None, "api_key_expired"
+
+        stale, note = go_limits(home, now, force=True, fetch=dead)
+        assert [item["usedPct"] for item in stale] == [0.0, 21.0, 51.0], stale
+        assert note == "Go key expired. Cached 2026-10-01.", note
+        connection = sqlite3.connect(share / "opencode.db")
+        connection.execute("delete from credential")
+        connection.commit()
+        connection.close()
+        assert go_keys(home) == ["file-key"], go_keys(home)
 
 
 def main(argv: list[str]) -> int:

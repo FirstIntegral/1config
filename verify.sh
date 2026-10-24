@@ -2113,6 +2113,13 @@ if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
 else
   bad "1config bar still has a label, or the grid, or a today line, or weekday rows, or no Go usage URL, or no quiet toggle"
 fi
+if grep -q "integration_id = 'opencode-go'" "$PLUGIN/bin/usage.py" \
+   && grep -q 'Go key expired' "$PLUGIN/bin/usage.py" \
+   && grep -q '_go_key_from_auth' "$PLUGIN/bin/usage.py"; then
+  ok "1config reads the active OpenCode Go key and labels a failed live read"
+else
+  bad "1config still reads only the retired OpenCode Go key, or hides a failed live read"
+fi
 if grep -q 'function tileFill' "$PLUGIN/Panel.qml" \
    && grep -q 'function tileEdge' "$PLUGIN/Panel.qml" \
    && grep -q '0.045' "$PLUGIN/Panel.qml" \

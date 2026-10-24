@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-10-24 — OpenCode Go uses the active database key
+
+**Decision:** The bar reads the OpenCode Go plan with the active `opencode-go` row in `~/.local/share/opencode/opencode.db` (`credential.active = 1`, newest `time_updated` first). `auth.json` is only the fallback when that row is absent. A live read that fails keeps the cached windows and sets the card status to `Go key expired. Cached <date>.` or `Go live read failed. Cached <date>.`
+
+**Why:** OpenCode 2 stores the live Go key in the database and leaves the retired key in `auth.json`. The usage call was still sending that retired key, getting `api_key_expired`, and painting the 16 Oct cache (monthly 51%) as a current plan. The live key reports monthly 100%, rate-limited.
+
+**Rejected:** Scraping the console. Treating an inactive database key as a candidate. Dropping the last cached windows on a failed read.
+
 ## 2026-10-23 — continue and checkpoint speak a status card
 
 **Policy:** status_card=how-and-left
