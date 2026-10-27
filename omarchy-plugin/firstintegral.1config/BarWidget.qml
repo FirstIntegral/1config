@@ -16,9 +16,13 @@ BarWidget {
   readonly property bool brainFault: service && service.brain && String(service.brain.verdict || "") === "fault"
   readonly property bool failed: service ? service.state === "error" : false
   readonly property color normalForeground: bar ? bar.barForeground : Color.foreground
+  // A hot plan used to recolor the whole ring with Color.accent. On a
+  // transparent bar that accent is sky blue and the stroke vanishes into
+  // the wallpaper. The contrast foreground is what the other icons use.
+  // The pulse dot still marks a hot plan or a brain fault.
   readonly property color paint: root.failed && !(service && service.ready)
     ? Color.urgent
-    : ((root.alarming || root.brainFault) ? Color.accent : root.normalForeground)
+    : root.normalForeground
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
 
@@ -121,7 +125,7 @@ BarWidget {
     width: Math.max(3, Style.space(4))
     height: width
     radius: width / 2
-    color: Color.accent
+    color: root.normalForeground
     anchors.left: parent.right
     anchors.leftMargin: -button.scaledHorizontalMargin + Style.space(1)
     anchors.top: parent.top

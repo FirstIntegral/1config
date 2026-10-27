@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-10-28 — Bar ring stays solid on a transparent bar
+
+**Decision:** The 1config bar ring uses `bar.barForeground`, the contrast color Omarchy picks for the other icons. A hot plan and a brain fault do not recolor the ring. They pulse the dot in that same color. A failed unread snapshot still uses urgent. The ring stroke is full opacity and `max(1.75, radius * 0.2)`, with the numeral at full opacity.
+
+**Why:** The bar is transparent over a blue sky. The old stroke was 1px at alpha 0.9, and a hot plan (OpenCode monthly at 100%) also swapped the ink for theme accent `#537CBB`. Either way the mark went faint next to the phone, wifi, and monitor icons. The tooltip still carries the plan percent.
+
+**Rejected:** Putting the percent back on the bar. Painting the hot state in accent or gold. Leaving the hairline stroke and only changing the color.
+
 ## 2026-10-24 — OpenCode Go uses the active database key
 
 **Decision:** The bar reads the OpenCode Go plan with the active `opencode-go` row in `~/.local/share/opencode/opencode.db` (`credential.active = 1`, newest `time_updated` first). `auth.json` is only the fallback when that row is absent. A live read that fails keeps the cached windows and sets the card status to `Go key expired. Cached <date>.` or `Go live read failed. Cached <date>.`

@@ -29,8 +29,10 @@ Item {
       function css(a) {
         return "rgba(" + Math.round(ink.r * 255) + "," + Math.round(ink.g * 255) + "," + Math.round(ink.b * 255) + "," + a + ")"
       }
-      ctx.lineWidth = Math.max(1, r * 0.08)
-      ctx.strokeStyle = css(0.9)
+      // A 1px stroke at partial alpha disappears on a transparent bar.
+      // Match the other bar icons: full ink, about a fifth of the radius.
+      ctx.lineWidth = Math.max(1.75, r * 0.2)
+      ctx.strokeStyle = css(1)
       ctx.beginPath()
       ctx.arc(cx, cy, r, 0, Math.PI * 2)
       ctx.stroke()
@@ -38,10 +40,10 @@ Item {
       ctx.fillStyle = css(1)
       for (var i = 0; i < nodes.length; i++) {
         ctx.beginPath()
-        ctx.arc(cx + Math.cos(nodes[i]) * r, cy + Math.sin(nodes[i]) * r, Math.max(1.2, r * 0.12), 0, Math.PI * 2)
+        ctx.arc(cx + Math.cos(nodes[i]) * r, cy + Math.sin(nodes[i]) * r, Math.max(1.5, r * 0.14), 0, Math.PI * 2)
         ctx.fill()
       }
-      ctx.fillStyle = css(0.95)
+      ctx.fillStyle = css(1)
       ctx.font = "bold " + Math.max(7, Math.round(r * 0.9)) + "px \"" + root.family + "\""
       ctx.textAlign = "center"
       ctx.textBaseline = "middle"
