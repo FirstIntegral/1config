@@ -1417,6 +1417,16 @@ if grep -qF 'GitHub is the news' "$CANON" && grep -qF 'GitHub is the news' "$SET
 else
   bad "continue_project live GitHub fetch missing from AGENTS.md or SETUP.md"
 fi
+if grep -qF 'A close or a comment by someone other than the logged-in user is a reply.' "$CANON" \
+   && grep -qF 'A close or a comment by someone other than the logged-in user is a reply.' "$SETUP" \
+   && grep -qF 'N more replies in session_compact.md' "$CANON" \
+   && grep -qF 'N more replies in session_compact.md' "$SETUP" \
+   && grep -qF 'Append `heard` only when the user said that number is heard.' "$CANON" \
+   && grep -qF 'Append `heard` only when the user said that number is heard.' "$SETUP"; then
+  ok "continue_project speaks maintainer replies"
+else
+  bad "continue_project reply rule missing from AGENTS.md or SETUP.md"
+fi
 if grep -qF '### Status card' "$CANON" \
    && grep -qF '### Status card' "$SETUP" \
    && grep -qF 'Do not read the rest of the compact aloud.' "$CANON" \
@@ -1429,7 +1439,7 @@ if grep -qF '### Status card' "$CANON" \
    && grep -qF '## Left to do' "$TEMPLATE/session_compact.md" \
    && grep -qF '## How things are' "$SETUP" \
    && grep -qF '## Left to do' "$SETUP" \
-   && grep -qF 'status_card=how-and-left' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -qF 'status_card=how-left-replies' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -qF '## Open issues / blockers' "$TEMPLATE/session_compact.md" \
    && ! grep -qF 'brief status (current state' "$CANON" \
    && ! grep -qF 'brief status (current state' "$SETUP"; then

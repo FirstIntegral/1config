@@ -289,6 +289,7 @@ Documentation, not authorisation: `checkpoint.sh` cross-checks this against `git
 AI handoff file. Read FIRST at session start. Rewrite (do not append) at end of session / milestone / before compaction.
 
 Point at specs, ADRs, and commits by path. Do not copy them into this file.
+A maintainer reply goes under `## Replies`, one line each. Append `heard` when the user said that number is heard. Record `Fetched YYYY-MM-DD` when a GitHub fetch ran.
 List the skills the next agent should load.
 Redact secrets (API keys, passwords, tokens). Do not paste them here.
 
@@ -369,11 +370,12 @@ Before other work, the AI must (must match canonical `AGENTS.md` — that file w
 5. **Do NOT** open `<path>/session_transcript.md` unless the user explicitly asks (Transcript privacy HARD RULE).
 6. If none of the three files in step 4 exist → say the path has no project session layout; offer `create_project` there (or fix the path). A git root is not a new project; follow Foreign checkouts in `AGENTS.md`.
 7. **Live GitHub, when this checkout has any.** After the file reads, and only when `origin` or `upstream` is a `github.com` URL, fetch before the status. Local files are the baseline. GitHub is the news.
-   - Open pull requests and open issues authored by the logged-in `gh` user, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`, `--state open`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
-   - Also every issue or pull request that `<path>/AGENTS.md` or `<path>/CONTRIB-LOG.md` still calls open or waiting, including one someone else opened. If GitHub now says closed or merged, that is the update.
-   - Put that news only in the status card under **Since last time**. Do not invent a comment the fetch did not return.
-   - Do not comment, react, post, push, or fast-forward during this fetch.
-8. Speak the status card defined in canonical `AGENTS.md` (`### Status card`). **How things are** is one sentence. **Left to do** is at most 5 lines, then `N more in session_compact.md` when the list is longer. **Since last time** is the fetch. Do not read the rest of the compact aloud. Then wait. Do not invent state that is not in those files or in the fetch.
+   - Open pull requests and issues authored by the logged-in `gh` user, any state, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
+   - Also every issue or pull request that `<path>/AGENTS.md`, `<path>/CONTRIB-LOG.md`, or `<path>/session_compact.md` names, including one someone else opened. If GitHub now says closed or merged, that is the update.
+   - For each of those, if `updatedAt` is after the compact's last `Fetched YYYY-MM-DD` line, read comments and reviews newer than that date. No such line: read comments and reviews from the last 14 days. A close or a comment by someone other than the logged-in user is a reply. Our own comment is not a reply.
+   - Put state changes under **Since last time**. Put replies under **Replies**. Do not invent a comment the fetch did not return.
+   - Do not comment, react, post, push, or fast-forward during this fetch. Do not mark notifications read.
+8. Speak the status card defined in canonical `AGENTS.md` (`### Status card`). **How things are** is one sentence. **Left to do** is at most 5 lines, then `N more in session_compact.md` when the list is longer. **Replies** is at most 3 lines, then `N more replies in session_compact.md`. **Since last time** is the fetch. Do not read the rest of the compact aloud. Then wait. Do not invent state that is not in those files or in the fetch.
 9. Treat `<path>` as the project root for the rest of the session unless the user points elsewhere.
 
 Same for all four tools.
@@ -384,7 +386,7 @@ Trigger: user says **`checkpoint_project`** (done for the day — leave and resu
 
 1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts in `AGENTS.md`. Anything else → offer `create_project`.
 2. Read `session_compact.md` (state restore). Do not open a leftover `session_transcript.md`.
-3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone. The top is the status card (`## How things are`, `## Left to do`). Below it: key decisions and the cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
+3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone. The top is the status card (`## How things are`, `## Left to do`). Keep `## Replies` under `## Left to do` when any line lacks `heard`. Add a line for each maintainer reply fetched this session. Append `heard` only when the user said that number is heard. When a GitHub fetch ran, record `Fetched YYYY-MM-DD`. Below that: key decisions and the cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
 4. Do not append to `session_transcript.md`. Collection is retired.
 5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
 6. Run `bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"` to commit and push according to §4b. Half-finished work is expected and should still be backed up.

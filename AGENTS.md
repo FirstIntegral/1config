@@ -316,10 +316,11 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
 5. **Do NOT** open a leftover `<path>/session_transcript.md`. Collection is retired. Do not create the file and do not append to it.
 6. If none of the three files exist: a git root is not a new project. Do not offer `create_project`. Follow Foreign checkouts. Anything else → say the path has no project session layout; offer `create_project` there (or fix the path).
 7. **Live GitHub, when this checkout has any.** After the file reads, and only when `origin` or `upstream` is a `github.com` URL, fetch before the status. Local files are the baseline. GitHub is the news.
-   - Open pull requests and open issues authored by the logged-in `gh` user, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`, `--state open`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
-   - Also every issue or pull request that `<path>/AGENTS.md` or `<path>/CONTRIB-LOG.md` still calls open or waiting, including one someone else opened. If GitHub now says closed or merged, that is the update.
-   - Put that news only in the status card under **Since last time**. Do not invent a comment the fetch did not return.
-   - Do not comment, react, post, push, or fast-forward during this fetch.
+   - Open pull requests and issues authored by the logged-in `gh` user, any state, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
+   - Also every issue or pull request that `<path>/AGENTS.md`, `<path>/CONTRIB-LOG.md`, or `<path>/session_compact.md` names, including one someone else opened. If GitHub now says closed or merged, that is the update.
+   - For each of those, if `updatedAt` is after the compact's last `Fetched YYYY-MM-DD` line, read comments and reviews newer than that date. No such line: read comments and reviews from the last 14 days. A close or a comment by someone other than the logged-in user is a reply. Our own comment is not a reply.
+   - Put state changes under **Since last time**. Put replies under **Replies**. Do not invent a comment the fetch did not return.
+   - Do not comment, react, post, push, or fast-forward during this fetch. Do not mark notifications read.
 8. Speak the status card, then wait. Do not invent state that is not in those files or in the fetch. Do not read the rest of the compact aloud.
 9. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
 
@@ -333,11 +334,13 @@ Same trigger for all four tools (Grok, Claude Code, OpenCode, Cursor Code). No t
 
 **Left to do** — the full ordered list lives under `## Left to do` in `session_compact.md`. Speak at most 5 lines. Item 1 is the next action. Each line is one action, at most 20 words. When the file has more, the last spoken line is `N more in session_compact.md`. N is the count you did not list.
 
-**Since last time** — `continue_project` only, and only when the GitHub fetch runs. One line, `nothing new`, or at most 3 change lines (who, and what moved). No GitHub remote: omit this heading.
+**Replies** — `continue_project` only. Speak each reply the fetch found, and each `## Replies` line in `session_compact.md` that does not contain `heard`. At most 3 lines. When more remain, the last spoken line is `N more replies in session_compact.md`. Each line is who, the number, and the outcome, at most 20 words. No replies: omit this heading.
+
+**Since last time** — `continue_project` only, and only when the GitHub fetch runs. One line, `nothing new`, or at most 3 change lines (who, and what moved). No GitHub remote: omit this heading. A reply is not one of these lines.
 
 Say nothing that is not already in `session_compact.md`, `docs/DECISIONS.md`, or that fetch. A `notes-sync-merge` compact keeps both machines' open items in the file list. The spoken five still include both sides before older items.
 
-Every rewrite of `session_compact.md` puts `## How things are` and `## Left to do` at the top, above `## Models used`. Fold `## Current state`, `## Where we left off`, and `## Open issues / blockers` into those two headings. Keep every open item. Continue speaks the card and does not rewrite the file. After the checkpoint card, one line: `Checkpoint saved — next step: <item 1>`, plus the pushed hash or the script's exact non-push reason. An early stop (missing path, notes exit 23, no session layout) speaks the stop reason and skips the card.
+Every rewrite of `session_compact.md` puts `## How things are` and `## Left to do` at the top, above `## Models used`. Keep `## Replies` under `## Left to do` when any line lacks `heard`. Add a line for each maintainer reply fetched this session. Append `heard` only when the user said that number is heard. When a GitHub fetch ran, record `Fetched YYYY-MM-DD`. Fold `## Current state`, `## Where we left off`, and `## Open issues / blockers` into those two headings. Keep every open item. Continue speaks the card and does not rewrite the file. After the checkpoint card, one line: `Checkpoint saved — next step: <item 1>`, plus the pushed hash or the script's exact non-push reason. An early stop (missing path, notes exit 23, no session layout) speaks the stop reason and skips the card.
 
 ---
 

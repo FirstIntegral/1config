@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-10-31 — continue speaks maintainer replies
+
+**Policy:** status_card=how-left-replies
+
+**Decision:** `continue_project` reads comments and reviews, not only open or closed. Scope is issues and pull requests the logged-in `gh` user authored, any state, plus every issue or pull request named in that project's `AGENTS.md`, `CONTRIB-LOG.md`, or `session_compact.md`. A comment or close by someone else, newer than the compact's `Fetched YYYY-MM-DD` line, is a reply. No such line means the last 14 days. The status card speaks those under **Replies**, at most 3 lines, then `N more replies in session_compact.md`. A `## Replies` line without `heard` is spoken too. **Since last time** stays the other GitHub news, at most 3 lines. Checkpoint keeps `## Replies`, adds lines from that session's fetch, and appends `heard` only when the user said that number is heard. Continue does not write the file. The fetch does not comment, react, post, push, fast-forward, or mark notifications read.
+
+**Why:** On 2026-10-31 a continue of omalauncher hid Simon Schubert's 2026-10-27 close of #7. The compact already had the comment. Left to do speaks 5 lines, and #7 sat in line 6. The required fetch listed open items and did not have to read a comment that left an issue open.
+
+**Rejected:** Repeating every old maintainer comment on every continue. Raising the Left to do cap. Marking GitHub notifications read during resume. Fetching every issue on the parent repo.
+
 ## 2026-10-28 — Bar ring stays solid on a transparent bar
 
 **Decision:** The 1config bar ring uses `bar.barForeground`, the contrast color Omarchy picks for the other icons. A hot plan and a brain fault do not recolor the ring. They pulse the dot in that same color. A failed unread snapshot still uses urgent. The ring stroke is full opacity and `max(1.75, radius * 0.2)`, with the numeral at full opacity.
@@ -18,7 +28,7 @@
 
 ## 2026-10-23 — continue and checkpoint speak a status card
 
-**Policy:** status_card=how-and-left
+**Policy:** status_card superseded-by 2026-10-31 — continue speaks maintainer replies
 
 **Decision:** `continue_project` and `checkpoint_project` end on one status card. **How things are** is one sentence, at most 20 words. **Left to do** is spoken as at most 5 lines; the full ordered list stays under `## Left to do` in `session_compact.md`, and the last spoken line is `N more in session_compact.md` when the list is longer. `continue_project` adds **Since last time** only after the GitHub fetch runs: `nothing new`, or at most 3 change lines. The card is the whole status. The rest of the compact stays in the file. Every rewrite puts the two headings above `## Models used` and folds the old `## Current state`, `## Where we left off`, and `## Open issues / blockers` into them without dropping an open item. Continue does not rewrite the file. Checkpoint speaks the card, then `Checkpoint saved — next step: <item 1>` plus the hash or the script's non-push reason. The shape lives in `AGENTS.md` under `### Status card`. `SETUP.md` §5b and §5c point at it. `project-template/session_compact.md` starts with the two headings.
 
@@ -165,6 +175,8 @@
 **Policy:** android_sdk_root=HOME-Android-Sdk
 
 ## 2026-10-15 — continue_project fetches live GitHub
+
+The reply half of this decision is superseded by "2026-10-31 — continue speaks maintainer replies".
 
 **Decision:** `continue_project` reads the local files, then, when `origin` or `upstream` is a github.com URL, fetches open issues and pull requests before the status. Scope is the logged-in `gh` user's open items on those repos, plus any issue or pull request that the project's `AGENTS.md` or `CONTRIB-LOG.md` still calls open or waiting. The status leads with what changed. The fetch does not comment, react, post, push, or fast-forward. No GitHub remote, no `gh`, an empty list, or a failed fetch is one line, then the file-based status.
 
