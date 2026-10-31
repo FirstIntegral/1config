@@ -19,6 +19,7 @@ skills/*
 !skills/migration/
 !skills/tdd/
 !skills/research-paper-writing/
+!skills/research-loop/
 
 # Live grok/claude/opencode versions — differ per machine, rewritten by setup/updater
 inventory.local.md
