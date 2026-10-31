@@ -662,3 +662,11 @@ Simple `create_project <name>` commands resolve to `~/Projects/<name>`. Explicit
 **Why:** Boot on 2026-10-16 fast-forwarded the brain and verify printed NOT READY. This machine's OpenCode is 1.18.35. mise `latest` resolved to 2.0.29, and that GitHub release tag 404s, so the 2.x CLI cannot be installed. `opencode api` is not a 1.x command, so the 2026-10-14 check exited 1. `opencode debug skill` on 1.18.35 exits 0 and lists the tracked skills. The 2.x rule is unchanged: ignoring a `debug skill` exit would pass on help text.
 
 **Rejected:** Treating every `api` exit 1 as success. Installing OpenCode 2.0.29 from a tag that has no release asset. Leaving boot NOT READY until a 2.x package exists.
+
+## 2026-10-31 — verification-before-completion ships collect-evidence.sh
+
+**Decision:** `skills/verification-before-completion/collect-evidence.sh` finds a project's checks, runs each one fresh, and prints a table: status, exit code, duration, command, and the last lines of each failure. Commands come from `--cmd`, else `.verify`, else detection. Exit `0` all passed, `1` a failure, `2` nothing to run, `64` usage. `--dry-run` lists and runs nothing. `SKILL.md` keeps the judgment and tells the agent to paste the table before a completion claim. `collect-evidence-test.sh` drives it against stub tools on PATH. Both are invoked with `bash`, so neither depends on the exec bit.
+
+**Why:** The skill said "run the command" but left the agent to pick it, run it, and summarize the result by hand. The script makes the evidence the same shape every time, and it says out loud when nothing ran.
+
+**Rejected:** Naming it `verify.sh` (the brain's own `verify.sh` sits at the repo root, and "run verify.sh" would be ambiguous). Parsing `package.json` with node (the script stays bash with no runtime dependency). A not-installed tool is not a skip: exit 127 shows as `MISSING` and fails the run. The one exception is `cargo clippy`, an optional component, which is listed only when it is installed.

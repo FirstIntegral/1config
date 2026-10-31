@@ -35,6 +35,22 @@ BEFORE claiming any status or expressing satisfaction:
 Skip any step = lying, not verifying
 ```
 
+## Collect the Evidence
+
+For RUN and READ, use the script beside this file. It finds the project's checks, runs each one fresh, and prints one table:
+
+```bash
+bash ~/.agents/skills/verification-before-completion/collect-evidence.sh            # run, from the project root
+bash ~/.agents/skills/verification-before-completion/collect-evidence.sh --dry-run  # list only, runs nothing
+```
+
+- It detects `package.json` scripts `lint` `typecheck` `build` `test` (npm, pnpm, yarn, or bun by lockfile), Makefile `check` `test`, cargo, go, ruff and pytest, mise tasks, and just recipes.
+- `--cmd CMD` (repeatable) or a `.verify` file (one command per line) replaces detection. Use it when detection misses the check that proves your claim.
+- Exit `0` all passed, `1` something failed (each failure prints its last lines; `--tail N`), `2` nothing to run, `64` usage.
+- Paste the table and the `result:` line into the reply before any completion claim. A failure means state the actual status.
+- `2` and `--dry-run` verify nothing. Say so; do not claim a pass.
+- The script runs the checks. You still judge them. A green table does not prove a bug is fixed or a requirement is met. The rows below still apply.
+
 ## Common Failures
 
 | Claim | Requires | Not Sufficient |
