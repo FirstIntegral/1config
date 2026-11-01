@@ -749,6 +749,17 @@ if command -v git >/dev/null && [ -x "$AGENTS_HOME/hooks/gpg-git.sh" ]; then
   git config --global gpg.program "$AGENTS_HOME/hooks/gpg-git.sh"
   log "git     gpg.program → hooks/gpg-git.sh (loopback, no pinentry GUI)"
 fi
+# Public keys only. Ownertrust stays unset so a good web signature is %G? = U.
+WEB_FLOW="$AGENTS_HOME/hooks/github-web-flow.asc"
+if [ -f "$WEB_FLOW" ]; then
+  if gpg --batch --import "$WEB_FLOW" >/dev/null 2>&1; then
+    log "gpg     GitHub web-flow public keys imported (ownertrust unchanged)"
+  else
+    log "WARNING: gpg --import hooks/github-web-flow.asc failed"
+  fi
+else
+  log "WARNING: hooks/github-web-flow.asc missing"
+fi
 
 # --- checkpoint script (direct-reference, called by the checkpoint_project trigger) --
 echo "[checkpoint] checkpoint.sh (git half of checkpoint_project)"

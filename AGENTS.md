@@ -60,6 +60,7 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 - One-time setup on a fresh machine (prompts once): `bash ~/.agents/hooks/gpg-store-passphrase.sh`
 - If automated unlock still fails (nothing stored, passphrase changed): re-run the store script, or manual fallback in a real terminal: `export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u "$(git config --global --get user.signingkey)" --clearsign -o /dev/null` (prompts, caches). Then retry the commit. Signing key is `$GPG_SIGNING_KEY` or `git config --global user.signingkey` — never another machine's key id.
 - History rewrites (rebase, filter-repo, amend) must leave commits re-signed before any push.
+- A commit made on github.com is signed by `GitHub <noreply@github.com>` with key `968479A1AFF927E37D1A566BB5690EEEBB952194`. `setup.sh` imports `hooks/github-web-flow.asc` and does not set ownertrust, so a good signature stays `%G?` = `U`. Leave that commit in place.
 
 ---
 

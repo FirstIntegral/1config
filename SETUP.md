@@ -155,6 +155,7 @@ Cursor Code (the editor Agent and the `cursor-agent` CLI) reads the same rules t
 - **gnome-keyring 50.x API quirk (verified 2026-08):** `CreateItem` lives on the **Collection** interface (not Service), `GetSecret` on the **Item** interface, and the Secret struct signature is `(oayays)` with a single `ay` parameters field. The plain-session handle marshals correctly only via the **vendored `jeepney`** (`~/.agents/vendor/jeepney`, MIT, pure python — dbus-python/GLib validate object paths and fail). No system packages needed.
 - `~/.gnupg/gpg-agent.conf` already: `allow-loopback-pinentry`, `default-cache-ttl 31536000`, `max-cache-ttl 31536000` (1-year cache after first unlock).
 - Signing key id: `$GPG_SIGNING_KEY` or `git config --global user.signingkey`. Never a hardcoded key from another machine.
+- GitHub web-flow public keys live in `hooks/github-web-flow.asc`. `setup.sh` imports them and does not set ownertrust. The live fingerprint is `968479A1AFF927E37D1A566BB5690EEEBB952194` (`GitHub <noreply@github.com>`). `verify.sh` requires that fingerprint in the file and in the keyring, so a web commit's `%G?` is `U` instead of `E`. A key rotation is a brain edit of that file.
 - Fallback: re-run the store script, or manual unlock in a real terminal (see canonical `AGENTS.md`).
 
 ### §4b `hooks/checkpoint.sh` — the git half of `checkpoint_project`

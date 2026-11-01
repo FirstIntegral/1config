@@ -1178,6 +1178,23 @@ if [ "$_gp" = "$HOOKS/gpg-git.sh" ]; then
 else
   bad "git gpg.program is '${_gp:-unset}' (run setup.sh)"
 fi
+_wf="$HOOKS/github-web-flow.asc"
+_wf_fpr="968479A1AFF927E37D1A566BB5690EEEBB952194"
+if [ -f "$_wf" ] && gpg --show-keys --with-colons "$_wf" 2>/dev/null | grep -q "$_wf_fpr"; then
+  ok "hooks/github-web-flow.asc has GitHub web-flow fingerprint $_wf_fpr"
+else
+  bad "hooks/github-web-flow.asc missing GitHub web-flow fingerprint $_wf_fpr"
+fi
+if gpg --list-keys --with-colons "$_wf_fpr" 2>/dev/null | grep -q "$_wf_fpr"; then
+  ok "GitHub web-flow public key is in the keyring (ownertrust unchanged)"
+else
+  bad "GitHub web-flow public key missing from keyring (run setup.sh)"
+fi
+if grep -q "$_wf_fpr" "$CANON" && grep -q "$_wf_fpr" "$SETUP"; then
+  ok "GitHub web-flow fingerprint documented in AGENTS.md and SETUP.md"
+else
+  bad "GitHub web-flow fingerprint missing from AGENTS.md or SETUP.md"
+fi
 if [ -d "$BD" ]; then
   _gpg_call="$(awk '/^main\(\)/{m=1} m && /check_gpg_sign/{print NR; exit}' "$BD/dashboard.sh")"
   _upd_call="$(awk '/^main\(\)/{m=1} m && /check_tool_updates/{print NR; exit}' "$BD/dashboard.sh")"
