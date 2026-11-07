@@ -1126,7 +1126,7 @@ if [ -f "$HOOKS/gpg-keyring.py" ]; then
     bad "hooks/gpg-keyring.py SYNTAX ERROR"
   fi
   if python3 "$HOOKS/gpg-keyring.py" self-test >/dev/null; then
-    ok "gpg-keyring.py self-test (bricked-file scan + SearchItems tuple)"
+    ok "gpg-keyring.py self-test (bricked-file scan + SearchItems tuple + unlock target)"
   else
     bad "gpg-keyring.py self-test failed"
   fi
@@ -1137,6 +1137,12 @@ if grep -q 'SearchItems' "$HOOKS/gpg-keyring.py" && grep -q '_pick_item' "$HOOKS
   ok "gpg-keyring.py uses SearchItems (unlocked, locked) tuple"
 else
   bad "gpg-keyring.py does not handle SearchItems locked items"
+fi
+if grep -q 'def _unlock_target' "$HOOKS/gpg-keyring.py" \
+   && grep -q 'count("/") >= 6' "$HOOKS/gpg-keyring.py"; then
+  ok "gpg unlock trims item paths only (>= 6 slashes)"
+else
+  bad "gpg unlock still trims collection paths (want count >= 6)"
 fi
 if grep -q 'COLLECTION_LABEL = "gpg-signing"' "$HOOKS/gpg-keyring.py" \
    && grep -q 'CreateWithMasterPassword' "$HOOKS/gpg-keyring.py"; then

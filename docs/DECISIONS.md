@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-11-07 — unlock target keeps a collection path
+
+**Decision:** `_unlock_target` trims a Secret Service path only when it has 6 or more slashes. That is an item (`/org/freedesktop/secrets/collection/<name>/<id>`). A collection path has 5 slashes and is unlocked as itself. `fetch_live` still passes an item path. `ensure_collection` still passes a collection path. Both go through the same helper. `verify.sh` checks the `>= 6` predicate, and `self-test` checks both shapes.
+
+**Why:** The old check was `>= 5`. A collection path matched, so unlock aimed at `/org/freedesktop/secrets/collection`. The `gpg-signing` collection stayed locked and `CreateItem` in `store()` failed. Reported by Matt Abate in FirstIntegral/1config#1.
+
+**Rejected:** A flag on `_unlock_empty` that says item versus collection. The two callers would each have to be right, and a future caller could pass the wrong flag. The path shape already says which one it is.
+
 ## 2026-10-31 — continue speaks maintainer replies
 
 **Policy:** status_card=how-left-replies

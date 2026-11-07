@@ -12,7 +12,8 @@ CLI:
   fetch      — write the passphrase to stdout (live Secret Service, else
                scan ~/.local/share/keyrings/*.keyring and restock)
   store      — read passphrase from stdin, write to the dedicated collection
-  self-test  — file-scanner + SearchItems-tuple tests (no D-Bus, no secrets)
+  self-test  — file-scanner, SearchItems tuple, and unlock-target tests
+               (no D-Bus, no secrets)
 
 Exit: 0 ok · 1 bad passphrase/store · 2 dbus/keyring error · 3 nothing stored
 """
@@ -208,6 +209,18 @@ def fetch_live() -> bytes | None:
     return _ay_to_bytes(r.body[0][2])
 
 
+def _unlock_target(object_path: str) -> str:
+    """Collection path to unlock.
+
+    An item is /org/freedesktop/secrets/collection/<name>/<id> (6 slashes).
+    Trim that to the collection. A collection path has 5 slashes. Trimming
+    it unlocks /org/freedesktop/secrets/collection and leaves gpg-signing locked.
+    """
+    if object_path.count("/") >= 6:
+        return object_path.rsplit("/", 1)[0]
+    return object_path
+
+
 def _unlock_empty(conn, DBusAddress, new_method_call, object_path, handle) -> None:
     """Headless unlock of an empty-master collection. Never Service.Unlock (that prompts)."""
     internal = DBusAddress(
@@ -215,8 +228,7 @@ def _unlock_empty(conn, DBusAddress, new_method_call, object_path, handle) -> No
         bus_name="org.freedesktop.secrets",
         interface="org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface",
     )
-    # Prefer unlocking the collection the item lives in.
-    col = object_path.rsplit("/", 1)[0] if object_path.count("/") >= 5 else object_path
+    col = _unlock_target(object_path)
     conn.send_and_get_reply(
         new_method_call(internal, "UnlockWithMasterPassword", "o(oayays)", (col, _secret_tuple(handle, b"")))
     )
@@ -337,6 +349,13 @@ def self_test() -> None:
     assert path == "/u" and locked is False
     path, locked = _pick_item([], [])
     assert path is None and locked is False
+
+    # Secret Service: collection = 5 slashes, item = 6. Only the item trims.
+    col = "/org/freedesktop/secrets/collection/gpg-signing"
+    item = col + "/1"
+    assert _unlock_target(item) == col
+    assert _unlock_target(col) == col
+    assert _unlock_target("/org/freedesktop/secrets") == "/org/freedesktop/secrets"
 
     bricked = """[keyring]
 display-name=Default
