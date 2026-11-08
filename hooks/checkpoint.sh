@@ -15,23 +15,29 @@
 #   dir is not the repo toplevel    -> do nothing at all                    (exit 11)
 #   session files not ignored       -> refuse, change nothing               (exit 20)
 #   foreign, private file tracked   -> refuse, change nothing               (exit 15)
-#   clean + no locally unpushed work -> do nothing                           (exit  3)
+#   fetch fails                     -> commit local work if any, do not push (exit 13)
+#   remote is ahead, merge conflicts -> abort the merge, keep local commits (exit 24)
+#   clean, fetch ok, already current -> do nothing                          (exit  3)
 #   no remote configured            -> commit locally, do not push          (exit 12)
-#   remote unreachable / missing    -> commit, do not push                  (exit 13)
-#   push URL owner is not ours      -> commit if needed, do not push        (exit 14)
+#   push URL owner is not ours      -> commit if needed, do not push, no fetch (exit 14)
 #   push fails                      -> commit stays, report                 (exit 21)
-#   otherwise                       -> commit if needed + push              (exit  0)
+#   otherwise                       -> fetch, take remote commits, commit, push (exit 0)
 #   notes merge refused             -> notes repo unchanged                 (exit 23)
 #
-# After the leak check passes, exits 0, 3, 12, 13, 14, and 21 call
+# A remote we would push to is fetched before the clean-tree exit. Commits
+# on that branch that this checkout lacks are taken with git merge
+# (fast-forward when it can). A conflict aborts the merge. --dry-run does
+# not fetch and does not merge.
+#
+# After the leak check passes, exits 0, 3, 12, 13, 14, 21, and 24 call
 # hooks/notes-sync.sh push. Exits 10, 11, 15, 20, and 22 do not. --dry-run
 # returns before any notes stat. A missing notes clone keeps the exit above.
 #
 # NEVER, under any circumstance: create a repo, add a remote, create a GitHub repo,
-# force-push, rebase, reset, amend, or bypass commit signing. A project without a repo or
-# without a remote is in a deliberate state, and a checkpoint is a note-taking action that
-# must not change it. Publishing something the user never chose to publish cannot be undone
-# by deleting it afterwards.
+# force-push, rebase, reset, amend, or bypass commit signing. A merge that conflicts
+# is aborted. A project without a repo or without a remote is in a deliberate state,
+# and a checkpoint is a note-taking action that must not change it. Publishing
+# something the user never chose to publish cannot be undone by deleting it afterwards.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -221,6 +227,107 @@ finish() {
   exit "$want"
 }
 
+# Commits on the push remote that this checkout lacks.
+# Fast-forward when that is the whole story. Otherwise merge.
+# A conflict aborts and exits 24. Never rebase. Never force.
+# shortcut: a clean merge is not a project test run, upgrade when a repo grows a checkpoint test hook
+DEFER_MERGE=""
+TOOK_REMOTE=0
+
+their_ref() {
+  local up
+  up="$(git -C "$PROJECT" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)"
+  if [ -n "$up" ] && [ "$up" != "@{upstream}" ]; then
+    printf '%s\n' "$up"
+    return 0
+  fi
+  case "$BRANCH" in
+    *' '*|HEAD*) return 0 ;;
+  esac
+  if git -C "$PROJECT" rev-parse --verify --quiet "refs/remotes/${REMOTE}/${BRANCH}" >/dev/null; then
+    printf '%s\n' "${REMOTE}/${BRANCH}"
+  fi
+}
+
+merge_theirs() {
+  local ref="$1" out rc
+  echo "  sync     merging $ref"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY    git -C $PROJECT merge --no-edit $ref"
+    return 0
+  fi
+  out="$(GIT_MERGE_AUTOEDIT=no git -C "$PROJECT" merge --no-edit "$ref" 2>&1)"; rc=$?
+  if [ "$rc" -ne 0 ]; then
+    if git -C "$PROJECT" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+      git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
+      echo "  sync     conflict with $ref — merge aborted, local commits kept, not pushed"
+      printf '%s\n' "$out" | sed 's/^/           /'
+      finish 24
+    fi
+    echo "  sync     merge failed; attempting gpg unlock then one retry"
+    printf '%s\n' "$out" | sed 's/^/           /'
+    git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
+    bash "$HOME/.agents/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
+    out="$(GIT_MERGE_AUTOEDIT=no git -C "$PROJECT" merge --no-edit "$ref" 2>&1)"; rc=$?
+    if [ "$rc" -ne 0 ]; then
+      if git -C "$PROJECT" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+        git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
+        echo "  sync     conflict with $ref — merge aborted, local commits kept, not pushed"
+        printf '%s\n' "$out" | sed 's/^/           /'
+        finish 24
+      fi
+      git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
+      echo "  sync     merge FAILED — not forcing, not rebasing"
+      printf '%s\n' "$out" | sed 's/^/           /'
+      finish 21
+    fi
+  fi
+  TOOK_REMOTE=1
+  echo "  sync     took $ref"
+}
+
+take_remote() {
+  local ref missing ours ff_out ff_rc
+  git -C "$PROJECT" rev-parse --verify HEAD >/dev/null 2>&1 || return 0
+  ref="$(their_ref)"
+  [ -n "$ref" ] || {
+    echo "  sync     no remote branch for $BRANCH yet"
+    return 0
+  }
+  missing="$(git -C "$PROJECT" rev-list --count "HEAD..$ref" 2>/dev/null || echo 0)"
+  if [ "${missing:-0}" -eq 0 ]; then
+    echo "  sync     already has $ref"
+    return 0
+  fi
+  echo "  sync     $missing commit(s) on $ref not in this checkout"
+  ours="$(git -C "$PROJECT" rev-list --count "$ref..HEAD" 2>/dev/null || echo 0)"
+  if [ "${ours:-0}" -eq 0 ]; then
+    ff_out="$(git -C "$PROJECT" merge --ff-only "$ref" 2>&1)"; ff_rc=$?
+    if [ "$ff_rc" -eq 0 ]; then
+      TOOK_REMOTE=1
+      echo "  sync     fast-forwarded to $ref"
+      return 0
+    fi
+    case "$ff_out" in
+      *'would be overwritten'*)
+        echo "  sync     local edits block a fast-forward — commit, then merge"
+        DEFER_MERGE="$ref"
+        return 0
+        ;;
+    esac
+    echo "  sync     fast-forward failed"
+    printf '%s\n' "$ff_out" | sed 's/^/           /'
+    finish 21
+  fi
+  echo "  sync     diverged ($ours local commit(s), $missing remote)"
+  if [ -n "$(git -C "$PROJECT" status --porcelain)" ]; then
+    echo "  sync     commit local edits, then merge"
+    DEFER_MERGE="$ref"
+    return 0
+  fi
+  merge_theirs "$ref"
+}
+
 if [ "$PROJECT" = "$BRAIN_DIR" ]; then
   refuse_brain
 fi
@@ -326,25 +433,11 @@ if [ ${#LEAKED[@]} -gt 0 ]; then
 fi
 echo "  session  private files correctly excluded"
 
-# --- 3. anything to do? -------------------------------------------------------------
-# A clean tree is not the same as nothing to do. Commits made earlier in the session and
-# never pushed are exactly the state where "the machine is not the only copy" fails, so a
-# clean tree still goes through the push path -- it just skips the commit.
-#
-# `HEAD --not --remotes` counts commits absent from EVERY remote, which answers the
-# question for a branch with no upstream as well as for one that has drifted ahead of it.
+# --- 3. remote first ---------------------------------------------------------------
+# Fetch before deciding the tree is done. A stale remote-tracking ref must not
+# hide commits that exist on the push remote. The clean-tree exit is after that.
 NOTHING_TO_COMMIT=0
-if [ -z "$(git -C "$PROJECT" status --porcelain)" ]; then
-  UNPUSHED="$(git -C "$PROJECT" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)"
-  if [ "${UNPUSHED:-0}" -eq 0 ]; then
-    echo "  tree     clean — nothing to commit, nothing unpushed"
-    finish 3
-  fi
-  echo "  tree     clean — nothing to commit, but $UNPUSHED commit(s) not on any remote"
-  NOTHING_TO_COMMIT=1
-else
-  echo "  staging  $(git -C "$PROJECT" add -A --dry-run | wc -l) path(s)"
-fi
+UNPUSHED=0
 
 # --- 4. remote: configured? and does it actually exist? -----------------------------
 # `git remote get-url --push` is the authority for WHERE to push. An AGENTS.md line is
@@ -384,22 +477,65 @@ else
     fi
   fi
 
-  # Does it exist on the host, and can this key reach it? One call covers both, and works
-  # for GitHub, GitLab and self-hosted alike -- nothing here is GitHub-specific.
+  # Does it exist on the host, and can this key reach it? Fetch covers both, and
+  # works for GitHub, GitLab and self-hosted alike. BatchMode so a passphrase
+  # prompt cannot stall a checkpoint. nothing here is GitHub-specific.
   #
   # An owner who is not on BRAIN_REMOTE is not a reachability problem. Skip
-  # ls-remote so a refused push is exit 14, not exit 13. Unparsed URLs are not a veto.
+  # the fetch so a refused push is exit 14, not exit 13. Unparsed URLs are not a veto.
   if [ "$OUTSIDE_PUSH" = 1 ]; then
     echo "  reachable skipped — push URL owner is not ours"
-  elif git -C "$PROJECT" ls-remote "$REMOTE" >/dev/null 2>&1; then
-    echo "  reachable yes"
+  elif [ "$DRY" = 1 ]; then
+    echo "  DRY    git fetch $REMOTE (not run)"
   else
-    echo "  reachable NO — remote is configured but missing, renamed, or not writable by this key"
-    REMOTE=""
-    UNREACHABLE=1
+    _fetch_out="$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=20' \
+      git -C "$PROJECT" fetch "$REMOTE" 2>&1)"; _fetch_rc=$?
+    if [ "$_fetch_rc" -ne 0 ]; then
+      echo "  reachable NO — remote is configured but missing, renamed, or not writable by this key"
+      printf '%s\n' "$_fetch_out" | sed 's/^/           /'
+      REMOTE=""
+      UNREACHABLE=1
+    else
+      echo "  reachable yes"
+      take_remote
+    fi
   fi
 fi
 UNREACHABLE="${UNREACHABLE:-0}"
+
+# --- 4b. anything to do, now that the fetch has run? --------------------------------
+# A clean tree is not the same as nothing to do. Commits made earlier and never
+# pushed still take the push path. `HEAD --not --remotes` counts commits absent
+# from every remote, after the fetch updated those refs.
+if [ -z "$(git -C "$PROJECT" status --porcelain)" ]; then
+  UNPUSHED="$(git -C "$PROJECT" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)"
+  if [ "${UNPUSHED:-0}" -eq 0 ] && [ -z "$DEFER_MERGE" ]; then
+    if [ "$UNREACHABLE" = 1 ]; then
+      echo "  tree     clean — fetch failed, not claiming the remote is current"
+      finish 13
+    fi
+    if [ "$TOOK_REMOTE" = 1 ]; then
+      HASH="$(git -C "$PROJECT" rev-parse --short HEAD)"
+      echo "  tree     clean — fast-forwarded to $HASH, nothing local to push"
+      echo "== checkpoint: fast-forwarded to $HASH — nothing local to push"
+      finish 0
+    fi
+    if [ "$DRY" = 1 ]; then
+      echo "  tree     clean — dry-run does not fetch"
+    elif [ "$OUTSIDE_PUSH" = 1 ] || [ -z "${REMOTE:-}" ]; then
+      echo "  tree     clean — nothing to commit, nothing unpushed"
+    else
+      echo "  tree     clean — fetched, nothing to commit, nothing unpushed"
+    fi
+    finish 3
+  fi
+  if [ "${UNPUSHED:-0}" -gt 0 ]; then
+    echo "  tree     clean — nothing to commit, but $UNPUSHED commit(s) not on any remote"
+    NOTHING_TO_COMMIT=1
+  fi
+else
+  echo "  staging  $(git -C "$PROJECT" add -A --dry-run | wc -l) path(s)"
+fi
 
 # --- 5. commit (signed; never bypassed) ---------------------------------------------
 SUBJECT="${SUBJECT:-checkpoint: $(date +%F)}"
@@ -429,6 +565,13 @@ else
 fi
 fi
 
+if [ -n "$DEFER_MERGE" ]; then
+  merge_theirs "$DEFER_MERGE"
+  if [ "$DRY" != 1 ]; then
+    HASH="$(git -C "$PROJECT" rev-parse --short HEAD)"
+  fi
+fi
+
 # --- 6. push ------------------------------------------------------------------------
 if [ "$OUTSIDE_PUSH" = 1 ]; then
   echo "  push     skipped — push URL owner is not ours"
@@ -456,14 +599,18 @@ else
   PUSH_OUT="$(git -C "$PROJECT" push -u "$REMOTE" "$BRANCH" 2>&1)"; RC=$?
 fi
 if [ $RC -ne 0 ]; then
-  # A non-fast-forward means someone else pushed. That is merged deliberately next
-  # session, never force-resolved at the end of a day.
+  # Someone pushed again after our fetch. Leave the commit. The next checkpoint
+  # fetches and merges. Never force.
   echo "$PUSH_OUT" | sed 's/^/           /'
   echo "  push     FAILED — commit $HASH is safe locally. Not retrying, not forcing."
   finish 21
 fi
 echo "  push     ok -> $REMOTE/$BRANCH"
-if [ "$NOTHING_TO_COMMIT" = 1 ]; then
+if [ "$TOOK_REMOTE" = 1 ] && [ "$NOTHING_TO_COMMIT" = 1 ]; then
+  echo "== checkpoint: took remote commits and pushed $HASH"
+elif [ "$TOOK_REMOTE" = 1 ]; then
+  echo "== checkpoint: took remote commits, committed and pushed $HASH"
+elif [ "$NOTHING_TO_COMMIT" = 1 ]; then
   echo "== checkpoint: pushed $UNPUSHED existing commit(s), nothing new to commit ($HASH)"
 else
   echo "== checkpoint: committed and pushed $HASH"

@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-11-08 — checkpoint fetches, then merges, then pushes
+
+**Decision:** `checkpoint.sh` fetches the push remote before it decides the tree is done. Commits that this checkout lacks are taken with `git merge`. A strictly-behind branch fast-forwards. Local edits that block a fast-forward are committed, then merged. A conflict aborts the merge, keeps the local commits, pushes nothing, and exits `24`. Exit `3` is only a clean tree after a fetch that was already current. `--dry-run` does not fetch. Exit `14` does not fetch. Fetch uses `BatchMode` and `GIT_TERMINAL_PROMPT=0`. A clean merge is not a project test run.
+
+**Why:** A checkpoint that trusted local remote-tracking refs could push, or report nothing to do, while GitHub had commits this machine had never seen. The other machine's work has to land here before this machine's work goes back. Force and rebase stay refused. A conflicted tree is not a backup.
+
+**Rejected:** `git pull` (honors `pull.rebase`). Rebase. Stash. Leaving the conflict in the index. Treating a green merge as a test suite. Fetching on the exit `14` owner veto.
+
 ## 2026-11-07 — unlock target keeps a collection path
 
 **Decision:** `_unlock_target` trims a Secret Service path only when it has 6 or more slashes. That is an item (`/org/freedesktop/secrets/collection/<name>/<id>`). A collection path has 5 slashes and is unlocked as itself. `fetch_live` still passes an item path. `ensure_collection` still passes a collection path. Both go through the same helper. `verify.sh` checks the `>= 6` predicate, and `self-test` checks both shapes.

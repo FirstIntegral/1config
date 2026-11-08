@@ -331,7 +331,90 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" >/dev/null 2>&1 || _rc=$?
   [ "$_rc" -eq 3 ] && ok "clean with no locally unpushed commit is a no-op (exit 3)" \
                    || bad "checkpoint.sh did not no-op with no locally unpushed commit (exit $_rc)"
-  rm -rf "$_cpwork" "$_cpremote"
+
+  # Remote moved after our last fetch. Dry-run must not take it. A real run
+  # fast-forwards, then a diverged pair merges, and a same-line edit exits 24.
+  _cp_id() {
+    git -C "$1" config user.email verify@local
+    git -C "$1" config user.name verify
+    git -C "$1" config commit.gpgsign false
+  }
+  _cpother="$(mktemp -d)"
+  git clone -q "$_cpremote/remote.git" "$_cpother"
+  _cp_id "$_cpother"
+  echo three > "$_cpother/c.txt"
+  git -C "$_cpother" add c.txt && git -C "$_cpother" commit -qm three
+  git -C "$_cpother" push -q
+  _before="$(git -C "$_cpwork" rev-parse HEAD)"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" --dry-run >/dev/null 2>&1 || _rc=$?
+  if [ "$_rc" -eq 3 ] && [ "$(git -C "$_cpwork" rev-parse HEAD)" = "$_before" ]; then
+    ok "dry-run does not fetch or fast-forward"
+  else
+    bad "dry-run moved HEAD or exited $_rc"
+  fi
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" >/tmp/cp-ff.out 2>&1 || _rc=$?
+  if [ "$_rc" -eq 0 ] && git -C "$_cpwork" cat-file -e HEAD:c.txt 2>/dev/null \
+     && grep -q 'fast-forwarded' /tmp/cp-ff.out; then
+    ok "fast-forwards when the remote is ahead (exit 0)"
+  else
+    bad "checkpoint.sh did not fast-forward (exit $_rc)"
+  fi
+  echo local > "$_cpwork/b.txt"
+  git -C "$_cpwork" add b.txt && git -C "$_cpwork" commit -qm local
+  echo remote > "$_cpother/d.txt"
+  git -C "$_cpother" add d.txt && git -C "$_cpother" commit -qm remote
+  git -C "$_cpother" push -q
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" -m div >/dev/null 2>&1 || _rc=$?
+  if [ "$_rc" -eq 0 ] \
+     && git -C "$_cpremote/remote.git" cat-file -e HEAD:b.txt 2>/dev/null \
+     && git -C "$_cpremote/remote.git" cat-file -e HEAD:d.txt 2>/dev/null; then
+    ok "merges diverged commits and pushes both sides (exit 0)"
+  else
+    bad "diverged merge did not push both sides (exit $_rc)"
+  fi
+  echo L > "$_cpwork/a.txt"
+  git -C "$_cpwork" add a.txt && git -C "$_cpwork" commit -qm Lside
+  git -C "$_cpother" fetch -q
+  git -C "$_cpother" merge -q --ff-only '@{upstream}'
+  echo R > "$_cpother/a.txt"
+  git -C "$_cpother" add a.txt && git -C "$_cpother" commit -qm Rside
+  git -C "$_cpother" push -q
+  _local="$(git -C "$_cpwork" rev-parse HEAD)"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" -m boom >/tmp/cp-boom.out 2>&1 || _rc=$?
+  if [ "$_rc" -eq 24 ] && [ "$(git -C "$_cpwork" rev-parse HEAD)" = "$_local" ] \
+     && ! grep -q '<<<<<<' "$_cpwork/a.txt" \
+     && ! git -C "$_cpremote/remote.git" log --format='%s' | grep -qx Lside; then
+    ok "merge conflict aborts and does not push (exit 24)"
+  else
+    bad "conflict was forced or left markers (exit $_rc)"
+  fi
+  _cpdirty="$(mktemp -d)"
+  git clone -q "$_cpremote/remote.git" "$_cpdirty"
+  _cp_id "$_cpdirty"
+  echo e > "$_cpother/e.txt"
+  git -C "$_cpother" add e.txt && git -C "$_cpother" commit -qm e
+  git -C "$_cpother" push -q
+  echo f > "$_cpdirty/f.txt"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpdirty" -m dirty >/dev/null 2>&1 || _rc=$?
+  if [ "$_rc" -eq 0 ] \
+     && git -C "$_cpremote/remote.git" cat-file -e HEAD:e.txt 2>/dev/null \
+     && git -C "$_cpremote/remote.git" cat-file -e HEAD:f.txt 2>/dev/null; then
+    ok "fast-forwards over a non-overlapping dirty tree, then pushes it"
+  else
+    bad "dirty plus remote-only commit failed (exit $_rc)"
+  fi
+  _cpbad="$(mktemp -d)"
+  git init -q "$_cpbad"
+  _cp_id "$_cpbad"
+  printf 'session_compact.md\n' > "$_cpbad/.gitignore"
+  echo x > "$_cpbad/a.txt"
+  git -C "$_cpbad" add -A && git -C "$_cpbad" commit -qm x
+  git -C "$_cpbad" remote add origin "$_cpremote/missing.git"
+  echo y >> "$_cpbad/a.txt"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpbad" -m miss >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 13 ] && ok "fetch failure commits local work and does not push (exit 13)" \
+                    || bad "unreachable fetch (exit $_rc, wanted 13)"
+  rm -rf "$_cpwork" "$_cpremote" "$_cpother" "$_cpdirty" "$_cpbad"
 
   # Foreign checkout. insteadOf keeps every probe on a local bare repo.
   _fx_id() {
@@ -661,7 +744,7 @@ else
   bad "delete diverge (exit $_rc)"
 fi
 _before_ns="$(git -C "$_ns" rev-parse HEAD)"
-# Raw origin URL stays the notes key. insteadOf keeps checkpoint's ls-remote off the network.
+# Raw origin URL stays the notes key. insteadOf keeps checkpoint's fetch off the network.
 git -C "$_np" config url."$_nbare/n.git".insteadOf "git@github.com:FirstIntegral/notes-fixture.git"
 _rc=0
 NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" --dry-run >/tmp/notes-dry.out 2>&1 || _rc=$?

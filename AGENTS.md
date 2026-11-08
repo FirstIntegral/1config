@@ -371,24 +371,25 @@ Read its exit code and report accordingly:
 
 | exit | meaning | what happened |
 |---|---|---|
-| `0` | remote backup completed | committed new changes and/or pushed existing local commits |
-| `3` | clean tree; `HEAD` has no commit absent from local remote-tracking refs | no project commit to push. Notes sync still runs |
+| `0` | remote backup completed | fetched; took commits this checkout lacked; committed and/or pushed. A fast-forward with nothing local to push is also `0` |
+| `3` | clean tree after a successful fetch, already current | no project commit to push. Notes sync still runs. `--dry-run` does not fetch |
 | `23` | **notes diverge** — merge refused (delete versus edit, or not a clean text merge) | notes repo unchanged. Project commit is not rolled back |
 | `10` | **not a git repo** | nothing done, no `git init` |
 | `11` | project is inside another repo, not its root | nothing done |
 | `12` | no remote | committed locally, not pushed |
-| `13` | remote configured but unreachable | committed, not pushed, **not created** |
+| `13` | remote configured but unreachable | fetch failed. Committed if there was local work. Not pushed, **not created** |
 | `14` | push URL owner is not ours | committed if needed, not pushed, not retargeted |
 | `15` | **refused** — foreign checkout, `AGENTS.md` or `docs/DECISIONS.md` already tracked | nothing committed |
 | `20` | **refused** — session files would be published | nothing done; fix `.gitignore` and re-run |
 | `21` | commit or push failed | any commit made is safe; not retried, not forced |
 | `22` | **refused** — this checkout is the brain | nothing done; publish with `sync.sh` |
+| `24` | **merge conflict** | the merge is aborted. Local commits stay. Nothing is pushed |
 
 `--dry-run` prints the plan and changes nothing. It returns before any notes stat. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
 
-Exits `0`, `3`, `12`, `13`, `14`, and `21` run `hooks/notes-sync.sh push` after the project half. Exits `10`, `11`, `15`, `20`, and `22` do not. A missing real notes clone is created from `NOTES_REMOTE` once. If that fails, stdout is `notes: skipped`, stderr keeps the setup hint, and the checkpoint exit stays. A markdown file both machines changed is merged (`notes: merged`) and pushed. Exit `23` is the notes half: the merge was refused, nothing in the notes repo was written. A notes failure does not roll back a project commit.
+Exits `0`, `3`, `12`, `13`, `14`, `21`, and `24` run `hooks/notes-sync.sh push` after the project half. Exits `10`, `11`, `15`, `20`, and `22` do not. A missing real notes clone is created from `NOTES_REMOTE` once. If that fails, stdout is `notes: skipped`, stderr keeps the setup hint, and the checkpoint exit stays. A markdown file both machines changed is merged (`notes: merged`) and pushed. Exit `23` is the notes half: the merge was refused, nothing in the notes repo was written. A notes failure does not roll back a project commit.
 
-Exit `3` is a local-ref statement, not proof that a live remote is reachable or unchanged: the script does not fetch. A clean tree with commits absent from local remote-tracking refs continues to the remote and push path.
+Exit `3` happens only after `git fetch` of the push remote succeeds and that branch has no commit this checkout lacks. A clean tree with commits absent from the remote still pushes. `--dry-run` does not fetch, so its exit `3` is local refs only. Exit `14` does not fetch: the owner veto stays in front of the network.
 
 The brain checkout exits 22 before any git command. That is the directory `checkpoint.sh` lives in, and a worktree whose `origin` is listed in its `BRAIN_REMOTE` and which contains `setup.sh` and `verify.sh`. `checkpoint_project` stops there. `sync.sh` is the publisher.
 
@@ -399,7 +400,7 @@ The brain checkout exits 22 before any git command. That is the directory `check
 | **the brain checkout** | **nothing.** Exit 22. Say `sync.sh` is the publisher. |
 | **not a git repo** | **nothing.** No commit, no push, no `git init`. Say "not a git repo — nothing pushed" and finish the checkpoint normally. |
 | a repo with **no remote** | commit locally, **do not push**, do not add a remote. Say "committed locally, no remote". |
-| a repo with a remote | commit and push, no asking |
+| a repo with a remote | fetch, take commits this checkout lacks, commit, and push. No asking |
 
 **HARD RULE: a checkpoint never creates a repo, never adds a remote, never creates a GitHub repo.** A project without a repo is a deliberate state — scratch work, a scaffold, something not meant to be published — and a checkpoint is a note-taking action that must not silently change it. Publishing something the user never chose to publish is not recoverable by deleting it afterwards. If a project looks like it wants a repo, say so and let them decide next session.
 
@@ -417,11 +418,11 @@ Also check the **root**, not just "somewhere in a repo": `git rev-parse --show-t
 **When the push fails, the checkpoint still succeeded.** Steps 1-5 are the checkpoint; the push is a backup. On any push failure: report the exact error, leave the commit in place, and finish with "committed <hash>, push failed: <reason>". Then stop. Specifically never, in response to a failed push:
 
 - `gh repo create`, or add/rewrite a remote — the repo not existing is an answer, not an obstacle
-- `--force` / `--force-with-lease` — a non-fast-forward means someone else pushed; that is merged deliberately next session, not overwritten at the end of a day
-- `git rebase`, `git reset`, amending, or any history rewrite to make the push go through
+- `--force` / `--force-with-lease` — the script already merged what it could. A push that still fails is left in place
+- `git rebase`, `git reset`, amending, or any history rewrite to make the push go through. A conflicted merge is aborted (exit `24`), not finished by hand inside the script
 - retrying with a different branch or remote than the one that failed
 
-Repo with a remote, the normal path:
+Repo with a remote, the normal path is the script. It fetches the push remote first. Commits that this checkout lacks are taken with `git merge` (fast-forward when that is the whole story). Local edits that block a fast-forward are committed, then merged. A conflict aborts that merge and exits `24`. Then:
 
 ```sh
 git add -A                      # session files are gitignored, so they stay local
@@ -432,7 +433,7 @@ git push                        # -u origin <branch> if the branch has no upstre
 - **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → `bash ~/.agents/hooks/gpg-agent-unlock.sh`, retry. Never bypass.
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
 - **`git push` prompts only when the effective `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the effective flag is true, setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
-- **Clean with nothing locally unpushed** → exit `3`. Clean with commits absent from local remote-tracking refs → skip the commit but still push.
+- **Clean, fetch succeeded, already current** → exit `3`. Clean with commits the remote lacks → skip the commit but still push. Clean and strictly behind → fast-forward, exit `0`.
 - **Session files are never committed** (`session_compact.md`, a leftover `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes a private file. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out. On a foreign checkout those private files go in `.git/info/exclude`, not in their `.gitignore`. A dirty hunk in a file they already track is copied aside, the checkpoint runs, and the hunk is copied back. Do not set skip-worktree.
 
 Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.
