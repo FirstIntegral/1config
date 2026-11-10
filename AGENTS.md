@@ -74,6 +74,14 @@ Tool autonomy skips prompts. It does not skip these. Wait for an explicit yes, e
 
 Name the action and wait. An earlier yes covers only the action it named.
 
+## Credit replies
+
+A comment that praises our work, offers help, or offers us credit is a yes to reply. Post on that thread in the same turn. Thank them by name. Welcome the credit. Answer the question they asked. A note in the local log is not the reply.
+
+`continue_project` still posts nothing during the fetch. Once the user has said to act, this reply needs no second ask. Later comments of this kind need no second ask either.
+
+A maintainer merge that asks nothing stays quiet until the user asks.
+
 ---
 
 ## Permission policy — canonical file

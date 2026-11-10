@@ -28,7 +28,7 @@ Canonical file: `permissions.json`. The opinionated default is on: `bash_without
 
 ### Red lines
 
-Red lines are in canonical `AGENTS.md`. Destructive or hard-to-undo acts, and anything under Leaves the machine, wait for an explicit yes even when Bash autonomy is on. A quoted message is a draft.
+Red lines are in canonical `AGENTS.md`. Destructive or hard-to-undo acts, and anything under Leaves the machine, wait for an explicit yes even when Bash autonomy is on. A quoted message is a draft. A comment that praises our work, offers help, or offers us credit is a yes to reply. Post on that thread in the same turn. A maintainer merge that asks nothing stays quiet until the user asks. `continue_project` still posts nothing during the fetch.
 
 ### Boot dashboard (graphical login)
 
