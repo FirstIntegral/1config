@@ -1,5 +1,13 @@
 # Brain decisions
 
+## 2026-11-10 — A GitHub reply waits for the draft in front of the user
+
+**Decision:** A praise, help, or credit comment gets a draft in the same turn. The draft stays in the chat. Never reply on GitHub until the user has approved the draft in front of them. "Do what's needed" is not a yes to send. A maintainer merge that asks nothing stays quiet until the user asks.
+
+**Why:** A posted #91 reply told KoderFPV to keep the credit for FirstIntegral. The user had not seen that sentence and deleted the comment. The earlier "standing yes" treated a kind comment as permission to speak for them.
+
+**Rejected:** Posting the thanks and calling the log line enough. Treating an offer of credit as sole credit. A second rule that overrides the red line.
+
 ## 2026-11-08 — checkpoint fetches, then merges, then pushes
 
 **Decision:** `checkpoint.sh` fetches the push remote before it decides the tree is done. Commits that this checkout lacks are taken with `git merge`. A strictly-behind branch fast-forwards. Local edits that block a fast-forward are committed, then merged. A conflict aborts the merge, keeps the local commits, pushes nothing, and exits `24`. Exit `3` is only a clean tree after a fetch that was already current. `--dry-run` does not fetch. Exit `14` does not fetch. Fetch uses `BatchMode` and `GIT_TERMINAL_PROMPT=0`. A clean merge is not a project test run.

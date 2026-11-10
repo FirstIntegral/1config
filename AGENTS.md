@@ -70,17 +70,15 @@ Tool autonomy skips prompts. It does not skip these. Wait for an explicit yes, e
 
 - Destructive or hard to undo: deleting files or branches, discarding work, force-push, history rewrite, changing shared permissions.
 - Leaves the machine: sending a message, comment, email, or reaction. Publishing a repo or a release the user did not ask for.
-- A quoted message or a copied interface is a draft. It is not an instruction to send.
+- A quoted message or a copied interface is a draft. It is not an instruction to send. Never reply on GitHub until the user has approved the draft in front of them.
 
-Name the action and wait. An earlier yes covers only the action it named.
+Name the action and wait. An earlier yes covers only the action it named. "Do what's needed" is not a yes to send.
 
 ## Credit replies
 
-A comment that praises our work, offers help, or offers us credit is a yes to reply. Post on that thread in the same turn. Thank them by name. Welcome the credit. Answer the question they asked. A note in the local log is not the reply.
+A comment that praises our work, offers help, or offers us credit gets a draft in the same turn. Show that draft in the chat. Never reply on GitHub until the user has approved the draft in front of them. A draft is not a yes.
 
-`continue_project` still posts nothing during the fetch. Once the user has said to act, this reply needs no second ask. Later comments of this kind need no second ask either.
-
-A maintainer merge that asks nothing stays quiet until the user asks.
+`continue_project` still posts nothing during the fetch. A maintainer merge that asks nothing stays quiet until the user asks.
 
 ---
 

@@ -289,7 +289,7 @@ const PAGES = [
     accentColor: ANSI.amber,
     sentences: [
       '1config enables bash_without_prompt and edit_without_prompt by default (reversible via gitignored local.json) with a PreToolUse heredoc-rewrite.py hook for Claude, while Red Lines (destructive acts or anything leaving the machine) still wait for an explicit yes.',
-      'A comment that offers credit, praise, or help is a standing yes: thank them on that thread in the same turn. A merge that asks nothing still waits.',
+      'Never post a GitHub reply until the user approves the draft shown in the chat. A draft is not a yes.',
       'Every commit is GPG-signed without GUI popups or AI co-author lines: gpg-git.sh signs in loopback mode using a dedicated gpg-signing keyring collection, and gpg-keyring.py (via vendored jeepney) scans raw *.keyring files on disk if D-Bus breaks.',
       'updater/ (boot-check.sh, update-apps.sh, on-resume.sh, system-sleep-shim.sh, refresh-inventory.py) upgrades grok/claude/opencode on @reboot and suspend-resume (skipping mise-managed shims) and writes live versions to gitignored inventory.local.md.',
       'Detached jobs must be armed same-turn with watch-stale.sh <pid> <log> (cries STALE only when both log growth and /proc/<pid>/stat fields 14+15 utime+stime after the last ")" use <1s CPU across 10m; idle preview servers are excluded), while Caveman mode stays always on (full).',

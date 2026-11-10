@@ -1533,13 +1533,13 @@ if grep -qF 'A close or a comment by someone other than the logged-in user is a 
 else
   bad "continue_project reply rule missing from AGENTS.md or SETUP.md"
 fi
-if grep -qF 'A comment that praises our work, offers help, or offers us credit is a yes to reply.' "$CANON" \
-   && grep -qF 'A comment that praises our work, offers help, or offers us credit is a yes to reply.' "$SETUP" \
+if grep -qF 'Never reply on GitHub until the user has approved the draft in front of them.' "$CANON" \
+   && grep -qF 'Never reply on GitHub until the user has approved the draft in front of them.' "$SETUP" \
    && grep -qF 'A maintainer merge that asks nothing stays quiet until the user asks.' "$CANON" \
    && grep -qF 'A maintainer merge that asks nothing stays quiet until the user asks.' "$SETUP"; then
-  ok "credit replies are a standing yes"
+  ok "GitHub replies wait for an approved draft"
 else
-  bad "credit-reply rule missing from AGENTS.md or SETUP.md"
+  bad "draft-first GitHub reply rule missing from AGENTS.md or SETUP.md"
 fi
 if grep -qF '### Status card' "$CANON" \
    && grep -qF '### Status card' "$SETUP" \
