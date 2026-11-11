@@ -13,7 +13,7 @@
 #   brain checkout                  -> do nothing at all                    (exit 22)
 #   not a git repo                  -> do nothing at all                    (exit 10)
 #   dir is not the repo toplevel    -> do nothing at all                    (exit 11)
-#   session files not ignored       -> refuse, change nothing               (exit 20)
+#   session files or explain/ not ignored -> refuse, change nothing        (exit 20)
 #   foreign, private file tracked   -> refuse, change nothing               (exit 15)
 #   fetch fails                     -> commit local work if any, do not push (exit 13)
 #   remote is ahead, merge conflicts -> abort the merge, keep local commits (exit 24)
@@ -157,6 +157,7 @@ $FOREIGN_BEGIN
 /session_transcript.md
 /claude_memory_import.md
 /notes.allow
+/explain/
 $FOREIGN_END
 EOF
   mv "$tmp" "$ex"
@@ -425,8 +426,15 @@ for f in session_compact.md session_transcript.md claude_memory_import.md notes.
     LEAKED+=("$f (not gitignored)")
   fi
 done
+if [ -d "$PROJECT/explain" ]; then
+  if [ -n "$(git -C "$PROJECT" ls-files -- explain)" ]; then
+    LEAKED+=("explain/ (already tracked)")
+  elif ! git -C "$PROJECT" check-ignore -q -- "explain/brief.md"; then
+    LEAKED+=("explain/ (not gitignored)")
+  fi
+fi
 if [ ${#LEAKED[@]} -gt 0 ]; then
-  echo "  action   REFUSED — session files would be committed:"
+  echo "  action   REFUSED — private files would be committed:"
   printf '             %s\n' "${LEAKED[@]}"
   echo "           add them to .gitignore (and 'git rm --cached' if tracked), then re-run."
   exit 20

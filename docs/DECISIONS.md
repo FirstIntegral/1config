@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-11 — explain_thing is 80% STE, and caveman stays
+
+**Policy:** explain_thing=80-ste
+
+**Decision:** `explain_thing` writes a discardable explainer. `explain/brief.md` is 80% STE prose. `explain/diagram.svg` is one SVG. `explain/page.html` is written only when the user asks for html, a page, or a webpage. The directory is gitignored. Checkpoint exit 20 refuses an unignored `explain/`. Foreign exclude lists `/explain/`. `notes-sync.sh` blocks `explain/` even if `notes.allow` lists it. The chat reply stays caveman and does not paste the STE files. The sentence rules live in `skills/explain-thing/SKILL.md`. That skill is original. It does not contain the ASD-STE100 dictionary. It is not an ASD product and it does not claim compliance. Video and speech APIs stay out.
+
+**Why:** Reading model output needs a cleaner artifact than chat. Full STE needs the copyrighted dictionary. Caveman drops "the", "a", and "this", and STE keeps them, so the two voices cannot share a sentence. The soften is 80% of the way to ASD-STE100. The official issue stays a request at asd-ste100.org.
+
+**Rejected:** Replacing caveman. Vendoring the dictionary. Writing HTML on every run. An explainer video in the brain. Committing `explain/`.
+
 ## 2026-11-10 — A GitHub reply waits for the draft in front of the user
 
 **Decision:** A praise, help, or credit comment gets a draft in the same turn. The draft stays in the chat. Never reply on GitHub until the user has approved the draft in front of them. "Do what's needed" is not a yes to send. A maintainer merge that asks nothing stays quiet until the user asks.

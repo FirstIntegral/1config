@@ -145,7 +145,7 @@ const PAGES = [
       '1config is a single canonical brain at ~/.agents/ that unifies Claude Code, Grok, OpenCode, and Cursor Code under one rules file, one permission policy, and one setup script.',
       'Running setup.sh symlinks ~/.agents/AGENTS.md into every tool\'s expected global path (plus generates ~/.cursor/rules/1config.mdc with alwaysApply: true) and fans out permissions.json into their respective configs.',
       'Tool parity is a hard rule: a feature that works in one tool and not the others is treated as a bug, and verify.sh checks all four tools on every run.',
-      'Skills split into three homes: 12 tracked process skills in ~/.agents/skills/ (five from obra/superpowers, security-audit from Cloudflare, writing-for-agents, grilling, and tdd from mattpocock, migration from JuliusBrussee, research-paper-writing, and research-loop for OpenResearch experiments, linked into Claude via setup.sh 1b), gitignored machine-local skills (omarchy, vigil, diagnose-crash), and design skills in ~/Projects/skills/. Grilling loads only when the user says grill. research-paper-writing loads only inside writepaper_project, for prose and claims.',
+      'Skills split into three homes: 13 tracked process skills in ~/.agents/skills/ (five from obra/superpowers, security-audit from Cloudflare, writing-for-agents, grilling, and tdd from mattpocock, migration from JuliusBrussee, research-paper-writing, research-loop for OpenResearch experiments, and explain-thing for 80% STE briefs, linked into Claude via setup.sh 1b), gitignored machine-local skills (omarchy, vigil, diagnose-crash), and design skills in ~/Projects/skills/. Grilling loads only when the user says grill. research-paper-writing loads only inside writepaper_project, for prose and claims.',
     ],
     snippetTitle: 'Canonical fan-out (~/.agents/)',
     snippetItems: [
@@ -214,7 +214,7 @@ const PAGES = [
     snippetItems: [
       { key: 'Exit 0 / 3 / 24', val: 'Pushed or fast-forwarded / already current after fetch / merge conflict, aborted' },
       { key: 'Exit 12 / 14 / 15', val: 'Committed locally (no remote / foreign owner in fork-parents.txt) or tracked notes (15)' },
-      { key: 'Exit 20 / 22 / 23', val: 'Refused: unignored session files (20), target is ~/.agents (22), or notes conflict (23)' },
+      { key: 'Exit 20 / 22 / 23', val: 'Refused: unignored session files or explain/ (20), target is ~/.agents (22), or notes conflict (23)' },
     ],
   },
   {
@@ -294,6 +294,7 @@ const PAGES = [
       'updater/ (boot-check.sh, update-apps.sh, on-resume.sh, system-sleep-shim.sh, refresh-inventory.py) upgrades grok/claude/opencode on @reboot and suspend-resume (skipping mise-managed shims) and writes live versions to gitignored inventory.local.md.',
       'Detached jobs must be armed same-turn with watch-stale.sh <pid> <log> (cries STALE only when both log growth and /proc/<pid>/stat fields 14+15 utime+stime after the last ")" use <1s CPU across 10m; idle preview servers are excluded), while Caveman mode stays always on (full).',
       'Caveman keeps not, never, no, and only, caps each sentence at 20 words, and quotes code, paths, and errors exactly.',
+      'explain_thing writes gitignored explain/brief.md and explain/diagram.svg in 80% STE. HTML is explain/page.html only when you ask. Caveman stays the chat voice.',
       'End each reply with what was skipped or not checked. A shortcut comment names its limit and when to upgrade. That is not a second voice mode.',
       'At login, boot-dashboard unlocks GPG first, fast-forwards ~/.agents (running setup.sh if pulled), clones machine-notes when that checkout is missing, syncs omarchy-dots, and writes close-slip.txt (cleared incrementally by close-slip.sh); for multi-agent work, Herd Boards coordinate waves on a flock-locked wall where every post ends with a fixed parseable vote token.',
     ],
@@ -302,6 +303,7 @@ const PAGES = [
       { key: 'gpg-git.sh / gpg-keyring.py', val: 'Loopback GPG signing + direct on-disk keyring recovery via jeepney, zero AI attribution' },
       { key: 'updater/ + inventory.local', val: 'Boot & suspend-resume CLI updater; writes live versions to gitignored inventory.local.md' },
       { key: 'watch-stale.sh / Herd wall', val: '10m dual-signal (log + CPU) job monitor; flock-locked multi-wave wall for agent herds' },
+      { key: 'explain_thing', val: '80% STE brief + SVG in gitignored explain/. HTML only when asked' },
     ],
   },
 ];

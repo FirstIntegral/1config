@@ -135,7 +135,7 @@ Whenever anything is added to or changed in this setup:
 1. **Land it in all four, in the same turn.** Canonical source stays single (`~/.agents/…`); `setup.sh` fans it out per tool. Never write a per-tool copy by hand.
 2. **If a tool has no native mechanism**, implement the closest equivalent (hook, config key, translated rule syntax) and record what differs — SETUP.md §4, one line. "Claude-only" is acceptable ONLY when the other two physically cannot do it, and only when written down.
 3. **`setup.sh` installs it for all four; `verify.sh` checks all four.** A feature with no verify check does not count as installed.
-4. **Rules and triggers live in the canonical `AGENTS.md`** (all four read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
+4. **Rules and triggers live in the canonical `AGENTS.md`** (all four read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, `explain_thing`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
 5. Same for memory: shared markdown only, identical for all four (see Memory policy). Tool-internal stores stay disabled everywhere.
 
 Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok, OpenCode, Claude Code 2.1.277+, and Cursor Code (project root and subdirectories); permissions → `permissions.json` fan-out (above); skills → `~/.agents/skills` (Grok, OpenCode native; Claude per-skill symlink, setup `1b`). Cursor Code's global mechanism is the generated user rule `~/.cursor/rules/1config.mdc` (alwaysApply) plus the `~/.cursor/AGENTS.md` link; its command autonomy is per-invocation flags (`--force` / `--yolo` / `--sandbox`), so permissions.json does not fan out to it, and tracked skills are not linked into Cursor — both recorded in SETUP.md §4.
@@ -293,7 +293,7 @@ When the user says **`create_project`** (starting a new project), always set up 
 | `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code 2.1.277+ reads it natively — never create a project CLAUDE.md). Committed by default — **except** `~/Projects/sites/*` (see Sites rule). |
 | `session_compact.md` | **AI handoff** | Top is the status card (`## How things are`, `## Left to do`). Below that: model + effort, decisions, pointers. **Rewrite** (not append) at end of session / major milestone / before context compaction. Every rewrite keeps the card at the top. |
 | `docs/DECISIONS.md` | all AI tools | ADR log: decision + why + rejected alternatives, appended in the same turn a choice is made. Versioned (committed in repos). |
-| `.gitignore` | git | Must ignore session files (`session_compact.md`, `claude_memory_import.md`, a leftover `session_transcript.md`, + legacy session paths). Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/Projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
+| `.gitignore` | git | Must ignore session files (`session_compact.md`, `claude_memory_import.md`, a leftover `session_transcript.md`, + legacy session paths) and `explain/`. Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/Projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
 
 Rules:
 
@@ -386,7 +386,7 @@ Read its exit code and report accordingly:
 | `13` | remote configured but unreachable | fetch failed. Committed if there was local work. Not pushed, **not created** |
 | `14` | push URL owner is not ours | committed if needed, not pushed, not retargeted |
 | `15` | **refused** — foreign checkout, `AGENTS.md` or `docs/DECISIONS.md` already tracked | nothing committed |
-| `20` | **refused** — session files would be published | nothing done; fix `.gitignore` and re-run |
+| `20` | **refused** — session files or `explain/` would be published | nothing done; fix `.gitignore` and re-run |
 | `21` | commit or push failed | any commit made is safe; not retried, not forced |
 | `22` | **refused** — this checkout is the brain | nothing done; publish with `sync.sh` |
 | `24` | **merge conflict** | the merge is aborted. Local commits stay. Nothing is pushed |
@@ -450,7 +450,7 @@ Untracked notes move through one private repo, `FirstIntegral/machine-notes`, cl
 
 - Key is lowercase `host/owner/repo` from `origin` pushurl, else `origin` url. `ssh.github.com` folds to `github.com`. Not the directory name. Not `@{upstream}`. No origin, or an unparsed URL, prints `notes: skipped`.
 - A file rides only when this checkout does not track it. Defaults: `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`. `session_transcript.md` does not ride, including a `notes.allow` line. Gitignored `notes.allow` lists extra relative paths and is itself synced. No globs, no `..`, no absolute path, no symlink that resolves outside. A directory line is walked file by file. The commit message and stdout list paths and do not quote file text.
-- Out, even if listed: `session_transcript.md`, `claude_memory_import.md`, the retired session file the template `.gitignore` already names, `docs/session-archive/`, `docs/session-flushes/`, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `keystore.properties`, `credentials*`, and a play-store key json.
+- Out, even if listed: `session_transcript.md`, `claude_memory_import.md`, the retired session file the template `.gitignore` already names, `docs/session-archive/`, `docs/session-flushes/`, `explain/`, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `keystore.properties`, `credentials*`, and a play-store key json.
 - A tracked or unignored `notes.allow` is exit 20. Foreign exclude includes `/notes.allow`.
 - Three blob ids per checkout: last sync, notes `HEAD`, worktree. Same bytes, or only one side changed: that side wins. Both sides changed a markdown file, or `notes.allow`: keep both. A log (`docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, and otherwise keep both full copies, labeled `notes-sync-merge`. The merged file is written on this machine and pushed. Stdout is `notes: merged`. The next checkpoint rewrites a merged compact to one current state and keeps every open item from both copies. A delete against an edit, a binary file, or a non-markdown path that will not 3-way clean: exit 23, write nothing. A fresh checkout with no local file installs. A local delete is not put back and is not a remote delete. No mtime winner. No `--force`. No model call. v1 does not propagate deletes. A later `git remote set-url` does not move the old notes directory.
 - One signed commit per project when bytes changed. Subject `notes: <host>/<owner>/<repo>`. `git add` only the paths this run wrote. Never `git add -A`. No AI attribution. Do not set `commit.gpgsign false` on the real notes repo.
@@ -510,6 +510,26 @@ Each such update: patch the affected sections (and the abstract/contributions if
 
 ---
 
+## `explain_thing` trigger
+
+When the user says **`explain_thing`** (optionally a path or a subject), write a discardable explainer. Chat stays caveman. The files use 80% STE. Read `skills/explain-thing/SKILL.md` and follow it. That file owns the sentence rules.
+
+| File | When |
+|------|------|
+| `explain/brief.md` | every run |
+| `explain/diagram.svg` | every run |
+| `explain/page.html` | only when the user asks for html, a page, or a webpage |
+
+The root is the path they gave, else the project root, else `/tmp/explain-<slug>/` when there is no project. The brain root is `~/.agents` when the subject is this repo.
+
+Before the write, `explain/` must be ignored. On our project, add `explain/` to `.gitignore` when the line is missing. Do not rewrite the file. On a foreign checkout, do not edit their `.gitignore`. Add `/explain/` to `.git/info/exclude` when it is missing. Do not commit the directory. Do not add it to `notes.allow`.
+
+Do not copy the ASD-STE100 dictionary. Do not claim ASD compliance or ASD endorsement. Do not call a speech API. Do not make a video.
+
+The chat reply names the files. It does not paste the STE prose.
+
+---
+
 ## `global_brain_update` trigger
 
 When the user says **`global_brain_update <what to change>`**, the target is **the brain itself** — `~/.agents/` — not the current project. The trailing text is the change to make.
@@ -555,7 +575,7 @@ A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `o
 
 - Do not run `create_project` on a foreign checkout. Do not add our lines to their `.gitignore`.
 - `continue_project` on a git root never offers `create_project`. If `origin` is on the list and `AGENTS.md` or `docs/DECISIONS.md` is missing, write those local files in the same turn and do not commit. If either file is already tracked, stop and name it. If the git root is not on the list and the session files are missing, name the paths and stop.
-- Before `git add`, checkpoint writes a marked block in `.git/info/exclude`: `/AGENTS.md`, `/docs/DECISIONS.md`, `/session_compact.md`, `/session_transcript.md`, `/claude_memory_import.md`, `/notes.allow`. It does that for a listed fork, and also when the push URL's owner is not ours, so a later retarget cannot publish notes this commit already captured. It does not do that under `~/Projects/sites/*`. It does not add `AGENTS.md` to the exit 20 leak list. If `AGENTS.md` or `docs/DECISIONS.md` is already tracked, it exits 15 and commits nothing.
+- Before `git add`, checkpoint writes a marked block in `.git/info/exclude`: `/AGENTS.md`, `/docs/DECISIONS.md`, `/session_compact.md`, `/session_transcript.md`, `/claude_memory_import.md`, `/notes.allow`, `/explain/`. It does that for a listed fork, and also when the push URL's owner is not ours, so a later retarget cannot publish notes this commit already captured. It does not do that under `~/Projects/sites/*`. It does not add `AGENTS.md` to the exit 20 leak list. If `AGENTS.md` or `docs/DECISIONS.md` is already tracked, it exits 15 and commits nothing.
 - The push URL is the branch upstream, otherwise `origin`. If that URL parses and the owner is not on a `BRAIN_REMOTE` URL, the commit stays and the push does not run. That exits 14, before the reachability check. It does not retarget and does not add a remote. An unparsed URL is not a veto. omalauncher `main` tracks Simon, so a checkpoint there exits 14.
 - A local edit inside a file they already track is not an ignore line. Copy those hunks aside, run the checkpoint, copy them back. Do not set skip-worktree. The script cannot tell those bytes from a real fix.
 
@@ -591,6 +611,7 @@ Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does
 - **`create_project`** — scaffold a new project (template). Only new-project trigger.
 - **`continue_project <path>`** — resume an existing project from its session files (see section above).
 - **`checkpoint_project`** — end-of-day wrap-up of the current project (see section above).
+- **`explain_thing`** — discardable 80% STE brief plus one SVG. HTML only when asked. Chat stays caveman.
 - No tool-specific init/continue steps. Retired names live in `hooks/kill-tokens.deny`. Do not recreate a name from that file, and do not paste one into this file. Tool-internal memory stays retired with them.
 
 ---

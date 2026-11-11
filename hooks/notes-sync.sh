@@ -101,6 +101,7 @@ trim() {
 blocked_rel() {
   case "$1" in
     claude_memory_import.md|docs/SESSION.md|session_transcript.md) return 0 ;;
+    explain|explain/*) return 0 ;;
     docs/session-archive|docs/session-archive/*) return 0 ;;
     docs/session-flushes|docs/session-flushes/*) return 0 ;;
   esac

@@ -20,6 +20,10 @@ skills/*
 !skills/tdd/
 !skills/research-paper-writing/
 !skills/research-loop/
+!skills/explain-thing/
+
+# Discardable explain_thing artifacts. Never commit.
+explain/
 
 # Live grok/claude/opencode versions — differ per machine, rewritten by setup/updater
 inventory.local.md

@@ -304,6 +304,14 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   [ "$_rc" -eq 20 ] && ok "refuses to commit an unignored session_transcript.md (exit 20)" \
                     || bad "checkpoint.sh would have published the transcript (exit $_rc, wanted 20)"
   rm -rf "$_cptmp"
+  _ex="$(mktemp -d)"
+  git init -q "$_ex"
+  mkdir -p "$_ex/explain"
+  printf 'x\n' > "$_ex/explain/brief.md"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_ex" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 20 ] && ok "refuses to commit an unignored explain/ (exit 20)" \
+                    || bad "checkpoint.sh would have published explain/ (exit $_rc, wanted 20)"
+  rm -rf "$_ex"
 
   # A clean tree with commits that never left the machine is the state where the
   # backup is most needed, and the early "nothing to commit" exit used to skip the
@@ -444,7 +452,8 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
      && ! printf '%s\n' "$_names" | grep -qx AGENTS.md \
      && grep -qx '/AGENTS.md' "$_fxwork/.git/info/exclude" \
      && grep -qx '/docs/DECISIONS.md' "$_fxwork/.git/info/exclude" \
-     && grep -qx '/notes.allow' "$_fxwork/.git/info/exclude"; then
+     && grep -qx '/notes.allow' "$_fxwork/.git/info/exclude" \
+     && grep -qx '/explain/' "$_fxwork/.git/info/exclude"; then
     ok "foreign fork commits the tracked fix and not our notes"
   else
     bad "foreign fork leaked notes or did not push (exit $_rc, bare $_bare_n)"
@@ -688,6 +697,21 @@ if [ "$_rc" -eq 0 ] && grep -q 'blocked session_transcript.md' /tmp/notes-tr.txt
 else
   bad "notes transcript block (exit $_rc, out $_out)"
 fi
+printf '%s\n' 'explain/brief.md' >> "$_np/notes.allow"
+mkdir -p "$_np/explain"
+printf 'brief\n' > "$_np/explain/brief.md"
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-ex.txt)" || _rc=$?
+if [ "$_rc" -eq 0 ] && grep -q 'blocked explain/brief.md' /tmp/notes-ex.txt \
+   && ! git -C "$_ns" ls-files | grep -q 'explain/brief.md' \
+   && [ "$(cat "$_np/explain/brief.md")" = "brief" ]; then
+  ok "notes push does not collect explain/"
+else
+  bad "notes explain block (exit $_rc, out $_out)"
+fi
+rm -rf "$_np/explain"
+grep -vx 'explain/brief.md' "$_np/notes.allow" > "$_np/notes.allow.tmp"
+mv "$_np/notes.allow.tmp" "$_np/notes.allow"
 _np3="$(mktemp -d)"
 git init -q "$_np3"
 git -C "$_np3" config user.email verify@local
@@ -1582,7 +1606,7 @@ else
   bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'welcome.js' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**'; do
+  for needle in checkpoint_project writepaper_project explain_thing global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'welcome.js' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
@@ -2406,6 +2430,22 @@ if [ -n "$_lake" ]; then
   rm -rf "$_leantmp"
 else
   info "lake not on PATH — skip paper-template lake build (run hooks/install-elan.sh)"
+fi
+
+# --- explain_thing: 80% STE files, no ASD dictionary ---------------------------
+_exskill="$AGENTS_HOME/skills/explain-thing/SKILL.md"
+if [ -f "$_exskill" ] \
+   && grep -qF 'not an ASD product' "$_exskill" \
+   && grep -qF 'Voice: 80% STE. Chat stays caveman. This file is not an ASD compliance claim.' "$_exskill" \
+   && grep -qF 'explain/brief.md' "$CANON" \
+   && grep -qF 'explain/diagram.svg' "$CANON" \
+   && grep -qF 'explain/page.html' "$CANON" \
+   && grep -qF 'explain/' "$AGENTS_HOME/.gitignore" \
+   && grep -qF 'explain/' "$TEMPLATE/.gitignore" \
+   && ! find "$AGENTS_HOME/skills/explain-thing" \( -iname '*dictionary*' -o -iname '*word-list*' -o -iname '*wordlist*' \) | grep -q .; then
+  ok "explain_thing is 80% STE prose plus SVG, HTML on ask, no dictionary"
+else
+  bad "explain_thing skill, trigger files, gitignore, or a vendored dictionary drifted"
 fi
 
 # --- tracked on-demand skills (tri-tool) -------------------------------------
