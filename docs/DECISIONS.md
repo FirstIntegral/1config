@@ -1,5 +1,17 @@
 # Brain decisions
 
+## 2026-11-12 — GitHub guards on the brain repo: a ruleset on `main`, secret scanning, private reports
+
+**Policy:** github_main_ruleset=signed-no-force-no-delete
+
+**Decision:** The owner turned on three repository settings for `FirstIntegral/1config` on 2026-11-12. (1) A ruleset named `main`, active on the default branch, with no bypass actor: restrict deletions, block force pushes, require signed commits. (2) Secret scanning and push protection. (3) Private vulnerability reporting. They were applied with `gh api` after the owner said yes to each. No script in this repo manages them, and `verify.sh` does not read them, because it uses no network.
+
+**Why:** `main` is what every machine installs at login. The signature gate protects the machines, but GitHub's copy could still be rewritten, deleted, or given unsigned commits by anything that can push, and an agent's mistaken `git push --force` is the likely case. The ruleset has no "require a pull request" and no "require status checks", because `sync.sh` pushes a signed fast-forward straight to `main` and both rules would refuse it. The local secret scan covers `sync.sh` and checkpoints only; push protection is the same check at GitHub's door for every other path, and scanning alerts the owner when a key is already in history. The report button is the private channel `SECURITY.md` already points at.
+
+**Rejected:** Required status checks or required pull requests on `main`. A bypass list: when history must change, the owner edits the ruleset first, which is a second deliberate step. Writing these settings into `SECURITY.md` as guarantees: a setting can be switched off without a commit, and a fork has its own. Managing the settings from `setup.sh`: it would need a token with admin rights on every run.
+
+Limits: a credential that can administer the repository can remove the ruleset. A commit made on github.com is signed by GitHub and passes the rule; the login gate still holds it for a manual pull. A pull request that carries unsigned commits cannot be merged on github.com; apply it locally, sign, and push. A machine whose signing key is not on the owner's GitHub account has its push refused.
+
 ## 2026-11-12 — CI runs the repo scope; its token is read-only and its action is pinned
 
 **Policy:** ci=verify-repo-scope

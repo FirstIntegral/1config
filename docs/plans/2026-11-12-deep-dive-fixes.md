@@ -29,7 +29,8 @@
 | I8 flight recorder | ADR 2026-10-21 rejected "A new diary under another name"; `## Kept out` bans a daily diary. |
 | S7 review step before append | `AGENTS.md` says the stray merge is automated and needs nothing typed. Only the tool access, argv, and PATH faults are fixed. |
 | B7 `brwsk.vigil` anchor | ADR 2026-10-15 chose it, with a fallback to the start of the list. |
-| S1/S2 GitHub settings | Branch protection, secret scanning, push protection: named in the report, waiting for a yes. |
+
+The GitHub settings from S1 and S2 waited for a yes and got one on 2026-11-12. See "Decided by the owner" at the end.
 
 ## Review Focus
 
@@ -133,7 +134,7 @@
 - [x] `AGENTS.md`, `SETUP.md`, `README.md`, `docs/DECISIONS.md` for each task above, in the same commit as the code. `hooks/welcome.js` and `setup-infographic.svg` caught up in the third commit.
 - [x] I1 sub-check: `cursor-agent` loads the rules once (`SETUP.md` §4, ADR "Cursor loads the rules once").
 
-## Left for the owner
+## Decided by the owner on 2026-11-12
 
-- GitHub repository settings: branch protection on `main`, secret scanning, push protection, private vulnerability reporting.
-- Leftover `Default*.bricked-*` keyring files, where a machine has them: deleting a file is a red line.
+- [x] GitHub repository settings: a ruleset on `main` (no deletion, no force-push, signed commits), secret scanning, push protection, private vulnerability reporting. ADR "GitHub guards on the brain repo".
+- [x] Leftover `Default*.bricked-*` keyring files on the first machine: copied to a folder in the owner's home, checked, then removed from the keyring directory. Deleting such a file stays a red line on any other machine.
