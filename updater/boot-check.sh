@@ -29,21 +29,28 @@ net_up() {
 
 echo "[$(ts)] boot-check START (trigger at $(date '+%H:%M'))" >> "$LOG"
 
-got_net=0
-for i in "${!DELAYS[@]}"; do
-  wait="${DELAYS[$i]}"
-  [ "$wait" -gt 0 ] && { echo "[$(ts)] waiting ${wait}s before attempt $((i+1))/${#DELAYS[@]}" >> "$LOG"; sleep "$wait"; }
-  if net_up; then
-    got_net=1
-    echo "[$(ts)] net UP on attempt $((i+1))" >> "$LOG"
-    break
-  fi
-  echo "[$(ts)] no net (attempt $((i+1))/${#DELAYS[@]})" >> "$LOG"
-done
+# The network only matters when the updater would upgrade a CLI itself. Where
+# mise owns every installed CLI it only refreshes the inventory, and the wait
+# below kept the boot dashboard on "still updating" for nothing.
+if "$UPDATE" --needs-net; then
+  got_net=0
+  for i in "${!DELAYS[@]}"; do
+    wait="${DELAYS[$i]}"
+    [ "$wait" -gt 0 ] && { echo "[$(ts)] waiting ${wait}s before attempt $((i+1))/${#DELAYS[@]}" >> "$LOG"; sleep "$wait"; }
+    if net_up; then
+      got_net=1
+      echo "[$(ts)] net UP on attempt $((i+1))" >> "$LOG"
+      break
+    fi
+    echo "[$(ts)] no net (attempt $((i+1))/${#DELAYS[@]})" >> "$LOG"
+  done
 
-if [ "$got_net" -ne 1 ]; then
-  echo "[$(ts)] boot-check: no net after all retries → skip until next boot/resume" >> "$LOG"
-  exit 0
+  if [ "$got_net" -ne 1 ]; then
+    echo "[$(ts)] boot-check: no net after all retries → skip until next boot/resume" >> "$LOG"
+    exit 0
+  fi
+else
+  echo "[$(ts)] boot-check: no CLI needs a direct upgrade (mise-managed or absent) — no network wait" >> "$LOG"
 fi
 
 # Run the updater — it holds its own flock to prevent concurrent boot/resume runs

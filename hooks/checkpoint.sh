@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # checkpoint.sh — the git half of the `checkpoint_project` trigger, as a real script.
 #
-# Steps 1-5 of that trigger (rewrite session_compact.md, append the transcript wrap-up,
-# backfill DECISIONS) need judgement about what happened today and stay with the AI.
+# Steps 1-5 of that trigger (rewrite session_compact.md, backfill DECISIONS) need
+# judgement about what happened today and stay with the AI.
 # Step 6 is mechanical, has exactly one correct answer per project state, and was being
 # re-derived by hand every time -- inconsistently. It lives here instead.
 #
@@ -14,6 +14,7 @@
 #   not a git repo                  -> do nothing at all                    (exit 10)
 #   dir is not the repo toplevel    -> do nothing at all                    (exit 11)
 #   session files or explain/ not ignored -> refuse, change nothing        (exit 20)
+#   untracked secret-named or oversized file, or a token in the diff -> refuse (exit 20)
 #   foreign, private file tracked   -> refuse, change nothing               (exit 15)
 #   fetch fails                     -> commit local work if any, do not push (exit 13)
 #   remote is ahead, merge conflicts -> abort the merge, keep local commits (exit 24)
@@ -41,53 +42,68 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-FORK_PARENTS="$ROOT/fork-parents.txt"
-BRAIN_URLS="$ROOT/BRAIN_REMOTE"
+# BRAIN_REMOTE_FILE and FORK_PARENTS_FILE are for verify.sh only.
+FORK_PARENTS="${FORK_PARENTS_FILE:-$ROOT/fork-parents.txt}"
+BRAIN_URLS="${BRAIN_REMOTE_FILE:-$ROOT/BRAIN_REMOTE}"
 FOREIGN_BEGIN="# 1config-foreign"
 FOREIGN_END="# end 1config-foreign"
 
-# git@host:owner/repo.git or https://host/owner/repo.git. Empty if unparsed.
+# shellcheck disable=SC1091
+. "$ROOT/hooks/git-url.sh"
+
+# owner/repo, lowercase. Empty if unparsed. The host is not part of a slug.
 slug_of() {
-  local url="$1" rest owner repo
-  case "$url" in
-    git@*:*) rest="${url#*:}" ;;
-    https://*|http://*)
-      rest="${url#*://}"
-      rest="${rest#*/}"
-      ;;
-    *) printf '\n'; return 0 ;;
-  esac
-  rest="${rest%.git}"
-  owner="${rest%%/*}"
-  repo="${rest#*/}"
-  repo="${repo%%/*}"
-  if [ -z "$owner" ] || [ -z "$repo" ] || [ "$owner" = "$rest" ]; then
+  local host owner repo
+  read -r host owner repo <<<"$(git_url_parse "$1")"
+  if [ -z "${owner:-}" ] || [ -z "${repo:-}" ]; then
     printf '\n'
     return 0
   fi
-  printf '%s/%s\n' "$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')" \
-                   "$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')"
+  printf '%s/%s\n' "$owner" "$repo"
 }
 
-owner_of() {
-  local slug
-  slug="$(slug_of "$1")"
-  printf '%s\n' "${slug%%/*}"
+# "host owner" for the ownership test, or nothing when unparsed. An ssh
+# transport host goes through the ssh config, so `Host gh-work` is github.com.
+pair_of() {
+  local url="$1" host owner repo
+  read -r host owner repo <<<"$(git_url_parse "$url")"
+  [ -n "${owner:-}" ] || return 0
+  case "$url" in
+    http://*|https://*) ;;
+    *) host="$(git_url_host_effective "$host")" ;;
+  esac
+  printf '%s %s\n' "$host" "$owner"
 }
 
-# Owners on URL lines in the brain allowlist. Not the project's own files.
-inside_owner() {
-  local url slug owner
+# A host/owner pair on a URL line of the brain allowlist is ours.
+# Not the project's own files. The same owner name on another host is not ours.
+inside_pair() {
+  local want_host="$1" want_owner="$2" url host owner
   [ -f "$BRAIN_URLS" ] || return 1
   while IFS= read -r url || [ -n "$url" ]; do
     url="${url%$'\r'}"
     case "$url" in
       ''|'#'*) continue ;;
     esac
-    slug="$(slug_of "$url")"
-    [ -n "$slug" ] || continue
-    owner="${slug%%/*}"
-    [ "$owner" = "$1" ] && return 0
+    read -r host owner <<<"$(pair_of "$url")"
+    [ -n "${owner:-}" ] || continue
+    [ "$host" = "$want_host" ] && [ "$owner" = "$want_owner" ] && return 0
+  done < "$BRAIN_URLS"
+  return 1
+}
+
+# An owner name on the allowlist, on any host. Used for a fork's parent, which
+# fork-parents.txt records without a host.
+inside_owner() {
+  local url host owner
+  [ -f "$BRAIN_URLS" ] || return 1
+  while IFS= read -r url || [ -n "$url" ]; do
+    url="${url%$'\r'}"
+    case "$url" in
+      ''|'#'*) continue ;;
+    esac
+    read -r host owner <<<"$(pair_of "$url")"
+    [ "${owner:-}" = "$1" ] && return 0
   done < "$BRAIN_URLS"
   return 1
 }
@@ -129,12 +145,23 @@ is_foreign_checkout() {
   return 1
 }
 
-# The URL checkpoint would push to. Unparsed is not outside.
+# The URL checkpoint would push to. Unparsed is not outside. A raw URL that is
+# not ours gets one more look at what git dials after insteadOf: an alias such
+# as gh:owner/repo names no host until it is rewritten.
 push_owner_outside() {
-  local url="$1" owner
-  owner="$(owner_of "$url")"
-  [ -n "$owner" ] || return 1
-  inside_owner "$owner" && return 1
+  local url="$1" remote="${2:-}" host owner eff
+  read -r host owner <<<"$(pair_of "$url")"
+  [ -n "${owner:-}" ] || return 1
+  inside_pair "$host" "$owner" && return 1
+  if [ -n "$remote" ]; then
+    eff="$(git -C "$PROJECT" remote get-url --push "$remote" 2>/dev/null || true)"
+    if [ -n "$eff" ] && [ "$eff" != "$url" ]; then
+      read -r host owner <<<"$(pair_of "$eff")"
+      if [ -n "${owner:-}" ] && inside_pair "$host" "$owner"; then
+        return 1
+      fi
+    fi
+  fi
   return 0
 }
 
@@ -166,6 +193,8 @@ EOF
 PROJECT=""
 SUBJECT=""
 DRY=0
+# Wall-clock bound on one fetch or push.
+NET_TIMEOUT="${CHECKPOINT_NET_TIMEOUT:-300}"
 
 die() { echo "checkpoint: $*" >&2; exit 2; }
 
@@ -375,17 +404,19 @@ echo "  repo     $TOP  (branch $BRANCH)"
 FOREIGN=0
 OUTSIDE_PUSH=0
 CHOSEN_URL=""
+CHOSEN_REMOTE=""
 if is_foreign_checkout; then
   FOREIGN=1
 fi
 _up="$(git -C "$PROJECT" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || true)"
 if [ -n "$_up" ]; then
-  _remote="${_up%%/*}"
-  CHOSEN_URL="$(raw_remote_url "$_remote")"
+  CHOSEN_REMOTE="${_up%%/*}"
+  CHOSEN_URL="$(raw_remote_url "$CHOSEN_REMOTE")"
 elif git -C "$PROJECT" config --get remote.origin.url >/dev/null 2>&1; then
+  CHOSEN_REMOTE="origin"
   CHOSEN_URL="$(raw_remote_url origin)"
 fi
-if [ -n "$CHOSEN_URL" ] && push_owner_outside "$CHOSEN_URL"; then
+if [ -n "$CHOSEN_URL" ] && push_owner_outside "$CHOSEN_URL" "$CHOSEN_REMOTE"; then
   OUTSIDE_PUSH=1
 fi
 if [ "$FOREIGN" = 1 ] || [ "$OUTSIDE_PUSH" = 1 ]; then
@@ -440,6 +471,44 @@ if [ ${#LEAKED[@]} -gt 0 ]; then
   exit 20
 fi
 echo "  session  private files correctly excluded"
+
+# --- 2b. secrets and oversized files ------------------------------------------------
+# `git add -A` would be the first to track these. A file a person staged by hand
+# is that person's decision. A file nobody ever added is not. .gitignore decides
+# what leaves, so the way out is a .gitignore line, or tracking the file yourself.
+# shellcheck disable=SC1091
+. "$ROOT/hooks/secret-scan.sh"
+MAX_MB="${CHECKPOINT_MAX_FILE_MB:-50}"
+RISKY=()
+while IFS= read -r -d '' f; do
+  if secret_name_hit "${f##*/}"; then
+    RISKY+=("$f (the name says secret)")
+    continue
+  fi
+  _size="$(stat -c %s -- "$PROJECT/$f" 2>/dev/null || echo 0)"
+  if [ "$_size" -gt $((MAX_MB * 1024 * 1024)) ]; then
+    RISKY+=("$f ($((_size / 1024 / 1024)) MB, over the $MAX_MB MB cap)")
+  fi
+done < <(git -C "$PROJECT" ls-files --others --exclude-standard -z 2>/dev/null)
+if [ ${#RISKY[@]} -gt 0 ]; then
+  echo "  action   REFUSED — untracked files a checkpoint will not be the first to add:"
+  printf '             %s\n' "${RISKY[@]}"
+  echo "           add them to .gitignore, or track them yourself with 'git add', then re-run."
+  exit 20
+fi
+# What this checkpoint would commit, plus commits that never left the machine.
+_scan_base="$(git -C "$PROJECT" rev-parse -q --verify '@{upstream}' 2>/dev/null || true)"
+_scan_out="$(bash "$ROOT/hooks/secret-scan.sh" "$PROJECT" ${_scan_base:+"$_scan_base"} 2>&1)"; _scan_rc=$?
+if [ "$_scan_rc" -eq 1 ]; then
+  echo "  action   REFUSED — a secret-shaped string would be committed:"
+  printf '%s\n' "$_scan_out" | sed 's/^secret-scan: /             /'
+  echo "           remove it. A fixture keeps a fake token with gitleaks:allow on that line."
+  exit 20
+elif [ "$_scan_rc" -ne 0 ]; then
+  echo "  WARNING  secret scan did not run (exit $_scan_rc) — nothing was checked for tokens"
+else
+  echo "  secrets  no secret-named file, no oversized file, no token-shaped string"
+fi
 
 # --- 3. remote first ---------------------------------------------------------------
 # Fetch before deciding the tree is done. A stale remote-tracking ref must not
@@ -497,7 +566,7 @@ else
     echo "  DRY    git fetch $REMOTE (not run)"
   else
     _fetch_out="$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=20' \
-      git -C "$PROJECT" fetch "$REMOTE" 2>&1)"; _fetch_rc=$?
+      timeout "$NET_TIMEOUT" git -C "$PROJECT" fetch "$REMOTE" 2>&1)"; _fetch_rc=$?
     if [ "$_fetch_rc" -ne 0 ]; then
       echo "  reachable NO — remote is configured but missing, renamed, or not writable by this key"
       printf '%s\n' "$_fetch_out" | sed 's/^/           /'
@@ -566,7 +635,15 @@ if [ "$DRY" != 1 ]; then
   HASH="$(git -C "$PROJECT" rev-parse --short HEAD)"
   SIG="$(git -C "$PROJECT" log -1 --format='%G?')"
   echo "  commit   $HASH  sig=$SIG  $SUBJECT"
-  [ "$SIG" = "G" ] || [ "$SIG" = "U" ] || echo "  WARNING  commit is not signed (sig=$SIG)"
+  if [ "$SIG" != "G" ] && [ "$SIG" != "U" ]; then
+    if [ "$(git -C "$PROJECT" config --bool commit.gpgsign 2>/dev/null || true)" = "true" ]; then
+      # Signing is on and the commit still has no good signature (an expired
+      # or revoked key signs without complaint). Keep it. Do not publish it.
+      echo "  commit   signing is on but the signature is not good (sig=$SIG) — not pushing"
+      finish 21
+    fi
+    echo "  note     commit is not signed (sig=$SIG) — commit.gpgsign is off for this repo"
+  fi
 else
   run git -C "$PROJECT" commit -m "$SUBJECT"
   HASH="(dry-run)"
@@ -601,10 +678,20 @@ if [ "$DRY" = 1 ]; then
   echo "  DRY    git -C $PROJECT push"
   finish 0
 fi
+# BatchMode and a wall-clock bound, like the fetch: a passphrase prompt or a dead
+# link must not hang the end of the day. A timeout is a failed push. The commit stays.
+_push() {
+  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=20' \
+    timeout "$NET_TIMEOUT" git -C "$PROJECT" push "$@" 2>&1
+}
 if [ -n "$UPSTREAM" ]; then
-  PUSH_OUT="$(git -C "$PROJECT" push 2>&1)"; RC=$?
+  PUSH_OUT="$(_push)"; RC=$?
 else
-  PUSH_OUT="$(git -C "$PROJECT" push -u "$REMOTE" "$BRANCH" 2>&1)"; RC=$?
+  PUSH_OUT="$(_push -u "$REMOTE" "$BRANCH")"; RC=$?
+fi
+if [ $RC -eq 124 ]; then
+  PUSH_OUT="${PUSH_OUT:+$PUSH_OUT
+}push timed out after ${NET_TIMEOUT}s"
 fi
 if [ $RC -ne 0 ]; then
   # Someone pushed again after our fetch. Leave the commit. The next checkpoint

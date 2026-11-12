@@ -8,6 +8,9 @@
 #   * only ever talks to a URL listed in BRAIN_REMOTE (never a stale or swapped URL)
 #   * fast-forward only — never rewrites local commits, never clobbers local edits
 #   * never prompts (ssh BatchMode) and never hangs (fetch is time-bounded)
+#   * only takes commits signed by a key in BRAIN_SIGNERS or this machine's own
+#     signing key (hooks/verify-incoming.sh). The dashboard runs setup.sh on
+#     what this pulls, so an unsigned push must not become code at login.
 #
 # Exit codes:
 #   0   up to date, or fast-forwarded to origin/main
@@ -15,6 +18,10 @@
 #   2   local is ahead (unpushed commits) — nothing pulled
 #   3   local is behind but the tree has uncommitted edits — nothing pulled
 #   4   divergence / not a repo / wrong branch / URL not in BRAIN_REMOTE — human needed
+#   5   behind, and the incoming commits were made on github.com (web-flow
+#       signature) — nothing pulled; review, then pull by hand
+#   6   behind, and an incoming commit is unsigned or signed by an unlisted
+#       key — nothing pulled
 set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
@@ -76,6 +83,18 @@ fi
 if [ -n "$(git -C "$AGENTS_HOME" status --porcelain)" ]; then
   echo "$behind commit(s) behind but tree dirty — not pulling"
   exit 3
+fi
+
+# origin can be written by anything that holds a push credential. The signing
+# key is a separate secret, so the fast-forward waits on it.
+gate_rc=0
+gate_out="$(bash "$_script_dir/verify-incoming.sh" "$AGENTS_HOME" "$local_sha" "$remote_sha" 2>&1)" || gate_rc=$?
+if [ "$gate_rc" -eq 5 ]; then
+  echo "$behind behind, not pulled — $gate_out"
+  exit 5
+elif [ "$gate_rc" -ne 0 ]; then
+  echo "$behind behind, NOT pulled — $gate_out" >&2
+  exit 6
 fi
 
 if ! git -C "$AGENTS_HOME" merge --ff-only "refs/remotes/origin/$BRANCH" >/dev/null; then

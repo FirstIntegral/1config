@@ -1,5 +1,63 @@
 # Brain decisions
 
+## 2026-11-12 — Login and sync take only commits signed by a listed key
+
+**Policy:** incoming_signers=BRAIN_SIGNERS
+
+**Decision:** `hooks/verify-incoming.sh <repo> <base> <tip>` walks the first-parent chain. Each commit on it needs a good signature (`%G?` is `G` or `U`) whose primary-key fingerprint is this machine's own signing key or a line in the new file `BRAIN_SIGNERS`. `hooks/brain-sync.sh` runs it before the fast-forward: exit `5` when every refused commit carries GitHub's web-flow signature (a warn that names the manual pull), exit `6` for an unsigned commit or an unlisted key (a fail). The dashboard runs the same gate on `~/Projects/omarchy-dots` before it calls that repo's `sync.sh`. `sync.sh` now fetches before it installs: behind and clean fast-forwards through the gate and re-execs, an overlap with a local edit stops, a divergence stops with the merge command. `hooks/gpg-git.sh` no longer runs the unlock hook when git only asked to check a signature.
+
+**Why:** The dashboard runs `setup.sh` on whatever the login pull takes, and `brain-sync.sh` took any fast-forward. `main` on GitHub has no branch protection, so a push credential alone was code execution at the next login on every machine. `sync.sh` checked outgoing signatures and nothing checked incoming ones. It also verified before it fetched, so a brain that was behind either printed "already in sync" or committed on a stale base and had its push rejected. A fingerprint list, and not "any good signature", because `G` or `U` only says the key is in this keyring. The web-flow key is left off the list because it signs every commit made on github.com, including one made through the API with a stolen token. `9950d8b` and `280af30` stay where they are; the 2026-11-01 ADR is about history, and this one is about what a login installs. `BRAIN_SIGNERS` ships the author's fingerprint so a second machine that holds that public key without ownertrust (`%G?` = `U`) keeps pulling.
+
+**Rejected:** `git merge --verify-signatures` (tip only, and it reads the keyring's trust, not a list). Accepting the web-flow key by default. Verifying every commit in the range (a signed merge of a contributor's unsigned branch could never be pulled). A merge or a rebase inside `sync.sh`. Changing GitHub branch protection from a script (that is a repo setting and waits for the owner).
+
+## 2026-11-12 — Ours is a host and owner pair, and one parser reads every remote URL
+
+**Decision:** `hooks/git-url.sh` parses `[user@]host:owner/repo`, `ssh://`, `git://`, and `https://` URLs into host, owner, and repo. `checkpoint.sh` and `notes-sync.sh` both use it. The checkpoint veto (exit 14) is now "the URL parses, and its host and owner are not on a `BRAIN_REMOTE` line". For that test an ssh host goes through `ssh -G`, and a URL that is not ours is looked at once more after `insteadOf`. The notes key keeps the literal host. An unparsed URL is still not a veto.
+
+**Why:** `slug_of` read only `git@host:` and `https://`. `ssh://git@github.com/Owner/repo.git`, `git://`, and `org-123@github.com:` were unparsed, and unparsed means no veto, so a checkpoint would have pushed to another owner's repo through any of them. The host was ignored, so the brain owner's name on another host counted as ours. Two scripts carried two parsers that disagreed about `ssh://`. An ssh config alias (`Host gh-work`) and a `gh:` alias are how two-account setups look, and a host comparison that did not resolve them would have refused the user's own repos.
+
+**Rejected:** Treating an unparsed URL as a veto (a local path and `host:/srv/git/x.git` are deliberate remotes). Resolving the ssh alias in the notes key (an existing notes directory would be orphaned). A second allowlist file for owners.
+
+## 2026-11-12 — A checkpoint and a sync stop on a secret-shaped string
+
+**Decision:** `hooks/secret-scan.sh <repo> [<base>]` scans the lines a commit would add, through a scratch index. Built-in patterns cover private key blocks, the common provider token shapes, and a password inside a URL. `gitleaks` runs over the same lines when it is on PATH. A line with `gitleaks:allow` is skipped. `sync.sh` runs it before the brain commit. `checkpoint.sh` runs it too, and also refuses (exit 20) to be the first to add an untracked secret-named file or an untracked file over 50 MB. The project template `.gitignore` ignores `.env`, `.env.*` (not the sample names), `*.pem`, `*.keystore`, `*.jks`, `keystore.properties`, and `local.properties`. Checkpoint fetch and push are time-bounded.
+
+**Why:** This repo is public and `sync.sh` runs `git add -A`. `checkpoint.sh` does the same for every project, at the end of the day, on a tree nobody has looked at. `notes-sync.sh` already refused `.env` and key files for the private repo; the public path had no such list. A file over GitHub's limit made a commit that could never be pushed without a history rewrite. The gate is on untracked files because a file the user staged or tracks is the user's decision, and `.gitignore` still decides what leaves.
+
+**Rejected:** gitleaks as a hard requirement (`setup.sh` installs no packages, so the gate would be a no-op on a fresh machine). Scanning already-tracked files by name (`.env.example` and a repo's own fixtures). Dropping the file from the commit silently. A second exit code (20 already means "would publish what must not leave").
+
+## 2026-11-12 — The stray merge runs with no tools and tries each CLI
+
+**Decision:** `hooks/merge-strays.sh` gives the model no tools (`claude --tools ""`, `grok --tools list_dir --disallowed-tools Agent`, OpenCode deny-all), sends the prompt as stdin or a file, and tries `claude`, `grok`, `opencode` in order unless `MERGE_LLM_BACKEND` names one. Its PATH comes from `hooks/tool-path.sh`: the login shell's PATH, then the vendor dirs. The boot dashboard uses the same helper. The automated append stays.
+
+**Why:** The prompt holds the bytes of a quarantined file, and the headless CLI inherited full tool access, so a line in a stray could run a command. The prompt was one argv string, capped at 128 KiB, and canonical alone is 79 KB. The hard-coded PATH had no mise directory, so on this machine no backend was found at all, and `claude` is logged out here, so a single-backend default could never merge. `AGENTS.md` says the merge is automated and needs nothing typed; that part is a decision and is unchanged.
+
+**Rejected:** A staged proposal that waits for a person (it contradicts the automated merge). Putting mise directories into the updater's PATH (the 2026-09-01 ADR keeps them out on purpose). Sending only a diff to the model (it needs canonical to know what is already there).
+
+## 2026-11-12 — verify.sh has a repo scope, and fixtures see no machine state
+
+**Decision:** `verify.sh --repo` runs the fixtures, self-tests, and doc parity, and skips what only a configured machine has (symlinks, installed copies, live tool configs, crontab, the keyring, the brain's own remote and signatures). The default scope is unchanged. Every fixture path sits under one scratch root that an EXIT trap removes. Fixture sections run with their own git config, no ssh config, and a fixture `BRAIN_REMOTE` and `fork-parents.txt` (`BRAIN_REMOTE_FILE`, `FORK_PARENTS_FILE`, verify only), under the owner `fixture-owner`. Signature fixtures use two throwaway keys in a scratch `GNUPGHOME`. The `fork-parents.txt` check is about the line shape, not the omalauncher line.
+
+**Why:** CI needs the tests without the machine. The fixtures hard-coded `FirstIntegral`, so a fork that edited `BRAIN_REMOTE` failed its own verify, and the README told forks that file was the only edit. Fixtures read this machine's global git config and wrote fixed names under `/tmp`. One file with a scope switch keeps every check where it was; moving a thousand lines into separate test files was the larger risk.
+
+**Rejected:** A second test runner beside `verify.sh`. `GIT_CONFIG_GLOBAL=/dev/null` for the whole run (the machine checks read the global config). Removing the machine checks from the default run.
+
+## 2026-11-12 — Review fixes that carried a choice
+
+**Decision:** (1) `notes-sync.sh` parks a dirty notes clone with `git stash push --include-untracked` and carries on; fetch and push are bounded at 60 s; a `pull` that cannot fetch prints `notes: skipped` and exits 0. (2) `safe_rel` rejects `*`, `?`, `[`, and a backslash. (3) `boot-check.sh` asks `update-apps.sh --needs-net` and skips the network wait when no CLI needs a direct upgrade. The updater reads `gh auth token` before a token file. (4) `install-elan.sh` pins elan `v4.2.4` and its sha256 per arch. (5) `vendor/jeepney/` carries its MIT `LICENSE` and an `UPSTREAM.md`. (6) Guard and updater logs are capped. (7) The dashboard checks four symlinks and prints `?` for a CLI it cannot find.
+
+**Why:** (1) A crash between staging and the commit left the clone dirty, and every later run exited 1 with no way out but a hand reset. A stash keeps the bytes. Offline at session start is normal and must not look like a failure. (2) The pattern was `*'*)'*`, which matches only a literal `*)`, so `docs/*.md` passed a rule that says no globs. (3) On a machine where mise owns every CLI the updater only refreshes the inventory, yet it waited 60 s for the network and the dashboard waited on it. (4) `releases/latest` with no checksum is the one download in this repo that ran unverified; the sums were checked against GitHub's server-side digests and a local download. (5) The skills each carry `LICENSE.upstream`; the one vendored library did not. 
+
+**Rejected:** Discarding a dirty notes clone. Exit 1 for an offline pull. Asking mise whether it will update a tool. A distro elan package.
+
+## 2026-11-12 — Review items left as they are
+
+**Decision:** Five items from the 2026-11-12 review are not done, because an earlier decision already covers them. (1) The GPG passphrase stays in the empty-master `gpg-signing` collection (2026-08-29). (2) `AGENTS.md` stays one file with no size cap (2026-10-09, twice). (3) Bash autonomy stays on (2026-09-27). (4) No command log of agent shell calls: it is a write-only log with no reader, and `## Kept out` bans a daily diary (2026-10-21). (5) The stray merge keeps appending without a review step, and `setup.sh` keeps anchoring the bar id on `brwsk.vigil` with a fallback (2026-10-15).
+
+**Why:** The review listed them without reading the decision log first. Recording them here stops the next review from raising them again as open.
+
+**Rejected:** Reopening a decision because a review did not know about it.
+
 ## 2026-11-11 — explain_thing is 80% STE, and caveman stays
 
 **Policy:** explain_thing=80-ste

@@ -49,7 +49,7 @@ sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh \
   /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh
 ```
 
-Install the three CLIs (grok, claude, opencode) however you usually do. `setup.sh` does **not** download them; the boot updater only upgrades bins that already exist.
+Install the four CLIs (grok, claude, opencode, cursor-agent) however you usually do. `setup.sh` does **not** download them; the boot updater only upgrades grok, claude, and opencode bins that already exist outside mise.
 
 `verify.sh` ending `== PASS (warnings=0) ==` means the brain is installed. A signing warn on the boot dashboard is normal until step 4.
 
@@ -64,7 +64,7 @@ cd ~/Projects/omarchy-dots && ./apply.sh --dry-run && ./apply.sh
 
 From then on the boot dashboard keeps it in sync automatically: `~/Projects/omarchy-dots/sync.sh` runs at every login (fetch → ff-only pull → drift-check `~/.config` vs pack → auto-apply). Non-Omarchy boxes show a gray `–` skip row and never touch it. Playbook: that repo's `README.md`.
 
-`setup.sh` also installs 1config's own bar plugin, `omarchy-plugin/firstintegral.1config/`, into `~/.config/omarchy/plugins/` when that directory exists. The bar face shows this machine's AI usage: Claude, Codex, and Fireworks from Omarchy's records, Grok from its local session ledger and last credits snapshot, OpenCode from its local database. Open the panel and it is a HUD of this repo (rules, install, permissions, hooks, scaffolds, usage), in the brain HUD look. The timer does not call a provider. NixFred's Burn Bar and Infomarchy are the plugins that do this job as separate products; this one stays inside 1config. Ubuntu skips the copy. The bar id is also listed in the omarchy-dots pack; that pack does not install the plugin files.
+`setup.sh` also installs 1config's own bar plugin, `omarchy-plugin/firstintegral.1config/`, into `~/.config/omarchy/plugins/` when that directory exists. The bar face is a ring; hover names the hottest plan. The panel opens on vitals: live checks that this install is correct (checkout, remote, symlinks, permissions, hooks, guards, signing, the plugin copy). Spend is the other page (`s`): Claude and Codex from Omarchy's records, Grok from its local session ledger and last credits snapshot, Grok Bot from its weekly usage cache, OpenCode from its local database and the Go plan endpoint. The timer does not call a provider. NixFred's Burn Bar and Infomarchy are the plugins that do this job as separate products; this one stays inside 1config. Ubuntu skips the copy. The bar id is also listed in the omarchy-dots pack; that pack does not install the plugin files.
 
 ## Existing machine — pull latest
 
@@ -96,7 +96,9 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 | Lean 4 | Default on new `writepaper_project` scaffolds | First paper copies `docs/paper/lean/`. Existing papers not backfilled. `setup.sh` does not install elan. | `bash ~/.agents/hooks/install-elan.sh` |
 | Android SDK | `$HOME/Android/Sdk` when a project needs one | One root, the path Studio already uses. Not inside a repo. A missing tree is normal. | If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms. |
 | Paper author block | `git config user.name` and `user.email` | No personal name in the shared rules or the paper template. | Set those two git configs. Empty means stop and ask. |
-| Remote check | URLs in `BRAIN_REMOTE` | `sync.sh`, `verify.sh`, and boot sync refuse any other origin. | Forks: edit `BRAIN_REMOTE` only. |
+| Remote check | URLs in `BRAIN_REMOTE` | `sync.sh`, `verify.sh`, and boot sync refuse any other origin. | Forks: edit `BRAIN_REMOTE`, `BRAIN_SIGNERS`, `NOTES_REMOTE`, and `fork-parents.txt`. The scripts stay. |
+| Incoming commits | Signed by a key in `BRAIN_SIGNERS`, or this machine's signing key | Login installs what it pulls. A push credential alone must not become code. A commit made on github.com waits for a manual pull. | Add a fingerprint to `BRAIN_SIGNERS` (GitHub's web-flow key too, if you accept that trade). |
+| Secret scan | On before every brain commit and every checkpoint | Token shapes and private keys stop the commit. `gitleaks` joins in when installed. | Mark a fixture line `gitleaks:allow`. |
 
 Caveman wording in `AGENTS.md` is from [JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (Apache-2.0, Copyright 2026 Julius Brussee): never drop not, never, no, or only; 20 words maximum per sentence; quote code, paths, and errors exactly.
 
@@ -124,7 +126,10 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `AGENTS.md` | Rules every tool loads (via symlinks). Keep lean. |
 | `SETUP.md` | Full install spec. Authoritative for AIs recreating the machine. |
 | `LICENSE` | MIT. Commercial use is fine. Keep the copyright notice. |
-| `BRAIN_REMOTE` | Origin allowlist. Forks change this file, not the scripts. |
+| `BRAIN_REMOTE` | Origin allowlist. Its host and owner are "ours" for checkpoints. Forks change this file, not the scripts. |
+| `BRAIN_SIGNERS` | Signer allowlist for incoming commits: one key fingerprint per line. |
+| `NOTES_REMOTE` | URL of the private machine-notes repo. |
+| `fork-parents.txt` | Forks we contribute back to: `ourOwner/repo parentOwner/repo`. May be empty. |
 | `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. |
 | `permissions.json` | One policy, fanned out to Claude, Grok, and OpenCode. Cursor Code autonomy is per-invocation (`--force`/`--sandbox`). `bash_without_prompt` is true. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
@@ -132,7 +137,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |
-| `skills/` | Three groups, see [Skills](#skills). Tracked: six on-demand process skills. Untracked: machine-local tool skills. |
+| `skills/` | Three groups, see [Skills](#skills). Tracked: the on-demand process skills listed there. Untracked: machine-local tool skills. |
 
 ## Engineering details (how deep the checks go)
 

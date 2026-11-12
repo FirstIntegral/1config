@@ -17,7 +17,9 @@
 # Exit 20 notes.allow is tracked or not ignored
 # Exit 23 merge refused (delete versus edit, binary, or a non-markdown conflict); nothing written
 # Exit 1  fetch, sign, or push failed, or setup could not clone. A project commit is not rolled back.
+#         A pull that cannot fetch is not this: it prints notes: skipped and says why on stderr.
 # A markdown conflict is merged and pushed in both push and pull. Stdout is notes: merged.
+# A dirty notes clone is an interrupted run. It is parked with git stash, never discarded.
 #
 # NOTES_SYNC_TEST_ROOT and NOTES_REMOTE_FILE are for verify.sh only.
 # checkpoint.sh unsets the former. A test root that points at the real clone is refused.
@@ -27,6 +29,8 @@ set -uo pipefail
 export GIT_TERMINAL_PROMPT=0
 # BatchMode: a login or a checkpoint must not sit on an SSH passphrase prompt.
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=10}"
+# Wall-clock bound on one fetch or push. An https remote has no ConnectTimeout.
+NET_TIMEOUT="${NOTES_SYNC_NET_TIMEOUT:-60}"
 
 die() { echo "notes-sync: $*" >&2; exit 2; }
 
@@ -51,43 +55,20 @@ passwd_home() {
   printf '%s\n' "$fake"
 }
 
-# git@host:owner/repo, ssh://git@host/owner/repo, https://host/owner/repo.
-# ssh.github.com folds to github.com. Empty if unparsed.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "$0")" && pwd -P)/git-url.sh"
+
+# host/owner/repo, lowercase. Empty if unparsed. hooks/git-url.sh is the parser.
+# The host stays literal here. An ssh config alias is not resolved, so a notes
+# directory that already exists keeps its key.
 origin_key() {
-  local url="$1" host rest owner repo
-  url="${url%.git}"
-  url="${url%/}"
-  case "$url" in
-    git@*:*)
-      host="${url#git@}"
-      host="${host%%:*}"
-      rest="${url#*:}"
-      ;;
-    ssh://*|https://*|http://*)
-      rest="${url#*://}"
-      case "$rest" in *@*) rest="${rest#*@}" ;; esac
-      host="${rest%%/*}"
-      host="${host%%:*}"
-      rest="${rest#*/}"
-      ;;
-    *)
-      printf '\n'
-      return 0
-      ;;
-  esac
-  [ "$host" = "ssh.github.com" ] && host="github.com"
-  owner="${rest%%/*}"
-  repo="${rest#*/}"
-  repo="${repo%%/*}"
-  repo="${repo%%\?*}"
-  if [ -z "$host" ] || [ -z "$owner" ] || [ -z "$repo" ] || [ "$owner" = "$rest" ]; then
+  local host owner repo
+  read -r host owner repo <<<"$(git_url_parse "$1")"
+  if [ -z "${repo:-}" ]; then
     printf '\n'
     return 0
   fi
-  printf '%s/%s/%s\n' \
-    "$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')" \
-    "$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')" \
-    "$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')"
+  printf '%s/%s/%s\n' "$host" "$owner" "$repo"
 }
 
 trim() {
@@ -119,11 +100,11 @@ denied_base() {
   return 1
 }
 
-# Reject globs, absolute paths, ~, and any .. component.
+# Reject globs, a backslash, absolute paths, ~, and any .. component.
 safe_rel() {
   local rel="$1" part
   case "$rel" in
-    ''|/*|~*|*'\\'*|*'*)'*|*'?'*|*'['*) return 1 ;;
+    ''|/*|'~'*|*'\'*|*'*'*|*'?'*|*'['*) return 1 ;;
   esac
   local IFS=/
   # shellcheck disable=SC2086
@@ -347,7 +328,26 @@ if ! flock -n 9; then
   exit 1
 fi
 
-if ! git -C "$NOTES" fetch -q origin; then
+# This script is the only writer of the notes clone and the lock is held, so a
+# dirty tree here is what an interrupted run left behind. Park it in a stash.
+# Nothing is discarded, and the files it was copying are still in the project.
+if [ -n "$(git -C "$NOTES" status --porcelain)" ]; then
+  if git -C "$NOTES" stash push -q --include-untracked \
+       -m "notes-sync leftover $(date +%F-%H%M%S)" 2>/dev/null \
+     && [ -z "$(git -C "$NOTES" status --porcelain)" ]; then
+    echo "notes: parked a leftover from an interrupted run (git -C $NOTES stash list)" >&2
+  else
+    echo "notes: clone is dirty" >&2
+    exit 1
+  fi
+fi
+
+if ! timeout "$NET_TIMEOUT" git -C "$NOTES" fetch -q origin; then
+  if [ "$MODE" = "pull" ]; then
+    # Offline at session start is a normal state. The local files are what there is.
+    echo "notes: fetch failed — offline or key not loaded. Local files may be behind the other machine." >&2
+    skip_line
+  fi
   echo "notes: fetch failed" >&2
   exit 1
 fi
@@ -896,7 +896,7 @@ if [ "${ahead:-0}" -gt 0 ]; then
       exit 1
     fi
   fi
-  if ! git -C "$NOTES" push -q origin "HEAD:refs/heads/$BRANCH"; then
+  if ! timeout "$NET_TIMEOUT" git -C "$NOTES" push -q origin "HEAD:refs/heads/$BRANCH"; then
     echo "notes: push failed" >&2
     exit 1
   fi

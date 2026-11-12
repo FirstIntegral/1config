@@ -7,6 +7,18 @@ session_transcript.md
 claude_memory_import.md
 notes.allow
 
+# Secrets and machine files — never commit. A checkpoint refuses to be the first to add one.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.keystore
+*.jks
+keystore.properties
+local.properties
+
 # Legacy session paths (retired 2026-07; keep ignored if present)
 docs/SESSION.md
 docs/session-archive/

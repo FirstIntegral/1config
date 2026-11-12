@@ -20,4 +20,4 @@ Documentation, not authorisation: `checkpoint.sh` cross-checks this against `git
 - `session_compact.md` — AI handoff state. Read FIRST at session start; rewrite at end of session / milestone. Local-only (gitignored): never commit unless the user says otherwise.
 - `docs/DECISIONS.md` — ADR log; append decision + why in the same turn it is made. Versioned (committed in repos).
 - `notes.allow` — optional extra paths copied to the private machine-notes repo. Gitignored. One relative path per line.
-- `.gitignore` — ignores the session files above, `claude_memory_import.md`, `notes.allow`, `explain/`, and legacy session paths. Sites under `~/Projects/sites/` also ignore `AGENTS.md` / `CLAUDE.md`.
+- `.gitignore` — ignores the session files above, `claude_memory_import.md`, `notes.allow`, `explain/`, secret-named files (`.env`, `*.pem`, keystores), and legacy session paths. Sites under `~/Projects/sites/` also ignore `AGENTS.md` / `CLAUDE.md`.

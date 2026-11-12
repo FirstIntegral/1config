@@ -26,7 +26,46 @@ bad()  { echo "  FAIL  $*"; fail=1; nfails=$((nfails + 1)); }
 note() { echo "  WARN  $*"; warns=$((warns + 1)); }
 info() { echo "  INFO  $*"; }               # transient state, not a defect — never counts as a warning
 
+# Scope. The default checks the repo and this machine. --repo checks only what a
+# clone carries (fixtures, self-tests, doc parity), so CI and a login run one file.
+SCOPE=all
+case "${1:-}" in
+  --repo) SCOPE=repo ;;
+  '') ;;
+  *) echo "usage: verify.sh [--repo]" >&2; exit 2 ;;
+esac
+machine() { [ "$SCOPE" = all ]; }
+
+# One scratch root for every fixture. Removed on any exit.
+VTMP="$(mktemp -d)"
+_vtmp_extra=()
+_vtmp_cleanup() {
+  local d
+  # A fixture gpg home starts an agent. Stop it before the directory goes.
+  for d in "$VTMP"/gnupg-*; do
+    [ -d "$d" ] && gpgconf --homedir "$d" --kill all >/dev/null 2>&1 || true
+  done
+  rm -rf "$VTMP" ${_vtmp_extra[@]+"${_vtmp_extra[@]}"} || true
+}
+trap _vtmp_cleanup EXIT
+
+# Fixtures never see this machine's git config, ssh config, owner, or forks.
+printf '%s\n' '[user]' '	name = verify' '	email = verify@local' \
+  '[init]' '	defaultBranch = main' '[commit]' '	gpgsign = false' \
+  '[tag]' '	gpgSign = false' > "$VTMP/gitconfig"
+printf '%s\n' 'https://github.com/fixture-owner/brain.git' \
+  'git@github.com:fixture-owner/brain.git' > "$VTMP/brain-remote"
+printf '%s\n' 'fixture-owner/omalauncher fixture-parent/omalauncher' > "$VTMP/fork-parents"
+fixture_env_on() {
+  export GIT_CONFIG_GLOBAL="$VTMP/gitconfig" GIT_CONFIG_NOSYSTEM=1 GIT_URL_SSH_CONFIG=/dev/null
+  export BRAIN_REMOTE_FILE="$VTMP/brain-remote" FORK_PARENTS_FILE="$VTMP/fork-parents"
+}
+fixture_env_off() {
+  unset GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_URL_SSH_CONFIG BRAIN_REMOTE_FILE FORK_PARENTS_FILE
+}
+
 echo "== ~/.agents verify — $(date) =="
+machine || echo "scope: repo (machine state is not checked)"
 
 # --- core files ------------------------------------------------------------
 echo "[core]"
@@ -35,6 +74,7 @@ echo "[core]"
 [ -x "$AGENTS_HOME/setup.sh" ] && ok "setup.sh executable" || bad "setup.sh missing or not executable"
 [ -x "$AGENTS_HOME/verify.sh" ] && ok "verify.sh executable" || bad "verify.sh missing or not executable"
 [ -x "$AGENTS_HOME/sync.sh" ] && ok "sync.sh executable (brain → github)" || bad "sync.sh missing or not executable"
+if machine; then
 if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
   brain_root="$(realpath "$(git -C "$AGENTS_HOME" rev-parse --show-toplevel)")"
   [ "$brain_root" = "$(realpath "$AGENTS_HOME")" ] \
@@ -98,6 +138,7 @@ if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
 else
   bad "$AGENTS_HOME is not a git repo (brain must be versioned + pushed)"
 fi
+fi  # machine
 [ -d "$TEMPLATE" ] && ok "project-template/" || bad "project-template/ missing"
 for f in AGENTS.md session_compact.md docs/DECISIONS.md .gitignore; do
   [ -e "$TEMPLATE/$f" ] && ok "template $f" || bad "template missing $f"
@@ -180,7 +221,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -193,66 +234,180 @@ if grep -q 'Digit refuse' "$AGENTS_HOME/AGENTS.md" && grep -q 'Digit refuse' "$S
 else
   bad "digit-refuse missing from AGENTS.md or SETUP.md"
 fi
-if [ -x "$HOOKS/digit-refuse-test.sh" ] && bash "$HOOKS/digit-refuse-test.sh" >/tmp/digit-refuse-test.out 2>&1; then
+if [ -x "$HOOKS/digit-refuse-test.sh" ] && bash "$HOOKS/digit-refuse-test.sh" >"$VTMP/digit-refuse-test.out" 2>&1; then
   ok "digit-refuse fixtures"
 else
-  bad "digit-refuse fixtures failed — see /tmp/digit-refuse-test.out"
+  bad "digit-refuse fixtures failed: $(tail -n 3 "$VTMP/digit-refuse-test.out" 2>/dev/null | tr '\n' ' ')"
 fi
 
 # Every sync path must require a clean verification result. Scratch scripts let
 # this test the gate without installing anything or contacting a remote.
 echo "[sync.sh behaviour]"
-if [ -x "$AGENTS_HOME/sync.sh" ]; then
+fixture_env_on
+# Two throwaway keys in a scratch keyring. K1 is a listed signer. K2 is not.
+# Commits in these fixtures are signed for real, so the gates run for real.
+_gh="$VTMP/gnupg-fixture"
+_k1=""
+_k2=""
+if command -v gpg >/dev/null 2>&1; then
+  mkdir -m 700 "$_gh"
+  for _u in one two; do
+    GNUPGHOME="$_gh" gpg --batch --quiet --pinentry-mode loopback --passphrase '' \
+      --quick-generate-key "fixture-$_u <$_u@fixture.invalid>" ed25519 sign never >/dev/null 2>&1 || true
+  done
+  _k1="$(GNUPGHOME="$_gh" gpg --batch --list-keys --with-colons one@fixture.invalid 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+  _k2="$(GNUPGHOME="$_gh" gpg --batch --list-keys --with-colons two@fixture.invalid 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+  printf '%s\n' "# fixture signer" "$_k1" > "$VTMP/brain-signers"
+  GNUPGHOME="$_gh" gpg --batch --armor --export "$_k2" > "$VTMP/web-flow-fixture.asc" 2>/dev/null || true
+fi
+# _fx_commit REPO KEY|- MESSAGE [FILE]  — one commit, signed by KEY or unsigned.
+_fx_commit() {
+  local repo="$1" key="$2" message="$3" file="${4:-f-$RANDOM.txt}"
+  printf '%s\n' "$message" >> "$repo/$file"
+  git -C "$repo" add -- "$file"
+  if [ "$key" = "-" ]; then
+    git -C "$repo" commit -q -m "$message"
+  else
+    GNUPGHOME="$_gh" git -C "$repo" -c user.signingkey="$key" commit -q -S -m "$message"
+  fi
+}
+if [ -x "$AGENTS_HOME/sync.sh" ] && [ -n "$_k1" ] && [ -n "$_k2" ]; then
   _syncsrc="$AGENTS_HOME/sync.sh"
-  _synctmp="$(mktemp -d)"
-  git -C "$_synctmp" init -q -b main
-  git -C "$_synctmp" remote add origin https://github.com/FirstIntegral/1config.git
-  printf '%s\n' 'https://github.com/FirstIntegral/1config.git' 'git@github.com:FirstIntegral/1config.git' > "$_synctmp/BRAIN_REMOTE"
+  _syncroot="$(mktemp -d -p "$VTMP")"
+  _syncbare="$_syncroot/origin.git"
+  _syncseed="$_syncroot/seed"
+  _synctmp="$_syncroot/brain"
+  git init -q --bare -b main "$_syncbare"
+  git init -q -b main "$_syncseed"
+  git -C "$_syncseed" remote add origin "$_syncbare"
+  _fx_commit "$_syncseed" "$_k1" seed base.txt
+  git -C "$_syncseed" push -q origin main
+  git clone -q "$_syncbare" "$_synctmp"
+  # The stubs below stand in for the brain's own scripts. They are not content.
+  printf '%s\n' BRAIN_REMOTE verify.sh setup.sh setup-was-run nested > "$_synctmp/.git/info/exclude"
+  printf '%s\n' "$_syncbare" > "$_synctmp/BRAIN_REMOTE"
+  _sync() {
+    _rc=0
+    AGENTS_HOME="$_synctmp" AGENTS_UPDATE_LOCK_HELD=1 GNUPGHOME="$_gh" \
+      BRAIN_SIGNERS_FILE="$VTMP/brain-signers" bash "$_syncsrc" "$@" >"$VTMP/sync.out" 2>&1 || _rc=$?
+  }
 
   printf '#!/bin/sh\necho "== FAIL (fail>=1, warnings=0) =="\nexit 1\n' > "$_synctmp/verify.sh"
   chmod +x "$_synctmp/verify.sh"
-  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -ne 0 ] && ok "--no-setup still refuses failed verify.sh" \
-                    || bad "sync.sh --no-setup bypassed failed verification"
+  _sync --no-setup
+  [ "$_rc" -ne 0 ] && grep -q 'verify.sh FAILED' "$VTMP/sync.out" \
+    && ok "--no-setup still refuses failed verify.sh" \
+    || bad "sync.sh --no-setup bypassed failed verification (exit $_rc)"
 
   printf '#!/bin/sh\necho "== PASS (warnings=1) =="\nexit 0\n' > "$_synctmp/setup.sh"
   chmod +x "$_synctmp/setup.sh"
-  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -ne 0 ] && ok "refuses PASS with warnings even when setup exits zero" \
-                    || bad "sync.sh accepted PASS with warnings"
+  _sync
+  [ "$_rc" -ne 0 ] && grep -q 'did not report PASS with warnings=0' "$VTMP/sync.out" \
+    && ok "refuses PASS with warnings even when setup exits zero" \
+    || bad "sync.sh accepted PASS with warnings (exit $_rc)"
 
   printf '#!/bin/sh\necho "== PASS (warnings=0) =="\n' > "$_synctmp/verify.sh"
-  printf '#!/bin/sh\ntouch "$AGENTS_HOME/setup-was-run"\n' > "$_synctmp/setup.sh"
+  printf '#!/bin/sh\ntouch "$AGENTS_HOME/setup-was-run"\necho "== PASS (warnings=0) =="\n' > "$_synctmp/setup.sh"
   chmod +x "$_synctmp/verify.sh" "$_synctmp/setup.sh"
   printf 'dirty\n' > "$_synctmp/work.txt"
-  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --dry-run >/dev/null 2>&1 || _rc=$?
+  _before="$(git -C "$_synctmp" rev-parse HEAD)"
+  _sync --dry-run
   [ "$_rc" -eq 0 ] && [ ! -e "$_synctmp/setup-was-run" ] \
+    && [ "$(git -C "$_synctmp" rev-parse HEAD)" = "$_before" ] \
+    && [ -z "$(git -C "$_synctmp" diff --cached --name-only)" ] \
     && ok "--dry-run is check-only and does not run setup.sh" \
     || bad "sync.sh --dry-run changed installation state (exit $_rc)"
 
+  # A token in the tree stops the commit. The fake one is assembled here so
+  # this file never holds a matching string.
+  printf 'token = "ghp_%s"\n' "$(printf 'aB3%.0s' 1 2 3 4 5 6 7 8 9 10 11 12)" > "$_synctmp/leak.py"
+  _sync --no-setup -m leak
+  [ "$_rc" -ne 0 ] && grep -q 'leak.py:1: github-token' "$VTMP/sync.out" \
+    && [ "$(git -C "$_synctmp" rev-parse HEAD)" = "$_before" ] \
+    && ok "refuses to commit a secret-shaped string" \
+    || bad "sync.sh would have published a token (exit $_rc)"
+  rm -f "$_synctmp/leak.py"
+
+  # The whole path once: signed commit, outgoing check, push.
+  git -C "$_synctmp" config user.signingkey "$_k1"
+  _sync --no-setup -m "fixture commit"
+  [ "$_rc" -eq 0 ] \
+    && [ "$(git -C "$_syncbare" log -1 --format=%s main)" = "fixture commit" ] \
+    && [ "$(GNUPGHOME="$_gh" git -C "$_synctmp" log -1 --format='%G?')" = "G" ] \
+    && ok "commits signed, checks the outgoing signature, and pushes" \
+    || bad "sync.sh did not commit and push (exit $_rc)"
+
+  # origin moved while this checkout was clean: take it, then report in sync.
+  git -C "$_syncseed" pull -q origin main
+  _fx_commit "$_syncseed" "$_k1" "from the other machine"
+  git -C "$_syncseed" push -q origin main
+  _sync --no-setup
+  [ "$_rc" -eq 0 ] && grep -q 'took     1 commit' "$VTMP/sync.out" \
+    && [ "$(git -C "$_synctmp" rev-parse HEAD)" = "$(git -C "$_syncbare" rev-parse main)" ] \
+    && ok "behind and clean fast-forwards before it reports in sync" \
+    || bad "sync.sh called a behind checkout in sync (exit $_rc)"
+
+  # origin moved with a commit nobody listed signed: not taken.
+  _fx_commit "$_syncseed" - "unsigned push"
+  git -C "$_syncseed" push -q origin main
+  _before="$(git -C "$_synctmp" rev-parse HEAD)"
+  _sync --no-setup
+  [ "$_rc" -ne 0 ] && grep -q 'not signed by a listed key' "$VTMP/sync.out" \
+    && [ "$(git -C "$_synctmp" rev-parse HEAD)" = "$_before" ] \
+    && ok "refuses to fast-forward over an unsigned incoming commit" \
+    || bad "sync.sh took an unsigned incoming commit (exit $_rc)"
+
+  # Signed again on top. Local edits that overlap the incoming file stop the run.
+  _fx_commit "$_syncseed" "$_k1" "signed on top" base.txt
+  git -C "$_syncseed" push -q origin main
+  git -C "$_synctmp" reset -q --hard "$(git -C "$_syncbare" rev-parse main~1)"
+  printf 'local edit\n' >> "$_synctmp/base.txt"
+  _before="$(git -C "$_synctmp" rev-parse HEAD)"
+  _sync --no-setup
+  [ "$_rc" -ne 0 ] && grep -q 'overlaps local edits' "$VTMP/sync.out" \
+    && [ "$(git -C "$_synctmp" rev-parse HEAD)" = "$_before" ] \
+    && grep -q 'local edit' "$_synctmp/base.txt" \
+    && ok "behind with an overlapping edit stops and keeps the edit" \
+    || bad "sync.sh mishandled an overlapping edit (exit $_rc)"
+  git -C "$_synctmp" checkout -q -- base.txt
+
+  # A local commit plus a remote commit is a divergence. Nothing is installed.
+  _fx_commit "$_synctmp" "$_k1" "local only"
+  rm -f "$_synctmp/setup-was-run"
+  _sync
+  [ "$_rc" -ne 0 ] && grep -q 'diverged from origin/main' "$VTMP/sync.out" \
+    && [ ! -e "$_synctmp/setup-was-run" ] \
+    && ok "diverged stops before setup runs" \
+    || bad "sync.sh ran setup on a diverged brain (exit $_rc)"
+  git -C "$_synctmp" reset -q --hard "$(git -C "$_syncbare" rev-parse main)"
+
   git -C "$_synctmp" config remote.origin.pushurl https://example.invalid/not-1config.git
-  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -ne 0 ] && ok "refuses an unexpected origin pushurl" \
-                    || bad "sync.sh accepted an unexpected origin pushurl"
+  _sync --no-setup
+  [ "$_rc" -ne 0 ] && grep -q 'unexpected origin push URL' "$VTMP/sync.out" \
+    && ok "refuses an unexpected origin pushurl" \
+    || bad "sync.sh accepted an unexpected origin pushurl"
   git -C "$_synctmp" config --unset-all remote.origin.pushurl
 
   git -C "$_synctmp" remote set-url origin https://example.invalid/not-1config.git
-  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -ne 0 ] && ok "refuses an unexpected origin fetch URL" \
-                    || bad "sync.sh accepted an unexpected origin fetch URL"
-  git -C "$_synctmp" remote set-url origin https://github.com/FirstIntegral/1config.git
+  _sync --no-setup
+  [ "$_rc" -ne 0 ] && grep -q 'unexpected origin fetch URL' "$VTMP/sync.out" \
+    && ok "refuses an unexpected origin fetch URL" \
+    || bad "sync.sh accepted an unexpected origin fetch URL"
+  git -C "$_synctmp" remote set-url origin "$_syncbare"
 
   git -C "$_synctmp" symbolic-ref HEAD refs/heads/not-main
-  _rc=0; AGENTS_HOME="$_synctmp" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -ne 0 ] && ok "refuses to sync from a branch other than main" \
-                    || bad "sync.sh accepted a non-main branch"
+  _sync --no-setup
+  [ "$_rc" -ne 0 ] && grep -q "brain sync requires main" "$VTMP/sync.out" \
+    && ok "refuses to sync from a branch other than main" \
+    || bad "sync.sh accepted a non-main branch"
   git -C "$_synctmp" symbolic-ref HEAD refs/heads/main
 
   mkdir "$_synctmp/nested"
-  _rc=0; AGENTS_HOME="$_synctmp/nested" bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
+  _rc=0; AGENTS_HOME="$_synctmp/nested" AGENTS_UPDATE_LOCK_HELD=1 bash "$_syncsrc" --no-setup >/dev/null 2>&1 || _rc=$?
   [ "$_rc" -ne 0 ] && ok "refuses an AGENTS_HOME nested inside another repo" \
                     || bad "sync.sh accepted a nested repo path"
-  rm -rf "$_synctmp"
+elif [ -x "$AGENTS_HOME/sync.sh" ]; then
+  bad "gpg could not make the fixture keys — sync.sh behaviour not exercised"
 else
   bad "sync.sh unavailable for behaviour checks"
 fi
@@ -277,7 +432,7 @@ if [ -d "$_notes_real/.git" ]; then
   _notes_pin="$(git -C "$_notes_real" rev-parse HEAD 2>/dev/null || true)"
 fi
 if [ -x "$HOOKS/checkpoint.sh" ]; then
-  _cptmp="$(mktemp -d)"
+  _cptmp="$(mktemp -d -p "$VTMP")"
   # This file runs under `set -e`, and checkpoint.sh exits nonzero BY DESIGN on every
   # refusal. Capture the code with `|| rc=$?` -- a bare call aborts verify.sh mid-section.
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_cptmp" >/dev/null 2>&1 || _rc=$?
@@ -286,7 +441,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _rc=0; bash "$HOOKS/checkpoint.sh" "$AGENTS_HOME" >/dev/null 2>&1 || _rc=$?
   [ "$_rc" -eq 22 ] && ok "refuses the brain checkout (exit 22)" \
                     || bad "checkpoint.sh did not refuse the brain checkout (exit $_rc, wanted 22)"
-  _brainfake="$(mktemp -d)"
+  _brainfake="$(mktemp -d -p "$VTMP")"
   git init -q "$_brainfake"
   printf 'https://example.test/brain.git\n' > "$_brainfake/BRAIN_REMOTE"
   : > "$_brainfake/setup.sh"
@@ -304,7 +459,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   [ "$_rc" -eq 20 ] && ok "refuses to commit an unignored session_transcript.md (exit 20)" \
                     || bad "checkpoint.sh would have published the transcript (exit $_rc, wanted 20)"
   rm -rf "$_cptmp"
-  _ex="$(mktemp -d)"
+  _ex="$(mktemp -d -p "$VTMP")"
   git init -q "$_ex"
   mkdir -p "$_ex/explain"
   printf 'x\n' > "$_ex/explain/brief.md"
@@ -313,10 +468,49 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
                     || bad "checkpoint.sh would have published explain/ (exit $_rc, wanted 20)"
   rm -rf "$_ex"
 
+  # A checkpoint is not the first to add a secret-named file, an oversized file,
+  # or a token. A sample file, and a file the user already tracks, are fine.
+  _sec="$(mktemp -d -p "$VTMP")"
+  git init -q "$_sec"
+  printf 'session_compact.md\n' > "$_sec/.gitignore"
+  echo code > "$_sec/a.txt"
+  git -C "$_sec" add -A && git -C "$_sec" commit -qm base
+  echo 'KEY=value' > "$_sec/.env"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_sec" >"$VTMP/cp-sec.out" 2>&1 || _rc=$?
+  [ "$_rc" -eq 20 ] && grep -qF '.env (the name says secret)' "$VTMP/cp-sec.out" \
+    && [ "$(git -C "$_sec" rev-list --count HEAD)" -eq 1 ] \
+    && ok "refuses to be the first to add an untracked .env (exit 20)" \
+    || bad "checkpoint.sh would have added an untracked .env (exit $_rc, wanted 20)"
+  git -C "$_sec" add -f .env && git -C "$_sec" commit -qm "tracked on purpose"
+  echo 'KEY=other' > "$_sec/.env"
+  echo 'KEY=' > "$_sec/.env.example"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_sec" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 12 ] && [ "$(git -C "$_sec" rev-list --count HEAD)" -eq 3 ] \
+    && ok "a tracked .env and a new .env.example stay the user's call (exit 12)" \
+    || bad "checkpoint.sh refused a tracked .env or a sample file (exit $_rc, wanted 12)"
+  head -c 2097152 /dev/zero > "$_sec/big.bin"
+  _rc=0; CHECKPOINT_MAX_FILE_MB=1 bash "$HOOKS/checkpoint.sh" "$_sec" >"$VTMP/cp-sec.out" 2>&1 || _rc=$?
+  [ "$_rc" -eq 20 ] && grep -q 'big.bin (2 MB, over the 1 MB cap)' "$VTMP/cp-sec.out" \
+    && ok "refuses an untracked file over the size cap (exit 20)" \
+    || bad "checkpoint.sh would have added an oversized file (exit $_rc, wanted 20)"
+  rm -f "$_sec/big.bin"
+  # The fake token is assembled here so this file never holds a matching string.
+  _faketok="ghp_$(printf 'aB3%.0s' 1 2 3 4 5 6 7 8 9 10 11 12)"
+  printf 'token = "%s"\n' "$_faketok" > "$_sec/cfg.py"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_sec" >"$VTMP/cp-sec.out" 2>&1 || _rc=$?
+  [ "$_rc" -eq 20 ] && grep -q 'cfg.py:1: github-token' "$VTMP/cp-sec.out" \
+    && ! grep -qF "$_faketok" "$VTMP/cp-sec.out" \
+    && ok "refuses a token-shaped string and does not print it (exit 20)" \
+    || bad "checkpoint.sh would have committed a token (exit $_rc, wanted 20)"
+  printf 'token = "%s"  # gitleaks:allow\n' "$_faketok" > "$_sec/cfg.py"
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_sec" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 12 ] && ok "a line marked gitleaks:allow is a fixture, not a leak (exit 12)" \
+                    || bad "checkpoint.sh refused a marked fixture line (exit $_rc, wanted 12)"
+
   # A clean tree with commits that never left the machine is the state where the
   # backup is most needed, and the early "nothing to commit" exit used to skip the
   # push entirely. Exercised against a real bare remote, not mocked.
-  _cpwork="$(mktemp -d)"; _cpremote="$(mktemp -d)"
+  _cpwork="$(mktemp -d -p "$VTMP")"; _cpremote="$(mktemp -d -p "$VTMP")"
   git init -q --bare "$_cpremote/remote.git"
   git init -q "$_cpwork"
   git -C "$_cpwork" config user.email verify@local
@@ -347,7 +541,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     git -C "$1" config user.name verify
     git -C "$1" config commit.gpgsign false
   }
-  _cpother="$(mktemp -d)"
+  _cpother="$(mktemp -d -p "$VTMP")"
   git clone -q "$_cpremote/remote.git" "$_cpother"
   _cp_id "$_cpother"
   echo three > "$_cpother/c.txt"
@@ -360,9 +554,9 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   else
     bad "dry-run moved HEAD or exited $_rc"
   fi
-  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" >/tmp/cp-ff.out 2>&1 || _rc=$?
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" >"$VTMP/cp-ff.out" 2>&1 || _rc=$?
   if [ "$_rc" -eq 0 ] && git -C "$_cpwork" cat-file -e HEAD:c.txt 2>/dev/null \
-     && grep -q 'fast-forwarded' /tmp/cp-ff.out; then
+     && grep -q 'fast-forwarded' "$VTMP/cp-ff.out"; then
     ok "fast-forwards when the remote is ahead (exit 0)"
   else
     bad "checkpoint.sh did not fast-forward (exit $_rc)"
@@ -388,7 +582,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   git -C "$_cpother" add a.txt && git -C "$_cpother" commit -qm Rside
   git -C "$_cpother" push -q
   _local="$(git -C "$_cpwork" rev-parse HEAD)"
-  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" -m boom >/tmp/cp-boom.out 2>&1 || _rc=$?
+  _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" -m boom >"$VTMP/cp-boom.out" 2>&1 || _rc=$?
   if [ "$_rc" -eq 24 ] && [ "$(git -C "$_cpwork" rev-parse HEAD)" = "$_local" ] \
      && ! grep -q '<<<<<<' "$_cpwork/a.txt" \
      && ! git -C "$_cpremote/remote.git" log --format='%s' | grep -qx Lside; then
@@ -396,7 +590,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   else
     bad "conflict was forced or left markers (exit $_rc)"
   fi
-  _cpdirty="$(mktemp -d)"
+  _cpdirty="$(mktemp -d -p "$VTMP")"
   git clone -q "$_cpremote/remote.git" "$_cpdirty"
   _cp_id "$_cpdirty"
   echo e > "$_cpother/e.txt"
@@ -411,7 +605,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   else
     bad "dirty plus remote-only commit failed (exit $_rc)"
   fi
-  _cpbad="$(mktemp -d)"
+  _cpbad="$(mktemp -d -p "$VTMP")"
   git init -q "$_cpbad"
   _cp_id "$_cpbad"
   printf 'session_compact.md\n' > "$_cpbad/.gitignore"
@@ -430,15 +624,15 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     git -C "$1" config user.name verify
     git -C "$1" config commit.gpgsign false
   }
-  _fxbare="$(mktemp -d)"
+  _fxbare="$(mktemp -d -p "$VTMP")"
   git init -q --bare "$_fxbare/remote.git"
-  _fxwork="$(mktemp -d)"
+  _fxwork="$(mktemp -d -p "$VTMP")"
   git init -q "$_fxwork"
   _fx_id "$_fxwork"
-  git -C "$_fxwork" config url."$_fxbare/remote.git".insteadOf "git@github.com:FirstIntegral/omalauncher.git"
+  git -C "$_fxwork" config url."$_fxbare/remote.git".insteadOf "git@github.com:fixture-owner/omalauncher.git"
   echo tracked > "$_fxwork/tracked.txt"
   git -C "$_fxwork" add tracked.txt && git -C "$_fxwork" commit -qm tracked
-  git -C "$_fxwork" remote add origin "git@github.com:FirstIntegral/omalauncher.git"
+  git -C "$_fxwork" remote add origin "git@github.com:fixture-owner/omalauncher.git"
   echo more >> "$_fxwork/tracked.txt"
   echo notes > "$_fxwork/AGENTS.md"
   mkdir -p "$_fxwork/docs"
@@ -459,15 +653,15 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     bad "foreign fork leaked notes or did not push (exit $_rc, bare $_bare_n)"
   fi
 
-  _outbare="$(mktemp -d)"
+  _outbare="$(mktemp -d -p "$VTMP")"
   git init -q --bare "$_outbare/remote.git"
-  _outwork="$(mktemp -d)"
+  _outwork="$(mktemp -d -p "$VTMP")"
   git init -q "$_outwork"
   _fx_id "$_outwork"
-  git -C "$_outwork" config url."$_outbare/remote.git".insteadOf "https://github.com/SimonSchubert/omalauncher.git"
+  git -C "$_outwork" config url."$_outbare/remote.git".insteadOf "https://github.com/fixture-parent/omalauncher.git"
   echo code > "$_outwork/code.txt"
   git -C "$_outwork" add code.txt && git -C "$_outwork" commit -qm code
-  git -C "$_outwork" remote add origin "https://github.com/SimonSchubert/omalauncher.git"
+  git -C "$_outwork" remote add origin "https://github.com/fixture-parent/omalauncher.git"
   echo more >> "$_outwork/code.txt"
   echo notes > "$_outwork/AGENTS.md"
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_outwork" -m out >/dev/null 2>&1 || _rc=$?
@@ -481,12 +675,12 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     bad "outside push owner (exit $_rc, bare $_out_n)"
   fi
 
-  _trwork="$(mktemp -d)"
+  _trwork="$(mktemp -d -p "$VTMP")"
   git init -q "$_trwork"
   _fx_id "$_trwork"
   echo notes > "$_trwork/AGENTS.md"
   git -C "$_trwork" add AGENTS.md && git -C "$_trwork" commit -qm notes
-  git -C "$_trwork" remote add origin "git@github.com:FirstIntegral/omalauncher.git"
+  git -C "$_trwork" remote add origin "git@github.com:fixture-owner/omalauncher.git"
   echo code > "$_trwork/code.txt"
   _before="$(git -C "$_trwork" rev-parse HEAD)"
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_trwork" -m nope >/dev/null 2>&1 || _rc=$?
@@ -497,15 +691,15 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     bad "tracked private file (exit $_rc)"
   fi
 
-  _ourbare="$(mktemp -d)"
+  _ourbare="$(mktemp -d -p "$VTMP")"
   git init -q --bare "$_ourbare/remote.git"
-  _ourwork="$(mktemp -d)"
+  _ourwork="$(mktemp -d -p "$VTMP")"
   git init -q "$_ourwork"
   _fx_id "$_ourwork"
-  git -C "$_ourwork" config url."$_ourbare/remote.git".insteadOf "git@github.com:FirstIntegral/some-app.git"
+  git -C "$_ourwork" config url."$_ourbare/remote.git".insteadOf "git@github.com:fixture-owner/some-app.git"
   echo code > "$_ourwork/code.txt"
   git -C "$_ourwork" add code.txt && git -C "$_ourwork" commit -qm code
-  git -C "$_ourwork" remote add origin "git@github.com:FirstIntegral/some-app.git"
+  git -C "$_ourwork" remote add origin "git@github.com:fixture-owner/some-app.git"
   echo notes > "$_ourwork/AGENTS.md"
   mkdir -p "$_ourwork/docs"
   echo adr > "$_ourwork/docs/DECISIONS.md"
@@ -519,16 +713,48 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     bad "owned repo hid AGENTS.md (exit $_rc)"
   fi
 
-  _sitehome="$(mktemp -d)"
-  _sitebare="$(mktemp -d)"
+  # Owner veto by URL shape. A dry run decides before any transport, so these
+  # need no remote: 14 is the veto, 0 is ours or unparsed.
+  printf '%s\n' 'Host gh-work' '  HostName github.com' > "$VTMP/ssh-config"
+  _veto_case() {
+    local label="$1" want="$2" url="$3" w rc=0
+    w="$(mktemp -d -p "$VTMP")"
+    git init -q "$w"
+    echo code > "$w/code.txt"
+    git -C "$w" add code.txt && git -C "$w" commit -qm code
+    git -C "$w" remote add origin "$url"
+    if [ $# -ge 5 ]; then
+      git -C "$w" config "$4" "$5"
+    fi
+    echo more >> "$w/code.txt"
+    GIT_URL_SSH_CONFIG="$VTMP/ssh-config" bash "$HOOKS/checkpoint.sh" "$w" --dry-run >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq "$want" ]; then
+      ok "$label (exit $want)"
+    else
+      bad "$label (exit $rc, wanted $want)"
+    fi
+  }
+  _veto_case "ssh:// URL of another owner is vetoed" 14 'ssh://git@github.com/fixture-parent/app.git'
+  _veto_case "ssh.github.com:443 URL of another owner is vetoed" 14 'ssh://git@ssh.github.com:443/fixture-parent/app.git'
+  _veto_case "git:// URL of another owner is vetoed" 14 'git://github.com/fixture-parent/app.git'
+  _veto_case "a non-git ssh user of another owner is vetoed" 14 'org-123@github.com:fixture-parent/app.git'
+  _veto_case "our owner name on another host is vetoed" 14 'git@gitlab.example:fixture-owner/app.git'
+  _veto_case "ssh:// URL of our owner is ours" 0 'ssh://git@github.com/fixture-owner/app.git'
+  _veto_case "an ssh config alias of github.com is ours" 0 'git@gh-work:fixture-owner/app.git'
+  _veto_case "an insteadOf alias that rewrites to our owner is ours" 0 'gh:fixture-owner/app' 'url.git@github.com:.insteadOf' 'gh:'
+  _veto_case "an insteadOf alias that rewrites to another owner is vetoed" 14 'gh:fixture-parent/app' 'url.git@github.com:.insteadOf' 'gh:'
+  _veto_case "an unparsed URL is not a veto" 0 "$VTMP/no-such-remote.git"
+
+  _sitehome="$(mktemp -d -p "$VTMP")"
+  _sitebare="$(mktemp -d -p "$VTMP")"
   git init -q --bare "$_sitebare/remote.git"
   _site="$_sitehome/Projects/sites/demo"
   mkdir -p "$_site/docs"
   git init -q "$_site"
   _fx_id "$_site"
-  git -C "$_site" config url."$_sitebare/remote.git".insteadOf "git@github.com:FirstIntegral/omalauncher.git"
+  git -C "$_site" config url."$_sitebare/remote.git".insteadOf "git@github.com:fixture-owner/omalauncher.git"
   echo adr > "$_site/docs/DECISIONS.md"
-  git -C "$_site" remote add origin "git@github.com:FirstIntegral/omalauncher.git"
+  git -C "$_site" remote add origin "git@github.com:fixture-owner/omalauncher.git"
   _rc=0; HOME="$_sitehome" bash "$HOOKS/checkpoint.sh" "$_site" -m site >/dev/null 2>&1 || _rc=$?
   _site_names="$(git -C "$_site" show --name-only --format= HEAD 2>/dev/null || true)"
   if [ "$_rc" -eq 0 ] \
@@ -591,7 +817,7 @@ if grep -q 'ensure_notes_clone' "$HOOKS/notes-sync.sh" \
 else
   bad "automatic machine-notes clone is not wired through setup.sh"
 fi
-_ns="$(mktemp -d)"; _nbare="$(mktemp -d)"; _np="$(mktemp -d)"
+_ns="$(mktemp -d -p "$VTMP")"; _nbare="$(mktemp -d -p "$VTMP")"; _np="$(mktemp -d -p "$VTMP")"
 git init -q --bare "$_nbare/n.git"
 git init -q "$_ns"
 git -C "$_ns" config user.email verify@local
@@ -608,16 +834,16 @@ git -C "$_np" config commit.gpgsign false
 echo code > "$_np/a.txt"
 printf 'session_compact.md\nsession_transcript.md\nnotes.allow\n.env\n.local/\n' > "$_np/.gitignore"
 git -C "$_np" add a.txt .gitignore && git -C "$_np" commit -qm code
-git -C "$_np" remote add origin 'git@github.com:FirstIntegral/notes-fixture.git'
+git -C "$_np" remote add origin 'git@github.com:fixture-owner/notes-fixture.git'
 echo alpha-compact > "$_np/session_compact.md"
 printf 'alpha-transcript\n' > "$_np/session_transcript.md"
 _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pushed" ] \
-   && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/firstintegral/notes-fixture" ] \
+   && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/fixture-owner/notes-fixture" ] \
    && [ "$(git -C "$_ns" log -1 --format='%b')" = "$(printf 'session_compact.md\n')" ] \
-   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/session_compact.md")" = "alpha-compact" ] \
-   && [ ! -e "$_ns/github.com/firstintegral/notes-fixture/session_transcript.md" ] \
+   && [ "$(cat "$_ns/github.com/fixture-owner/notes-fixture/session_compact.md")" = "alpha-compact" ] \
+   && [ ! -e "$_ns/github.com/fixture-owner/notes-fixture/session_transcript.md" ] \
    && ! git -C "$_ns" log -1 --format='%b' | grep -q 'alpha-compact'; then
   ok "notes push copies bytes and does not quote them"
 else
@@ -630,19 +856,51 @@ if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: current" ]; then
 else
   bad "second notes push (exit $_rc, out $_out)"
 fi
+# An interrupted run leaves staged and untracked bytes in the notes clone.
+# The next run parks them in a stash and carries on. Nothing is discarded.
+echo half-copied > "$_ns/leftover.md"
+echo staged > "$_ns/staged.md"
+git -C "$_ns" add staged.md
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-heal.err")" || _rc=$?
+_parked="$(git -C "$_ns" stash show --include-untracked --name-only 'stash@{0}' 2>/dev/null || true)"
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: current" ] \
+   && grep -q 'parked a leftover' "$VTMP/notes-heal.err" \
+   && [ -z "$(git -C "$_ns" status --porcelain)" ] \
+   && [ "$(git -C "$_ns" stash list | wc -l)" -eq 1 ] \
+   && [[ "$_parked" == *leftover.md* ]] && [[ "$_parked" == *staged.md* ]]; then
+  ok "a dirty notes clone is parked in a stash and the run continues"
+else
+  bad "dirty notes clone was not healed (exit $_rc, out $_out)"
+fi
 printf '%s\n' '.env' 'a.txt' > "$_np/notes.allow"
 echo SECRETKEY > "$_np/.env"
 _rc=0
-_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-warn.txt)" || _rc=$?
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-warn.txt")" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pushed" ] \
    && ! git -C "$_ns" ls-files | grep -q '/.env$' \
-   && grep -q 'denied .env' /tmp/notes-warn.txt \
-   && grep -q 'tracked a.txt' /tmp/notes-warn.txt; then
+   && grep -q 'denied .env' "$VTMP/notes-warn.txt" \
+   && grep -q 'tracked a.txt' "$VTMP/notes-warn.txt"; then
   ok "notes.allow denies .env and skips a tracked path"
 else
   bad "notes.allow filter (exit $_rc)"
 fi
-_np2="$(mktemp -d)"
+# A glob or a backslash in notes.allow is refused, not expanded.
+printf '%s\n' '.env' 'a.txt' 'docs/*.md' '*' 'a\b' 'x[1].md' 'what?.md' > "$_np/notes.allow"
+_rc=0
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >/dev/null 2>"$VTMP/notes-glob.txt" || _rc=$?
+if [ "$_rc" -eq 0 ] \
+   && grep -qF 'rejected docs/*.md' "$VTMP/notes-glob.txt" \
+   && grep -qFx 'notes: warn rejected *' "$VTMP/notes-glob.txt" \
+   && grep -qF 'rejected a\b' "$VTMP/notes-glob.txt" \
+   && grep -qF 'rejected x[1].md' "$VTMP/notes-glob.txt" \
+   && grep -qF 'rejected what?.md' "$VTMP/notes-glob.txt"; then
+  ok "notes.allow rejects a glob and a backslash"
+else
+  bad "notes.allow accepted a glob or a backslash (exit $_rc)"
+fi
+printf '%s\n' '.env' 'a.txt' > "$_np/notes.allow"
+_np2="$(mktemp -d -p "$VTMP")"
 git init -q "$_np2"
 git -C "$_np2" config user.email verify@local
 git -C "$_np2" config user.name verify
@@ -650,7 +908,7 @@ git -C "$_np2" config commit.gpgsign false
 echo x > "$_np2/a.txt"
 printf 'session_compact.md\nsession_transcript.md\nnotes.allow\n' > "$_np2/.gitignore"
 git -C "$_np2" add a.txt .gitignore && git -C "$_np2" commit -qm x
-git -C "$_np2" remote add origin 'git@github.com:FirstIntegral/notes-fixture.git'
+git -C "$_np2" remote add origin 'git@github.com:fixture-owner/notes-fixture.git'
 _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" pull "$_np2" 2>/dev/null)" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pulled" ] \
@@ -660,20 +918,35 @@ if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pulled" ] \
 else
   bad "fresh notes pull (exit $_rc, out $_out)"
 fi
-echo remote-side > "$_ns/github.com/firstintegral/notes-fixture/session_compact.md"
-git -C "$_ns" add github.com/firstintegral/notes-fixture/session_compact.md
+# A notes remote that cannot be reached: a pull skips and says why, a push fails.
+_nsoff="$(mktemp -d -p "$VTMP")"
+git clone -q "$_nbare/n.git" "$_nsoff/notes"
+git -C "$_nsoff/notes" remote set-url origin "$_nsoff/gone.git"
+_rc=0
+_out="$(NOTES_SYNC_TEST_ROOT="$_nsoff/notes" bash "$HOOKS/notes-sync.sh" pull "$_np2" 2>"$VTMP/notes-off.err")" || _rc=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: skipped" ] && grep -q 'fetch failed' "$VTMP/notes-off.err"; then
+  ok "a pull that cannot fetch prints notes: skipped and the reason"
+else
+  bad "offline notes pull (exit $_rc, out $_out)"
+fi
+_rc=0
+NOTES_SYNC_TEST_ROOT="$_nsoff/notes" bash "$HOOKS/notes-sync.sh" push "$_np2" >/dev/null 2>&1 || _rc=$?
+[ "$_rc" -eq 1 ] && ok "a push that cannot fetch still fails (exit 1)" \
+                 || bad "offline notes push (exit $_rc, wanted 1)"
+echo remote-side > "$_ns/github.com/fixture-owner/notes-fixture/session_compact.md"
+git -C "$_ns" add github.com/fixture-owner/notes-fixture/session_compact.md
 git -C "$_ns" commit -qm remote
 git -C "$_ns" push -q origin HEAD
 echo local-side > "$_np/session_compact.md"
 _rc=0
-_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-div.err)" || _rc=$?
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-div.err")" || _rc=$?
 _merged="$_np/session_compact.md"
-_notesf="$_ns/github.com/firstintegral/notes-fixture/session_compact.md"
+_notesf="$_ns/github.com/fixture-owner/notes-fixture/session_compact.md"
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: merged" ] \
    && grep -q 'notes-sync-merge' "$_merged" \
    && grep -q 'local-side' "$_merged" && grep -q 'remote-side' "$_merged" \
    && cmp -s "$_merged" "$_notesf" \
-   && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/firstintegral/notes-fixture" ] \
+   && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/fixture-owner/notes-fixture" ] \
    && ! git -C "$_ns" log -1 --format='%B' | grep -q 'local-side'; then
   ok "notes merge keeps both compact copies"
 else
@@ -689,8 +962,8 @@ fi
 printf '%s\n' 'session_transcript.md' >> "$_np/notes.allow"
 printf 'new-transcript\n' > "$_np/session_transcript.md"
 _rc=0
-_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-tr.txt)" || _rc=$?
-if [ "$_rc" -eq 0 ] && grep -q 'blocked session_transcript.md' /tmp/notes-tr.txt \
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-tr.txt")" || _rc=$?
+if [ "$_rc" -eq 0 ] && grep -q 'blocked session_transcript.md' "$VTMP/notes-tr.txt" \
    && ! git -C "$_ns" ls-files | grep -q 'session_transcript.md' \
    && [ "$(cat "$_np/session_transcript.md")" = "new-transcript" ]; then
   ok "notes push does not collect session_transcript.md"
@@ -701,8 +974,8 @@ printf '%s\n' 'explain/brief.md' >> "$_np/notes.allow"
 mkdir -p "$_np/explain"
 printf 'brief\n' > "$_np/explain/brief.md"
 _rc=0
-_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/tmp/notes-ex.txt)" || _rc=$?
-if [ "$_rc" -eq 0 ] && grep -q 'blocked explain/brief.md' /tmp/notes-ex.txt \
+_out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-ex.txt")" || _rc=$?
+if [ "$_rc" -eq 0 ] && grep -q 'blocked explain/brief.md' "$VTMP/notes-ex.txt" \
    && ! git -C "$_ns" ls-files | grep -q 'explain/brief.md' \
    && [ "$(cat "$_np/explain/brief.md")" = "brief" ]; then
   ok "notes push does not collect explain/"
@@ -712,7 +985,7 @@ fi
 rm -rf "$_np/explain"
 grep -vx 'explain/brief.md' "$_np/notes.allow" > "$_np/notes.allow.tmp"
 mv "$_np/notes.allow.tmp" "$_np/notes.allow"
-_np3="$(mktemp -d)"
+_np3="$(mktemp -d -p "$VTMP")"
 git init -q "$_np3"
 git -C "$_np3" config user.email verify@local
 git -C "$_np3" config user.name verify
@@ -720,7 +993,7 @@ git -C "$_np3" config commit.gpgsign false
 echo x > "$_np3/a.txt"
 printf 'session_compact.md\nsession_transcript.md\nnotes.allow\n' > "$_np3/.gitignore"
 git -C "$_np3" add a.txt .gitignore && git -C "$_np3" commit -qm x
-git -C "$_np3" remote add origin 'git@github.com:FirstIntegral/notes-fixture.git'
+git -C "$_np3" remote add origin 'git@github.com:fixture-owner/notes-fixture.git'
 echo desktop-only-line > "$_np3/session_compact.md"
 _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" pull "$_np3" 2>/dev/null)" || _rc=$?
@@ -737,43 +1010,43 @@ printf '%s\n' '.env' 'a.txt' 'foo.patch' > "$_np/notes.allow"
 printf 'patch-v1\n' > "$_np/foo.patch"
 _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>/dev/null)" || _rc=$?
-printf 'patch-remote\n' > "$_ns/github.com/firstintegral/notes-fixture/foo.patch"
-git -C "$_ns" add github.com/firstintegral/notes-fixture/foo.patch
+printf 'patch-remote\n' > "$_ns/github.com/fixture-owner/notes-fixture/foo.patch"
+git -C "$_ns" add github.com/fixture-owner/notes-fixture/foo.patch
 git -C "$_ns" commit -qm remote-patch
 git -C "$_ns" push -q origin HEAD
 printf 'patch-local\n' > "$_np/foo.patch"
 _compact_before="$(cat "$_np/session_compact.md")"
 _rc=0
-NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >/tmp/notes-div.out 2>/tmp/notes-div.err || _rc=$?
-if [ "$_rc" -eq 23 ] && grep -q 'notes: diverge foo.patch' /tmp/notes-div.err \
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >"$VTMP/notes-div.out" 2>"$VTMP/notes-div.err" || _rc=$?
+if [ "$_rc" -eq 23 ] && grep -q 'notes: diverge foo.patch' "$VTMP/notes-div.err" \
    && [ "$(cat "$_np/foo.patch")" = "patch-local" ] \
-   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/foo.patch")" = "patch-remote" ] \
+   && [ "$(cat "$_ns/github.com/fixture-owner/notes-fixture/foo.patch")" = "patch-remote" ] \
    && [ "$(cat "$_np/session_compact.md")" = "$_compact_before" ]; then
   ok "non-markdown conflict exits 23 and writes nothing"
 else
   bad "patch diverge (exit $_rc)"
 fi
 rm -f "$_np/session_compact.md"
-echo gone-side > "$_ns/github.com/firstintegral/notes-fixture/session_compact.md"
-git -C "$_ns" add github.com/firstintegral/notes-fixture/session_compact.md
+echo gone-side > "$_ns/github.com/fixture-owner/notes-fixture/session_compact.md"
+git -C "$_ns" add github.com/fixture-owner/notes-fixture/session_compact.md
 git -C "$_ns" commit -qm gone
 git -C "$_ns" push -q origin HEAD
 _rc=0
-NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >/tmp/notes-div.out 2>/tmp/notes-div.err || _rc=$?
-if [ "$_rc" -eq 23 ] && grep -q 'notes: diverge session_compact.md' /tmp/notes-div.err \
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" >"$VTMP/notes-div.out" 2>"$VTMP/notes-div.err" || _rc=$?
+if [ "$_rc" -eq 23 ] && grep -q 'notes: diverge session_compact.md' "$VTMP/notes-div.err" \
    && [ ! -e "$_np/session_compact.md" ] \
-   && [ "$(cat "$_ns/github.com/firstintegral/notes-fixture/session_compact.md")" = "gone-side" ]; then
+   && [ "$(cat "$_ns/github.com/fixture-owner/notes-fixture/session_compact.md")" = "gone-side" ]; then
   ok "delete versus edit exits 23 and writes nothing"
 else
   bad "delete diverge (exit $_rc)"
 fi
 _before_ns="$(git -C "$_ns" rev-parse HEAD)"
 # Raw origin URL stays the notes key. insteadOf keeps checkpoint's fetch off the network.
-git -C "$_np" config url."$_nbare/n.git".insteadOf "git@github.com:FirstIntegral/notes-fixture.git"
+git -C "$_np" config url."$_nbare/n.git".insteadOf "git@github.com:fixture-owner/notes-fixture.git"
 _rc=0
-NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" --dry-run >/tmp/notes-dry.out 2>&1 || _rc=$?
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" --dry-run >"$VTMP/notes-dry.out" 2>&1 || _rc=$?
 if [ "$_rc" -eq 0 ] || [ "$_rc" -eq 3 ] || [ "$_rc" -eq 12 ] || [ "$_rc" -eq 13 ] || [ "$_rc" -eq 14 ]; then
-  if grep -q 'notes:' /tmp/notes-dry.out; then
+  if grep -q 'notes:' "$VTMP/notes-dry.out"; then
     bad "dry-run mentioned notes"
   elif [ "$(git -C "$_ns" rev-parse HEAD)" != "$_before_ns" ]; then
     bad "dry-run moved the notes clone"
@@ -784,8 +1057,8 @@ else
   bad "dry-run exit $_rc"
 fi
 _rc=0
-NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" >/tmp/notes-live.out 2>&1 || _rc=$?
-if grep -q 'notes: skipped' /tmp/notes-live.out \
+NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" >"$VTMP/notes-live.out" 2>&1 || _rc=$?
+if grep -q 'notes: skipped' "$VTMP/notes-live.out" \
    && [ "$(git -C "$_ns" rev-parse HEAD)" = "$_before_ns" ]; then
   ok "checkpoint drops NOTES_SYNC_TEST_ROOT and skips /tmp"
 else
@@ -801,58 +1074,58 @@ else
   ok "no machine-notes clone yet (fixture pin skipped)"
 fi
 # --- notes-sync setup: the one-time clone path for a fresh machine ---------
-_nsu="$(mktemp -d)"
-_nrf="$(mktemp)"
-_nbare2="$(mktemp -d)"
-_nclp="$(mktemp -d)"
+_nsu="$(mktemp -d -p "$VTMP")"
+_nrf="$(mktemp -p "$VTMP")"
+_nbare2="$(mktemp -d -p "$VTMP")"
+_nclp="$(mktemp -d -p "$VTMP")"
 _nclone="$_nclp/machine-notes"
 git init -q --bare "$_nbare2/notes.git"
 printf '%s\n' "$_nbare2/notes.git" > "$_nrf"
-if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone" bash "$HOOKS/notes-sync.sh" setup >/tmp/notes-setup.out 2>/tmp/notes-setup.err \
-   && grep -q 'notes: ready' /tmp/notes-setup.out \
+if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone" bash "$HOOKS/notes-sync.sh" setup >"$VTMP/notes-setup.out" 2>"$VTMP/notes-setup.err" \
+   && grep -q 'notes: ready' "$VTMP/notes-setup.out" \
    && [ -e "$_nclone/.git" ]; then
   ok "notes-sync setup clones NOTES_REMOTE"
 else
   bad "notes-sync setup failed to clone"
 fi
-if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone" bash "$HOOKS/notes-sync.sh" setup >/tmp/notes-setup2.out 2>/dev/null \
-   && grep -q 'notes: ready' /tmp/notes-setup2.out; then
+if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone" bash "$HOOKS/notes-sync.sh" setup >"$VTMP/notes-setup2.out" 2>/dev/null \
+   && grep -q 'notes: ready' "$VTMP/notes-setup2.out"; then
   ok "notes-sync setup is idempotent"
 else
   bad "notes-sync setup is not idempotent"
 fi
 printf '%s\n' "$_nbare2/no-such-repo.git" > "$_nrf"
-_nclp2="$(mktemp -d)"
+_nclp2="$(mktemp -d -p "$VTMP")"
 _nclone2="$_nclp2/machine-notes"
-if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone2" bash "$HOOKS/notes-sync.sh" setup >/dev/null 2>/tmp/notes-setup-miss.err; then
+if NOTES_REMOTE_FILE="$_nrf" NOTES_SYNC_TEST_ROOT="$_nclone2" bash "$HOOKS/notes-sync.sh" setup >/dev/null 2>"$VTMP/notes-setup-miss.err"; then
   bad "notes-sync setup cloned a missing remote"
-elif grep -q 'clone failed' /tmp/notes-setup-miss.err; then
+elif grep -q 'clone failed' "$VTMP/notes-setup-miss.err"; then
   ok "notes-sync setup names the missing private repo"
 else
   bad "notes-sync setup failure message is not actionable"
 fi
-_npp="$(mktemp -d)"
+_npp="$(mktemp -d -p "$VTMP")"
 _nsproj="$_npp/proj"
-_nsempty="$(mktemp -d)"
+_nsempty="$(mktemp -d -p "$VTMP")"
 mkdir -p "$_nsproj"
 git -C "$_nsproj" init -q
 git -C "$_nsproj" config user.email verify@local
 git -C "$_nsproj" config user.name verify
 git -C "$_nsproj" remote add origin git@github.com:someone/nsproj.git
 git -C "$_nsproj" commit -qm x --allow-empty
-if NOTES_SYNC_TEST_ROOT="$_nsempty" bash "$HOOKS/notes-sync.sh" push "$_nsproj" >/tmp/notes-skip.out 2>/tmp/notes-skip.err \
-   && grep -q 'notes: skipped' /tmp/notes-skip.out \
-   && grep -q 'no machine-notes clone' /tmp/notes-skip.err \
-   && grep -q 'notes-sync.sh setup' /tmp/notes-skip.err \
+if NOTES_SYNC_TEST_ROOT="$_nsempty" bash "$HOOKS/notes-sync.sh" push "$_nsproj" >"$VTMP/notes-skip.out" 2>"$VTMP/notes-skip.err" \
+   && grep -q 'notes: skipped' "$VTMP/notes-skip.out" \
+   && grep -q 'no machine-notes clone' "$VTMP/notes-skip.err" \
+   && grep -q 'notes-sync.sh setup' "$VTMP/notes-skip.err" \
    && [ ! -e "$_nsempty/.git" ]; then
   ok "missing clone prints the setup hint and exits 0"
 else
   bad "missing clone hint wrong or exit non-zero"
 fi
 # Auto-clone uses a fake home. No origin, so the run stops after the clone and does not commit.
-_autohome="$(mktemp -d)"
-_autobare="$(mktemp -d)"
-_autorf="$(mktemp)"
+_autohome="$(mktemp -d -p "$VTMP")"
+_autobare="$(mktemp -d -p "$VTMP")"
+_autorf="$(mktemp -p "$VTMP")"
 mkdir -p "$_autohome/Projects/proj"
 git init -q --bare "$_autobare/notes.git"
 printf '%s\n' "$_autobare/notes.git" > "$_autorf"
@@ -860,7 +1133,7 @@ git -C "$_autohome/Projects/proj" init -q
 git -C "$_autohome/Projects/proj" config user.email verify@local
 git -C "$_autohome/Projects/proj" config user.name verify
 _rc=0
-_out="$(NOTES_SYNC_HOME="$_autohome" NOTES_REMOTE_FILE="$_autorf" bash "$HOOKS/notes-sync.sh" push "$_autohome/Projects/proj" 2>/tmp/notes-auto.err)" || _rc=$?
+_out="$(NOTES_SYNC_HOME="$_autohome" NOTES_REMOTE_FILE="$_autorf" bash "$HOOKS/notes-sync.sh" push "$_autohome/Projects/proj" 2>"$VTMP/notes-auto.err")" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: skipped" ] \
    && [ -e "$_autohome/.local/share/machine-notes/.git" ] \
    && ! git -C "$_autohome/.local/share/machine-notes" rev-parse --verify HEAD >/dev/null 2>&1; then
@@ -869,23 +1142,23 @@ else
   bad "auto-clone push (exit $_rc, out $_out)"
 fi
 printf '%s\n' "$_autobare/missing.git" > "$_autorf"
-_autohome2="$(mktemp -d)"
+_autohome2="$(mktemp -d -p "$VTMP")"
 mkdir -p "$_autohome2/Projects/proj"
 git -C "$_autohome2/Projects/proj" init -q
 _rc=0
-_out="$(NOTES_SYNC_HOME="$_autohome2" NOTES_REMOTE_FILE="$_autorf" bash "$HOOKS/notes-sync.sh" push "$_autohome2/Projects/proj" 2>/tmp/notes-auto-miss.err)" || _rc=$?
+_out="$(NOTES_SYNC_HOME="$_autohome2" NOTES_REMOTE_FILE="$_autorf" bash "$HOOKS/notes-sync.sh" push "$_autohome2/Projects/proj" 2>"$VTMP/notes-auto-miss.err")" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: skipped" ] \
    && [ ! -e "$_autohome2/.local/share/machine-notes/.git" ] \
-   && grep -q 'clone failed' /tmp/notes-auto-miss.err \
-   && grep -q 'no machine-notes clone' /tmp/notes-auto-miss.err; then
+   && grep -q 'clone failed' "$VTMP/notes-auto-miss.err" \
+   && grep -q 'no machine-notes clone' "$VTMP/notes-auto-miss.err"; then
   ok "failed auto-clone still skips and exits 0"
 else
   bad "failed auto-clone (exit $_rc, out $_out)"
 fi
 _realhome="$(getent passwd "$(id -un)" | awk -F: '{print $6; exit}')"
 _rc=0
-NOTES_SYNC_HOME="$_realhome" bash "$HOOKS/notes-sync.sh" setup >/dev/null 2>/tmp/notes-home-real.err || _rc=$?
-if [ "$_rc" -ne 0 ] && grep -q 'NOTES_SYNC_HOME is the real home' /tmp/notes-home-real.err; then
+NOTES_SYNC_HOME="$_realhome" bash "$HOOKS/notes-sync.sh" setup >/dev/null 2>"$VTMP/notes-home-real.err" || _rc=$?
+if [ "$_rc" -ne 0 ] && grep -q 'NOTES_SYNC_HOME is the real home' "$VTMP/notes-home-real.err"; then
   ok "NOTES_SYNC_HOME cannot retarget the real home"
 else
   bad "NOTES_SYNC_HOME real-home guard (exit $_rc)"
@@ -898,9 +1171,11 @@ if [ -n "$_notes_pin" ]; then
   fi
 fi
 rm -rf "$_nsu" "$_nrf" "$_nbare2" "$_nclp" "$_nclp2" "$_npp" "$_nsempty" "$_autohome" "$_autohome2" "$_autobare"
-rm -f /tmp/notes-setup.out /tmp/notes-setup.err /tmp/notes-setup2.out /tmp/notes-setup-miss.err /tmp/notes-skip.out /tmp/notes-skip.err
+rm -f "$VTMP/notes-setup.out" "$VTMP/notes-setup.err" "$VTMP/notes-setup2.out" "$VTMP/notes-setup-miss.err" "$VTMP/notes-skip.out" "$VTMP/notes-skip.err"
 rm -rf "$_ns" "$_nbare" "$_np" "$_np2" "$_np3"
-rm -f /tmp/notes-warn.txt /tmp/notes-div.out /tmp/notes-div.err /tmp/notes-dry.out /tmp/notes-live.out
+rm -f "$VTMP/notes-warn.txt" "$VTMP/notes-div.out" "$VTMP/notes-div.err" "$VTMP/notes-dry.out" "$VTMP/notes-live.out"
+
+fixture_env_off
 
 echo "[rule oracles]"
 if [ -x "$HOOKS/rule-oracles.sh" ]; then
@@ -932,11 +1207,16 @@ if grep -q 'exits 14' "$CANON" && grep -q 'exits 14' "$SETUP"; then
 else
   bad "exit 14 missing from AGENTS.md or SETUP.md"
 fi
+# The file lists this owner's forks. A fork of 1config lists its own, or none.
 if [ -f "$AGENTS_HOME/fork-parents.txt" ] \
-   && grep -qx 'FirstIntegral/omalauncher SimonSchubert/omalauncher' "$AGENTS_HOME/fork-parents.txt"; then
-  ok "fork-parents.txt lists omalauncher"
+   && awk '
+        /^[[:space:]]*(#|$)/ { next }
+        NF != 2 || $1 !~ /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/ || $2 !~ /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/ { bad = 1 }
+        END { exit bad ? 1 : 0 }
+      ' "$AGENTS_HOME/fork-parents.txt"; then
+  ok "fork-parents.txt lines are ourOwner/repo parentOwner/repo"
 else
-  bad "fork-parents.txt missing the omalauncher line"
+  bad "fork-parents.txt missing, or a line is not ourOwner/repo parentOwner/repo"
 fi
 if grep -q 'kill-tokens.deny' "$CANON" && grep -q 'kill-tokens.deny' "$SETUP"; then
   ok "kill-tokens.deny documented in AGENTS.md and SETUP.md"
@@ -1039,6 +1319,60 @@ if [ -f "$_killdeny" ]; then
   fi
 fi
 
+# Stray merge against stub CLIs. The prompt must arrive as stdin or a file (one
+# argv string caps at 128 KiB), the model must get no tools, and a first
+# backend that is logged out must not end the run.
+_ms="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_ms/bin" "$_ms/guard" "$_ms/strays"
+cp "$CANON" "$_ms/AGENTS.md"
+cat > "$_ms/bin/claude" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$STUB_DIR/claude.argv"
+cat > "$STUB_DIR/claude.stdin"
+if [ -n "${STUB_CLAUDE_FAIL:-}" ]; then
+  echo "Not logged in"
+  exit 1
+fi
+printf '%s\n' "$STUB_REPLY"
+EOF
+cat > "$_ms/bin/grok" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@" > "$STUB_DIR/grok.argv"
+printf '%s\n' "$STUB_REPLY"
+EOF
+chmod +x "$_ms/bin/claude" "$_ms/bin/grok"
+_ms_run() {
+  _rc=0
+  env AGENTS_HOME="$AGENTS_HOME" CANON="$_ms/AGENTS.md" GUARD_DIR="$_ms/guard" STRAYS_DIR="$_ms/strays" \
+    STUB_DIR="$_ms" MERGE_TOOL_PATH="$_ms/bin:/usr/bin:/bin" "$@" \
+    bash "$HOOKS/merge-strays.sh" >/dev/null 2>&1 || _rc=$?
+}
+head -c 200000 /dev/zero | tr '\0' 'x' > "$_ms/strays/big"
+printf '%s\n' "$_ms/strays/big" > "$_ms/guard/NEEDS-SYMLINK-MERGE"
+_ms_run MERGE_LLM_BACKEND=claude STUB_REPLY=SKIP
+if [ "$_rc" -eq 0 ] && [ ! -e "$_ms/guard/NEEDS-SYMLINK-MERGE" ] && [ ! -e "$_ms/strays/big" ] \
+   && cmp -s "$CANON" "$_ms/AGENTS.md" \
+   && [ "$(wc -c < "$_ms/claude.stdin")" -gt 131072 ] \
+   && awk 'prev == "--tools" && $0 == "" { ok = 1 } { prev = $0 } END { exit ok ? 0 : 1 }' "$_ms/claude.argv" \
+   && grep -qx -- '--strict-mcp-config' "$_ms/claude.argv" \
+   && ! grep -q 'CANONICAL' "$_ms/claude.argv"; then
+  ok "stray merge sends a 200 KB prompt on stdin and gives the model no tools"
+else
+  bad "stray merge put the prompt in argv, or left the model its tools (exit $_rc)"
+fi
+printf 'a stray rule\n' > "$_ms/strays/small"
+printf '%s\n' "$_ms/strays/small" > "$_ms/guard/NEEDS-SYMLINK-MERGE"
+_ms_run STUB_CLAUDE_FAIL=1 STUB_REPLY=$'## Merged rule\n- keep this line'
+if [ "$_rc" -eq 0 ] && [ ! -e "$_ms/guard/NEEDS-SYMLINK-MERGE" ] \
+   && grep -qx -- '--prompt-file' "$_ms/grok.argv" \
+   && grep -qx -- 'list_dir' "$_ms/grok.argv" \
+   && grep -q 'reply from grok' "$_ms/guard/merge-strays.log" \
+   && [ "$(tail -n 1 "$_ms/AGENTS.md")" = "- keep this line" ]; then
+  ok "stray merge falls through a logged-out backend to the next one"
+else
+  bad "stray merge stopped at the first backend that failed (exit $_rc)"
+fi
+
 # watch-stale.sh behaviour. A watch that never fires is worse than none, so the
 # stale verdict and the exit line are both exercised against a real scratch process.
 echo "[watch-stale.sh behaviour]"
@@ -1050,7 +1384,7 @@ if [ -x "$HOOKS/watch-stale.sh" ]; then
   _rc=0; bash "$HOOKS/watch-stale.sh" 4194305 - 1 >/dev/null 2>&1 || _rc=$?
   [ "$_rc" -eq 3 ] && ok "rejects a pid that does not exist (exit 3)" \
                    || bad "watch-stale.sh accepted a dead pid (exit $_rc, wanted 3)"
-  _wstmp="$(mktemp -d)"
+  _wstmp="$(mktemp -d -p "$VTMP")"
   : > "$_wstmp/run.log"
   sleep 3 &
   _wspid=$!
@@ -1082,7 +1416,9 @@ if [ -d "$BD" ]; then
   else
     ok "boot-dashboard XDG autostart is cross-desktop (Wayland + X11)"
   fi
-  if [ -f "$DESK_DST" ]; then
+  if ! machine; then
+    :
+  elif [ -f "$DESK_DST" ]; then
     if [ -f "$DESK_SRC" ] && cmp -s <(sed "s|^Exec=.*|Exec=$BD/launch.sh|" "$DESK_SRC") "$DESK_DST"; then
       ok "installed boot-dashboard autostart matches source"
     else
@@ -1102,6 +1438,7 @@ fi
 
 # --- symlinks (tool-facing names stay AGENTS.md / CLAUDE.md) ---------------
 echo "[symlinks]"
+if machine; then
 for link in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.cursor/AGENTS.md"; do
   if [ -L "$link" ] && [ "$(readlink -f "$link")" = "$CANON" ]; then
     ok "$link → canonical"
@@ -1110,7 +1447,7 @@ for link in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.c
   fi
 done
 if [ -f "$HOME/.cursor/rules/1config.mdc" ]; then
-  cursor_tmp="$(mktemp)"
+  cursor_tmp="$(mktemp -p "$VTMP")"
   {
     printf '%s\n' '---'
     printf '%s\n' 'description: 1config global rules (generated — edit ~/.agents/AGENTS.md)'
@@ -1128,9 +1465,11 @@ if [ -f "$HOME/.cursor/rules/1config.mdc" ]; then
 else
   bad "cursor user rule missing — ~/.cursor/rules/1config.mdc (run setup.sh)"
 fi
+fi  # machine
 
 # --- hooks installed copies must match source byte-for-byte ----------------
 echo "[installed guards vs hooks/]"
+if machine; then
 if [ -f "$HOOKS/check-links.sh" ] && [ -f "$GUARD_DIR/check-links.sh" ]; then
   if cmp -s "$HOOKS/check-links.sh" "$GUARD_DIR/check-links.sh"; then
     ok "symlink guard matches hooks/check-links.sh"
@@ -1158,12 +1497,15 @@ if [ -f "$HOOKS/merge-strays.sh" ] && [ -f "$GUARD_DIR/merge-strays.sh" ]; then
 else
   bad "stray-merge install missing (run setup.sh)"
 fi
+fi  # machine
 
 # --- tool updater installed copies must match source byte-for-byte ---------
 echo "[updater vs source]"
 if [ -d "$UPD_SRC" ]; then
   for s in boot-check.sh update-apps.sh on-resume.sh refresh-inventory.py; do
-    if [ -f "$UPD_SRC/$s" ] && [ -f "$UPD_DIR/$s" ]; then
+    if ! machine; then
+      :
+    elif [ -f "$UPD_SRC/$s" ] && [ -f "$UPD_DIR/$s" ]; then
       if cmp -s "$UPD_SRC/$s" "$UPD_DIR/$s"; then
         ok "updater $s matches source"
       else
@@ -1188,12 +1530,18 @@ if [ -d "$UPD_SRC" ]; then
   fi
 
   # Exercise user/home discovery and systemd-run arguments without scheduling a unit.
-  _rstmp="$(mktemp -d)"
+  # The home is a scratch one with its own on-resume.sh, so the smoke does not
+  # depend on what this machine has installed.
+  _rstmp="$(mktemp -d -p "$VTMP")"
   _rslog="$_rstmp/systemd-run.args"
+  _rshome="$_rstmp/home"
+  mkdir -p "$_rshome/cron-jobs/ai-terminal-tools-update-on-boot"
+  printf '#!/bin/sh\nexit 0\n' > "$_rshome/cron-jobs/ai-terminal-tools-update-on-boot/on-resume.sh"
+  chmod +x "$_rshome/cron-jobs/ai-terminal-tools-update-on-boot/on-resume.sh"
   printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$SYSTEMD_RUN_LOG"\n' > "$_rstmp/systemd-run"
   printf '#!/bin/sh\nprintf "%%s\\n" "%s"\n' "$(id -u) $(id -un) no active" > "$_rstmp/loginctl"
   printf '#!/bin/sh\nprintf "%%s\\n" "%s:x:%s:%s::%s:/bin/sh"\n' \
-    "$(id -un)" "$(id -u)" "$(id -g)" "$HOME" > "$_rstmp/getent"
+    "$(id -un)" "$(id -u)" "$(id -g)" "$_rshome" > "$_rstmp/getent"
   chmod +x "$_rstmp/systemd-run" "$_rstmp/loginctl" "$_rstmp/getent"
   _rc=0
   AI_UPDATE_DELAY=1s SYSTEMD_RUN="$_rstmp/systemd-run" LOGINCTL="$_rstmp/loginctl" \
@@ -1201,8 +1549,8 @@ if [ -d "$UPD_SRC" ]; then
     sh "$SHIM_SRC" post suspend >/dev/null 2>&1 || _rc=$?
   if [ "$_rc" -eq 0 ] \
       && grep -q -- "--uid=$(id -un)" "$_rslog" \
-      && grep -q -- "--setenv=HOME=$HOME" "$_rslog" \
-      && grep -q -- "$UPD_DIR/on-resume.sh" "$_rslog"; then
+      && grep -q -- "--setenv=HOME=$_rshome" "$_rslog" \
+      && grep -q -- "$_rshome/cron-jobs/ai-terminal-tools-update-on-boot/on-resume.sh" "$_rslog"; then
     ok "resume shim schedules updater with explicit user + home"
   else
     bad "resume shim user/home scheduling smoke failed (exit $_rc)"
@@ -1268,6 +1616,17 @@ if [ -d "$AGENTS_HOME/vendor/jeepney" ] && [ -f "$AGENTS_HOME/vendor/jeepney/__i
 else
   bad "vendor/jeepney missing — gpg keyring hooks cannot run"
 fi
+# Vendored code keeps its license text and says which release it is, like a skill.
+_jv="$(sed -n "s/^__version__ = '\(.*\)'$/\1/p" "$AGENTS_HOME/vendor/jeepney/__init__.py" 2>/dev/null | head -n 1)"
+if [ -f "$AGENTS_HOME/vendor/jeepney/LICENSE" ] \
+   && grep -q 'MIT License' "$AGENTS_HOME/vendor/jeepney/LICENSE" \
+   && grep -q 'Thomas Kluyver' "$AGENTS_HOME/vendor/jeepney/LICENSE" \
+   && [ -n "$_jv" ] \
+   && grep -qF -- "- Version: $_jv," "$AGENTS_HOME/vendor/jeepney/UPSTREAM.md" 2>/dev/null; then
+  ok "vendored jeepney $_jv ships its MIT license and names its release"
+else
+  bad "vendor/jeepney is missing LICENSE, or UPSTREAM.md does not name release ${_jv:-?}"
+fi
 if [ -d "$BD" ] && grep -q 'gpg-agent-unlock' "$BD/dashboard.sh" 2>/dev/null; then
   ok "boot dashboard runs gpg unlock"
 else
@@ -1285,12 +1644,14 @@ if [ -x "$HOOKS/gpg-git.sh" ] \
 else
   bad "hooks/gpg-git.sh missing loopback unlock wrapper"
 fi
+if machine; then
 _gp="$(git config --global --get gpg.program 2>/dev/null || true)"
 if [ "$_gp" = "$HOOKS/gpg-git.sh" ]; then
   ok "git gpg.program → hooks/gpg-git.sh"
 else
   bad "git gpg.program is '${_gp:-unset}' (run setup.sh)"
 fi
+fi  # machine
 _wf="$HOOKS/github-web-flow.asc"
 _wf_fpr="968479A1AFF927E37D1A566BB5690EEEBB952194"
 if [ -f "$_wf" ] && gpg --show-keys --with-colons "$_wf" 2>/dev/null | grep -q "$_wf_fpr"; then
@@ -1298,11 +1659,13 @@ if [ -f "$_wf" ] && gpg --show-keys --with-colons "$_wf" 2>/dev/null | grep -q "
 else
   bad "hooks/github-web-flow.asc missing GitHub web-flow fingerprint $_wf_fpr"
 fi
+if machine; then
 if gpg --list-keys --with-colons "$_wf_fpr" 2>/dev/null | grep -q "$_wf_fpr"; then
   ok "GitHub web-flow public key is in the keyring (ownertrust unchanged)"
 else
   bad "GitHub web-flow public key missing from keyring (run setup.sh)"
 fi
+fi  # machine
 if grep -q "$_wf_fpr" "$CANON" && grep -q "$_wf_fpr" "$SETUP"; then
   ok "GitHub web-flow fingerprint documented in AGENTS.md and SETUP.md"
 else
@@ -1333,6 +1696,117 @@ if [ -x "$HOOKS/brain-sync.sh" ]; then
     || bad "brain-sync can hang on an ssh passphrase prompt at boot"
 else
   bad "hooks/brain-sync.sh missing"
+fi
+
+# The signature gate and the login pull, against commits that are signed for real.
+if [ -x "$HOOKS/verify-incoming.sh" ] && [ -x "$HOOKS/brain-sync.sh" ] && [ -n "$_k1" ] && [ -n "$_k2" ]; then
+  fixture_env_on
+  # _gate REPO BASE TIP [VAR=VALUE ...]  — exit code in _rc, output in gate.out
+  _gate() {
+    local repo="$1" base="$2" tip="$3"
+    shift 3
+    _rc=0
+    env GNUPGHOME="$_gh" BRAIN_SIGNERS_FILE="$VTMP/brain-signers" "$@" \
+      bash "$HOOKS/verify-incoming.sh" "$repo" "$base" "$tip" >"$VTMP/gate.out" 2>&1 || _rc=$?
+  }
+  _gr="$(mktemp -d -p "$VTMP")"
+  git init -q -b main "$_gr"
+  _fx_commit "$_gr" "$_k1" base
+  _g0="$(git -C "$_gr" rev-parse HEAD)"
+  _fx_commit "$_gr" "$_k1" listed
+  _g1="$(git -C "$_gr" rev-parse HEAD)"
+  _fx_commit "$_gr" - unsigned
+  _g2="$(git -C "$_gr" rev-parse HEAD)"
+  _fx_commit "$_gr" "$_k2" unlisted
+  _g3="$(git -C "$_gr" rev-parse HEAD)"
+  _gate "$_gr" "$_g0" "$_g1"
+  [ "$_rc" -eq 0 ] && [ ! -s "$VTMP/gate.out" ] \
+    && ok "gate accepts a commit signed by a listed key" \
+    || bad "gate refused a listed signer (exit $_rc)"
+  _gate "$_gr" "$_g1" "$_g2"
+  [ "$_rc" -eq 6 ] && grep -q 'is unsigned' "$VTMP/gate.out" \
+    && ok "gate refuses an unsigned commit (exit 6)" \
+    || bad "gate took an unsigned commit (exit $_rc)"
+  _gate "$_gr" "$_g2" "$_g3"
+  [ "$_rc" -eq 6 ] && grep -q 'not in BRAIN_SIGNERS' "$VTMP/gate.out" \
+    && ok "gate refuses a good signature from an unlisted key (exit 6)" \
+    || bad "gate took an unlisted signer (exit $_rc)"
+  _gate "$_gr" "$_g2" "$_g3" GITHUB_WEB_FLOW_FILE="$VTMP/web-flow-fixture.asc"
+  [ "$_rc" -eq 5 ] && grep -q 'web-flow' "$VTMP/gate.out" \
+    && ok "gate names a web-flow commit and leaves it (exit 5)" \
+    || bad "gate did not classify a web-flow commit (exit $_rc)"
+  _gate "$_gr" "$_g1" "$_g3" GITHUB_WEB_FLOW_FILE="$VTMP/web-flow-fixture.asc"
+  [ "$_rc" -eq 6 ] && grep -q 'is unsigned' "$VTMP/gate.out" \
+    && ok "an unsigned commit outranks a web-flow one (exit 6)" \
+    || bad "gate reported a mixed range as web-flow only (exit $_rc)"
+  _gate "$_gr" "$_g2" "$_g3" GPG_SIGNING_KEY="$_k2"
+  [ "$_rc" -eq 0 ] && ok "gate accepts this machine's own signing key" \
+                   || bad "gate refused the local signing key (exit $_rc)"
+  : > "$VTMP/no-signers"
+  _gate "$_gr" "$_g0" "$_g1" BRAIN_SIGNERS_FILE="$VTMP/no-signers"
+  [ "$_rc" -eq 6 ] && grep -q 'no signer is listed' "$VTMP/gate.out" \
+    && ok "gate fails closed when no signer is listed (exit 6)" \
+    || bad "gate passed with an empty signer list (exit $_rc)"
+  git -C "$_gr" reset -q --hard "$_g1"
+  git -C "$_gr" checkout -q -b side
+  _fx_commit "$_gr" - "unsigned on a side branch"
+  git -C "$_gr" checkout -q main
+  GNUPGHOME="$_gh" git -C "$_gr" -c user.signingkey="$_k1" merge -q --no-ff -S -m "signed merge" side
+  _gate "$_gr" "$_g1" "$(git -C "$_gr" rev-parse HEAD)"
+  [ "$_rc" -eq 0 ] && ok "a signed merge vouches for its side branch (first-parent walk)" \
+                   || bad "gate walked into a side branch (exit $_rc)"
+
+  # Login pull. origin is a bare repo that the fixture brain's own BRAIN_REMOTE lists.
+  _bsroot="$(mktemp -d -p "$VTMP")"
+  git init -q --bare -b main "$_bsroot/origin.git"
+  git init -q -b main "$_bsroot/seed"
+  git -C "$_bsroot/seed" remote add origin "$_bsroot/origin.git"
+  _fx_commit "$_bsroot/seed" "$_k1" seed
+  git -C "$_bsroot/seed" push -q origin main
+  git clone -q "$_bsroot/origin.git" "$_bsroot/brain"
+  printf '%s\n' "$_bsroot/origin.git" > "$_bsroot/brain/BRAIN_REMOTE"
+  printf '%s\n' BRAIN_REMOTE > "$_bsroot/brain/.git/info/exclude"
+  _bsync() {
+    _rc=0
+    env AGENTS_HOME="$_bsroot/brain" GNUPGHOME="$_gh" BRAIN_SIGNERS_FILE="$VTMP/brain-signers" "$@" \
+      bash "$HOOKS/brain-sync.sh" >"$VTMP/bsync.out" 2>&1 || _rc=$?
+  }
+  _bs_head() { git -C "$_bsroot/brain" rev-parse HEAD; }
+  _fx_commit "$_bsroot/seed" "$_k1" "signed update"
+  git -C "$_bsroot/seed" push -q origin main
+  _bsync
+  [ "$_rc" -eq 0 ] && grep -q 'fast-forwarded 1 commit' "$VTMP/bsync.out" \
+    && [ "$(_bs_head)" = "$(git -C "$_bsroot/origin.git" rev-parse main)" ] \
+    && ok "login pull fast-forwards over a commit signed by a listed key" \
+    || bad "login pull refused a listed signer (exit $_rc)"
+  _fx_commit "$_bsroot/seed" "$_k2" "made on the web"
+  git -C "$_bsroot/seed" push -q origin main
+  _before="$(_bs_head)"
+  _bsync GITHUB_WEB_FLOW_FILE="$VTMP/web-flow-fixture.asc"
+  [ "$_rc" -eq 5 ] && [ "$(_bs_head)" = "$_before" ] \
+    && ok "login pull leaves a web-flow commit for a manual pull (exit 5)" \
+    || bad "login pull took a web-flow commit (exit $_rc)"
+  _bsync
+  [ "$_rc" -eq 6 ] && [ "$(_bs_head)" = "$_before" ] \
+    && ok "login pull refuses an unlisted signer (exit 6)" \
+    || bad "login pull took an unlisted signer (exit $_rc)"
+  git -C "$_bsroot/brain" merge -q --ff-only origin/main
+  _fx_commit "$_bsroot/seed" - "unsigned push"
+  git -C "$_bsroot/seed" push -q origin main
+  _before="$(_bs_head)"
+  _bsync
+  [ "$_rc" -eq 6 ] && grep -q 'is unsigned' "$VTMP/bsync.out" && [ "$(_bs_head)" = "$_before" ] \
+    && ok "login pull refuses an unsigned push (exit 6)" \
+    || bad "login pull took an unsigned push (exit $_rc)"
+  fixture_env_off
+else
+  bad "signature gate fixtures did not run (gpg, verify-incoming.sh, or brain-sync.sh missing)"
+fi
+if [ -f "$AGENTS_HOME/BRAIN_SIGNERS" ] \
+   && grep -qE '^[0-9A-Fa-f]{40}[[:space:]]*$' "$AGENTS_HOME/BRAIN_SIGNERS"; then
+  ok "BRAIN_SIGNERS lists at least one fingerprint"
+else
+  bad "BRAIN_SIGNERS missing or lists no fingerprint — a login pull on a second machine has no trusted signer"
 fi
 if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
   grep -q 'check_brain_sync' "$BD/dashboard.sh" \
@@ -1488,7 +1962,7 @@ if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=
   else
     bad "refresh-inventory.py --self-test failed"
   fi
-  _invtmp="$(mktemp)"
+  _invtmp="$(mktemp -p "$VTMP")"
   _inv_rc=0
   INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
   if [ "$_inv_rc" -eq 0 ]; then
@@ -1678,6 +2152,7 @@ fi
 
 # --- grok config -----------------------------------------------------------
 echo "[grok config]"
+if machine; then
 if command -v python3 >/dev/null; then
   if python3 - <<PY
 import tomllib, pathlib, sys
@@ -1699,9 +2174,11 @@ PY
 else
   note "python3 missing — skip TOML checks"
 fi
+fi  # machine
 
 # --- permission parity across all three tools -------------------------------
 echo "[permission parity]"
+if machine; then
 PERMS_SRC="$AGENTS_HOME/permissions.json"
 if ! command -v python3 >/dev/null; then
   note "python3 missing — skip permission parity check"
@@ -1899,10 +2376,13 @@ PY
     done <<< "$parity_out"
   fi
 fi
+fi  # machine
 
 # --- claude SessionStart hook ----------------------------------------------
 echo "[claude hook]"
-if command -v python3 >/dev/null && [ -f "$HOME/.claude/settings.json" ]; then
+if ! machine; then
+  :
+elif command -v python3 >/dev/null && [ -f "$HOME/.claude/settings.json" ]; then
   if python3 - <<'PY'
 import json, pathlib, sys
 cfg = json.loads(pathlib.Path.home().joinpath(".claude/settings.json").read_text())
@@ -1944,7 +2424,7 @@ hook_case() {
     bad "$label missing [$expect]"
   fi
 }
-hook_base="$(mktemp -d)"
+hook_base="$(mktemp -d -p "$VTMP")"
 printf 'HOOK_MARKER_PLAIN\n' > "$hook_base/AGENTS.md"
 hook_case "2.1.295 default mode is quiet" "$hook_base" quiet \
   AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
@@ -1982,15 +2462,16 @@ hook_case "parent CLAUDE.md makes the hook inject" "$hook_base/parent/child" HOO
   AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
 if [ -d "$HOME/.cache" ]; then
   hook_home="$(mktemp -d "$HOME/.cache/agents-hook.XXXXXX")"
+  _vtmp_extra+=("$hook_home")
 else
-  hook_home="$(mktemp -d)"
+  hook_home="$(mktemp -d -p "$VTMP")"
 fi
 printf 'HOOK_MARKER_HOME\n' > "$hook_home/AGENTS.md"
 hook_case "user ~/.claude/CLAUDE.md does not suppress" "$hook_home" quiet \
   AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
 hook_case "real settings, pinned 2.1.295, is quiet" "$hook_base" quiet \
   AGENTS_CLAUDE_VERSION=2.1.295
-empty="$(mktemp -d)"
+empty="$(mktemp -d -p "$VTMP")"
 hook_case "no AGENTS.md stays quiet on old Claude" "$empty" quiet \
   AGENTS_CLAUDE_VERSION=2.1.200 AGENTS_INSTRUCTION_MODE=
 rm -rf "$hook_base" "$hook_home" "$empty"
@@ -2002,7 +2483,9 @@ HR_PY="$HOOKS/heredoc-rewrite.py"
 if [ -f "$HR_SH" ] && [ -f "$HR_PY" ]; then
   [ -x "$HR_SH" ] || note "hooks/heredoc-rewrite.sh not executable"
   python3 -m py_compile "$HR_PY" 2>/dev/null && ok "heredoc-rewrite.py parses" || bad "heredoc-rewrite.py SYNTAX ERROR"
-  if command -v python3 >/dev/null && [ -f "$HOME/.claude/settings.json" ]; then
+  if ! machine; then
+    :
+  elif command -v python3 >/dev/null && [ -f "$HOME/.claude/settings.json" ]; then
     if python3 - <<'PY'
 import json, pathlib, sys
 cfg = json.loads(pathlib.Path.home().joinpath(".claude/settings.json").read_text())
@@ -2064,7 +2547,9 @@ fi
 
 # --- crontab ---------------------------------------------------------------
 echo "[crontab]"
-if command -v crontab >/dev/null; then
+if ! machine; then
+  :
+elif command -v crontab >/dev/null; then
   ct="$(crontab -l 2>/dev/null || true)"
   echo "$ct" | grep -q 'agents-symlink-guard/check-links.sh' && ok "crontab symlink guard" || bad "crontab missing symlink guard"
   echo "$ct" | grep -q 'agents-symlink-guard/merge-strays.sh' && ok "crontab stray-merge" || bad "crontab missing stray-merge"
@@ -2104,7 +2589,7 @@ fi
 
 # --- local inventory vs installed binaries (INFO if a CLI is not installed) --
 echo "[inventory vs installed]"
-if command -v python3 >/dev/null; then
+if machine && command -v python3 >/dev/null; then
   if INV_MD="$AGENTS_HOME/inventory.local.md" INV_REFRESH="$INV_REFRESH" python3 - <<'PY'
 import importlib.util, os, pathlib, re, sys
 p = pathlib.Path(os.environ["INV_MD"])
@@ -2407,6 +2892,55 @@ if grep -qF 'Bash(elan *)' "$AGENTS_HOME/permissions.json" \
 else
   bad "permissions.json missing Lean allow rules"
 fi
+# install-elan.sh runs nothing whose sha256 is not the pin. A stub release
+# stands in for GitHub, and the stub installer leaves a marker when it runs.
+if grep -q 'releases/latest/download' "$HOOKS/install-elan.sh" \
+   || ! grep -qE '^PIN_VERSION="v[0-9]+\.[0-9]+\.[0-9]+"$' "$HOOKS/install-elan.sh" \
+   || ! grep -qE '^PIN_SHA256_X86_64="[0-9a-f]{64}"$' "$HOOKS/install-elan.sh" \
+   || ! grep -qE '^PIN_SHA256_AARCH64="[0-9a-f]{64}"$' "$HOOKS/install-elan.sh"; then
+  bad "install-elan.sh does not pin an exact elan version and a sha256 per arch"
+else
+  ok "install-elan.sh pins an exact elan version and a sha256 per arch"
+fi
+case "$(uname -m)" in
+  x86_64)        _el_triple=x86_64-unknown-linux-gnu ;;
+  aarch64|arm64) _el_triple=aarch64-unknown-linux-gnu ;;
+  *)             _el_triple="" ;;
+esac
+if [ -z "$_el_triple" ] || PATH=/usr/bin:/bin command -v elan >/dev/null 2>&1; then
+  info "install-elan fixture skipped (unsupported arch, or a system-wide elan)"
+else
+  _el="$(mktemp -d -p "$VTMP")"
+  mkdir -p "$_el/rel/vTEST" "$_el/pkg"
+  cat > "$_el/pkg/elan-init" <<'EOF'
+#!/bin/sh
+[ "$1" = "--help" ] && exit 0
+mkdir -p "$ELAN_HOME/bin"
+printf '#!/bin/sh\nexit 0\n' > "$ELAN_HOME/bin/elan"
+chmod +x "$ELAN_HOME/bin/elan"
+: > "$ELAN_HOME/installer-ran"
+EOF
+  chmod +x "$_el/pkg/elan-init"
+  tar -czf "$_el/rel/vTEST/elan-$_el_triple.tar.gz" -C "$_el/pkg" elan-init
+  _el_sum="$(sha256sum "$_el/rel/vTEST/elan-$_el_triple.tar.gz" | awk '{print $1}')"
+  _el_run() {
+    _rc=0
+    env PATH=/usr/bin:/bin ELAN_HOME="$_el/home" ELAN_RELEASE_BASE="file://$_el/rel" \
+      bash "$HOOKS/install-elan.sh" "$@" >"$VTMP/elan.out" 2>&1 || _rc=$?
+  }
+  _el_run --version vTEST --sha256 0000000000000000000000000000000000000000000000000000000000000000
+  [ "$_rc" -eq 1 ] && grep -q 'sha256 mismatch' "$VTMP/elan.out" && [ ! -e "$_el/home/installer-ran" ] \
+    && ok "install-elan refuses a tarball that is not the pinned sha256 and runs nothing" \
+    || bad "install-elan ran, or passed, an unverified tarball (exit $_rc)"
+  _el_run --version vTEST
+  [ "$_rc" -eq 1 ] && grep -q 'needs --sha256' "$VTMP/elan.out" && [ ! -e "$_el/home/installer-ran" ] \
+    && ok "install-elan refuses a version that has no pinned sha256" \
+    || bad "install-elan accepted an unpinned version (exit $_rc)"
+  _el_run --version vTEST --sha256 "$_el_sum"
+  [ "$_rc" -eq 0 ] && [ -e "$_el/home/installer-ran" ] \
+    && ok "install-elan runs the installer once the sha256 matches" \
+    || bad "install-elan failed on a matching sha256 (exit $_rc)"
+fi
 if grep -q 'docs/paper/lean/.lake/' "$TEMPLATE/.gitignore"; then
   ok "project-template gitignores docs/paper/lean/.lake/"
 else
@@ -2420,7 +2954,7 @@ elif [ -x "${HOME}/.elan/bin/lake" ]; then
   _lake="${HOME}/.elan/bin/lake"
 fi
 if [ -n "$_lake" ]; then
-  _leantmp="$(mktemp -d)"
+  _leantmp="$(mktemp -d -p "$VTMP")"
   cp -a "$PAPER_TPL/lean/." "$_leantmp/"
   if (cd "$_leantmp" && PATH="${HOME}/.elan/bin:${PATH}" "$_lake" build >/dev/null 2>&1); then
     ok "lake build of paper-template/lean/ (scratch)"
@@ -2470,7 +3004,9 @@ for _s in $_skill_list; do
   fi
   if grep -rqiE 'superpowers:|Co-Authored-By' "$_sd"; then bad "skill $_s: superpowers: cross-ref or co-author line"; fi
   _cl="$HOME/.claude/skills/$_s"
-  if [ -L "$_cl" ] && [ "$(readlink -f "$_cl")" = "$(readlink -f "$_sd")" ]; then
+  if ! machine; then
+    :
+  elif [ -L "$_cl" ] && [ "$(readlink -f "$_cl")" = "$(readlink -f "$_sd")" ]; then
     ok "skill $_s: ~/.claude/skills symlink"
   else
     bad "skill $_s: ~/.claude/skills/$_s does not resolve to $_sd (run setup.sh)"
@@ -2487,7 +3023,7 @@ done
 # status must not abort this script: set -e used to die here with no
 # FAIL line, and the boot row said "verify FAIL (0)".
 _oc_helper="$HOOKS/opencode-skill-list.sh"
-_oc_fix="$(mktemp -d)"
+_oc_fix="$(mktemp -d -p "$VTMP")"
 cat >"$_oc_fix/opencode" <<'EOF'
 #!/bin/sh
 if [ "$1" = "api" ]; then
@@ -2545,7 +3081,7 @@ fi
 rm -rf "$_oc_fix"
 if command -v opencode >/dev/null 2>&1; then
   # to a file, not $(...): opencode exits before flushing a >64 KB pipe.
-  _ocf="$(mktemp)"
+  _ocf="$(mktemp -p "$VTMP")"
   _oc_rc=0
   bash "$_oc_helper" >"$_ocf" 2>/dev/null || _oc_rc=$?
   _oc="$(cat "$_ocf" 2>/dev/null || true)"
@@ -2592,11 +3128,11 @@ echo
 if [ "$fail" -eq 0 ]; then
   echo "== PASS (warnings=$warns) =="
   echo "After future ~/.agents edits:  bash ~/.agents/setup.sh"
-  _slip clear ecosystem
+  machine && _slip clear ecosystem
   exit 0
 else
   echo "== FAIL (fail>=1, warnings=$warns) =="
   echo "Fix issues, then:  bash ~/.agents/setup.sh && bash ~/.agents/verify.sh"
-  _slip set fail ecosystem "verify FAIL ($nfails) — bash ~/.agents/verify.sh"
+  machine && _slip set fail ecosystem "verify FAIL ($nfails) — bash ~/.agents/verify.sh"
   exit 1
 fi

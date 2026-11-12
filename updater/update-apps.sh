@@ -38,6 +38,31 @@ mise_managed() {
   return 1
 }
 
+# Ensure the installed CLI bins are on PATH (cron runs with a minimal env).
+# No mise dirs here on purpose: a direct upgrade must only ever see a vendor bin.
+export PATH="$HOME/.opencode/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+# One login-shell probe per tool, kept for the whole run.
+MANAGED_opencode=0; MANAGED_grok=0; MANAGED_claude=0
+mise_managed opencode && MANAGED_opencode=1
+mise_managed grok && MANAGED_grok=1
+mise_managed claude && MANAGED_claude=1
+
+# A tool this script would upgrade itself: installed outside mise.
+direct_opencode() { [ "$MANAGED_opencode" = 0 ] && command -v opencode >/dev/null 2>&1; }
+direct_grok()     { [ "$MANAGED_grok" = 0 ] && command -v grok >/dev/null 2>&1; }
+direct_claude()   { [ "$MANAGED_claude" = 0 ] && { command -v claude >/dev/null 2>&1 || [ -d "$CLAUDE_VERSIONS_DIR" ]; }; }
+
+# --needs-net: exit 0 when a direct upgrade would run, 3 when none would.
+# boot-check.sh asks before it waits for the network: on a machine where mise
+# owns every CLI the wait bought nothing and still held the dashboard.
+if [ "${1:-}" = "--needs-net" ]; then
+  if direct_opencode || direct_grok || direct_claude; then
+    exit 0
+  fi
+  exit 3
+fi
+
 # Refuse to run if another update is already in progress (boot-check or resume)
 exec 9>"$LOCK"
 if ! flock -n 9; then
@@ -45,10 +70,29 @@ if ! flock -n 9; then
   exit 0
 fi
 
-# Ensure the installed CLI bins are on PATH (cron runs with a minimal env)
-export PATH="$HOME/.opencode/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+# Cap the log at its last 3000 lines once it passes 6000. It only ever grew.
+if [ -f "$LOG" ] && [ "$(wc -l < "$LOG")" -gt 6000 ]; then
+  tail -n 3000 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+fi
+
+# How the header names a tool: where the login shell finds a mise-managed one,
+# the version of a vendor install, or that it is absent. "NOT FOUND" for a tool
+# that works in every terminal was this script's PATH talking, not the machine.
+describe_tool() {
+  local tool="$1" managed="$2" p
+  if [ "$managed" = 1 ]; then
+    p="$(env -i HOME="$HOME" TERM=dumb bash -lc "command -v $tool" 2>/dev/null | head -1)"
+    echo "mise-managed ($p)"
+  elif command -v "$tool" >/dev/null 2>&1; then
+    "$tool" --version 2>&1 | head -1
+  else
+    echo "not installed"
+  fi
+}
 
 # --- GitHub token (raises unauth 60/hr → 5000/hr; opencode upgrade hits api.github.com) ---
+# Order: the environment, then the GitHub CLI's own login, then a token file.
+# gh keeps its token in the keyring; a file is the plaintext fallback.
 load_github_token() {
   if [ -n "${GITHUB_TOKEN:-}" ]; then
     export GITHUB_TOKEN
@@ -57,6 +101,13 @@ load_github_token() {
   if [ -n "${GH_TOKEN:-}" ]; then
     export GITHUB_TOKEN="$GH_TOKEN"
     return 0
+  fi
+  if command -v gh >/dev/null 2>&1; then
+    GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
+    if [ -n "$GITHUB_TOKEN" ]; then
+      export GITHUB_TOKEN
+      return 0
+    fi
   fi
   local f
   for f in \
@@ -287,26 +338,9 @@ print(p.get("checksum") or "", p.get("size") or 0)
   echo "==================================================="
   echo "[$(ts)] update-apps run START"
   echo "  host: $(hostname)  user: $(whoami)  PATH=$PATH"
-  if command -v opencode >/dev/null 2>&1; then
-    echo "  opencode: $(opencode --version 2>&1)"
-  else
-    echo "  opencode: NOT FOUND"
-  fi
-  if command -v grok >/dev/null 2>&1; then
-    echo "  grok:     $(grok --version 2>&1)"
-  else
-    echo "  grok:     NOT FOUND"
-  fi
-  if command -v claude >/dev/null 2>&1; then
-    echo "  claude:   $(claude --version 2>&1)"
-  else
-    echo "  claude:   NOT FOUND"
-  fi
-  if load_github_token; then
-    echo "  github:   token loaded (auth API rate limit)"
-  else
-    echo "  github:   no token (unauth 60/hr — put PAT in ~/.config/github/token)"
-  fi
+  echo "  opencode: $(describe_tool opencode "$MANAGED_opencode")"
+  echo "  grok:     $(describe_tool grok "$MANAGED_grok")"
+  echo "  claude:   $(describe_tool claude "$MANAGED_claude")"
 } >> "$LOG"
 
 fail=0
@@ -315,11 +349,15 @@ fail=0
 clean_incomplete_claude
 
 # --- opencode ---
-if mise_managed opencode; then
+if [ "$MANAGED_opencode" = 1 ]; then
   echo "[$(ts)] opencode mise-managed — skip direct upgrade (mise cadence applies)" >> "$LOG"
 elif command -v opencode >/dev/null 2>&1; then
   echo "[$(ts)] -> opencode upgrade" >> "$LOG"
-  load_github_token || true
+  if load_github_token; then
+    echo "[$(ts)]    github token loaded (authenticated API rate limit)" >> "$LOG"
+  else
+    echo "[$(ts)]    no github token (unauth 60/hr) — run 'gh auth login', or put a PAT in ~/.config/github/token" >> "$LOG"
+  fi
   remaining="$(gh_rate_remaining || true)"
   if [ -n "${remaining:-}" ]; then
     echo "[$(ts)]    github rate remaining=${remaining}" >> "$LOG"
@@ -328,7 +366,7 @@ elif command -v opencode >/dev/null 2>&1; then
   # Need spare: pre-check + upgrade call
   if [ -n "${remaining:-}" ] && [ "$remaining" -lt 3 ] 2>/dev/null; then
     echo "[$(ts)] !! opencode SKIPPED — GitHub API rate limit exhausted (remaining=${remaining})" >> "$LOG"
-    echo "[$(ts)]    fix: wait for reset, or write a classic PAT (public_repo) to ~/.config/github/token" >> "$LOG"
+    echo "[$(ts)]    fix: wait for reset, run 'gh auth login', or write a classic PAT (public_repo) to ~/.config/github/token" >> "$LOG"
   else
     local_ver="$(opencode --version 2>/dev/null | head -1 | tr -d '[:space:]')"
     latest_ver="$(opencode_latest_tag || true)"
@@ -361,7 +399,7 @@ else
 fi
 
 # --- grok ---
-if mise_managed grok; then
+if [ "$MANAGED_grok" = 1 ]; then
   echo "[$(ts)] grok mise-managed — skip direct update (mise cadence applies)" >> "$LOG"
 elif command -v grok >/dev/null 2>&1; then
   echo "[$(ts)] -> grok update" >> "$LOG"
@@ -381,7 +419,7 @@ else
 fi
 
 # --- claude (CDN resume path; NOT `claude update` which restarts every kill) ---
-if mise_managed claude; then
+if [ "$MANAGED_claude" = 1 ]; then
   echo "[$(ts)] claude mise-managed — skip CDN update (mise cadence applies)" >> "$LOG"
 elif command -v claude >/dev/null 2>&1 || [ -d "$CLAUDE_VERSIONS_DIR" ]; then
   echo "[$(ts)] -> claude update (CDN resume)" >> "$LOG"

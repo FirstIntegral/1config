@@ -24,6 +24,16 @@ run() {
 if run "$@"; then
   exit 0
 fi
+rc=$?
+
+# git also calls this to check a signature (`--verify`). A bad or unknown
+# signature is an answer, not a locked key: the unlock hook cannot change it,
+# and running it for every unsigned commit in a log made %G? slow.
+for arg in "$@"; do
+  if [ "$arg" = "--verify" ]; then
+    exit "$rc"
+  fi
+done
 
 if [ -x "$UNLOCK" ]; then
   bash "$UNLOCK" >/dev/null 2>&1 || true

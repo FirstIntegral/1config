@@ -1,0 +1,7 @@
+# Signers this brain accepts for an incoming commit.
+# Login sync (hooks/brain-sync.sh) and sync.sh fast-forward only over commits
+# whose primary-key fingerprint is listed here, or is this machine's own
+# signing key. One fingerprint per line, as `git log --format=%GP` prints it.
+# GitHub's web-flow key is left out on purpose: a commit made on github.com
+# waits for a manual pull. A fork replaces the line below with its own key.
+DA47F490532DA02CE4E652E695FBA6E0AA245342

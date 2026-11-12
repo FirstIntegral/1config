@@ -37,6 +37,11 @@ log() { echo "[$TS] $*" >> "$LOG"; }
 exec 9>"$DIR/.lock"
 flock 9
 
+# Cap the log at its last 2000 lines once it passes 4000. It only ever grew.
+if [ -f "$LOG" ] && [ "$(wc -l < "$LOG")" -gt 4000 ]; then
+  tail -n 2000 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
+fi
+
 DISABLED_STUB='# Memory Index — DISABLED
 
 Disabled by user policy. Do not write memories here.

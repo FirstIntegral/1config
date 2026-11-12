@@ -3,9 +3,18 @@
 # Source lives under ~/.agents; opened on login via autostart + launch.sh.
 set -u
 
-export PATH="$HOME/.opencode/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
-
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
+
+# Autostart does not inherit the login shell's PATH. hooks/tool-path.sh puts it
+# first, so a mise-managed CLI resolves here the way it does in a terminal.
+if [ -f "$AGENTS_HOME/hooks/tool-path.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$AGENTS_HOME/hooks/tool-path.sh"
+  PATH="$(agents_tool_path)"
+else
+  PATH="$HOME/.opencode/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+fi
+export PATH
 GUARD_DIR="$HOME/cron-jobs/agents-symlink-guard"
 MEM_DIR="$HOME/cron-jobs/claude-memory-guard"
 UPD_DIR="$HOME/cron-jobs/ai-terminal-tools-update-on-boot"
@@ -149,16 +158,16 @@ check_network() {
 
 check_symlinks() {
   local okc=0 f
-  for f in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.claude/CLAUDE.md"; do
+  for f in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.cursor/AGENTS.md"; do
     if [ -L "$f" ] && [ "$(readlink -f "$f" 2>/dev/null)" = "$AGENTS_HOME/AGENTS.md" ]; then
       okc=$((okc + 1))
     fi
   done
-  if [ "$okc" -eq 3 ]; then
-    row ok "symlinks" "3/3 → ~/.agents/AGENTS.md"
+  if [ "$okc" -eq 4 ]; then
+    row ok "symlinks" "4/4 → ~/.agents/AGENTS.md"
     return 0
   fi
-  row fail "symlinks" "$okc/3 ok — run setup.sh"
+  row fail "symlinks" "$okc/4 ok — run setup.sh"
   return 1
 }
 
@@ -230,13 +239,22 @@ check_verify() {
   return 1
 }
 
+tool_version() {
+  # First dotted number the tool prints, or "?". The pipeline's own status is
+  # head's, so an `|| echo '?'` after it never fired and a missing CLI printed blank.
+  local v
+  v="$("$1" --version 2>/dev/null | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
+  printf '%s\n' "${v:-?}"
+}
+
 check_versions() {
-  local g c o
-  g="$(grok --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
-  c="$(claude --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
-  o="$(opencode --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
-  if [ "$g" != "?" ] || [ "$c" != "?" ] || [ "$o" != "?" ]; then
-    row ok "tool versions" "grok $g · claude $c · opencode $o"
+  local g c o u
+  g="$(tool_version grok)"
+  c="$(tool_version claude)"
+  o="$(tool_version opencode)"
+  u="$(tool_version cursor-agent)"
+  if [ "$g" != "?" ] || [ "$c" != "?" ] || [ "$o" != "?" ] || [ "$u" != "?" ]; then
+    row ok "tool versions" "grok $g · claude $c · opencode $o · cursor $u"
   else
     row warn "tool versions" "CLIs not on PATH yet"
   fi
@@ -379,6 +397,10 @@ check_brain_sync() {
     2) row warn "brain sync" "local ahead — unpushed commits" ;;
     3) row warn "brain sync" "behind + local edits — manual merge" ;;
     4) row fail "brain sync" "$out" ;;
+    5) row warn "brain sync" "$out"
+       note "review, then: git -C ~/.agents merge --ff-only origin/main && bash ~/.agents/setup.sh" ;;
+    6) row fail "brain sync" "$out"
+       note "an unsigned push to origin is not installed. Inspect: git -C ~/.agents log main..origin/main" ;;
     *) row warn "brain sync" "$out" ;;
   esac
 }
@@ -470,8 +492,33 @@ check_dots_sync() {
     row warn "omarchy dots" "no sync.sh — clone omarchy-dots to ~/Projects/omarchy-dots"
     return 1
   fi
+  # sync.sh applies the pack to ~/.config the moment it is pulled, so the pull
+  # waits on the same signature gate as the brain. Fetch here, verify, then let
+  # sync.sh work from the ref this function fetched (no second fetch to race).
+  local gate="$AGENTS_HOME/hooks/verify-incoming.sh" skip_fetch=0 base tip why grc
+  if [ -x "$gate" ] && git -C "$dots" rev-parse --git-dir >/dev/null 2>&1; then
+    if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10" timeout 45 \
+         git -C "$dots" fetch -q origin "+refs/heads/main:refs/remotes/origin/main" 2>/dev/null; then
+      skip_fetch=1
+      base="$(git -C "$dots" rev-parse -q --verify refs/heads/main 2>/dev/null)"
+      tip="$(git -C "$dots" rev-parse -q --verify refs/remotes/origin/main 2>/dev/null)"
+      if [ -n "$base" ] && [ -n "$tip" ] && [ "$base" != "$tip" ] \
+         && git -C "$dots" merge-base --is-ancestor "$base" "$tip" 2>/dev/null; then
+        why="$(bash "$gate" "$dots" "$base" "$tip" 2>&1)"
+        grc=$?
+        if [ "$grc" -eq 5 ]; then
+          row warn "omarchy dots" "not pulled — $why"
+          note "review, then: git -C ~/Projects/omarchy-dots merge --ff-only origin/main && bash ~/Projects/omarchy-dots/sync.sh"
+          return 1
+        elif [ "$grc" -ne 0 ]; then
+          row fail "omarchy dots" "NOT pulled — $why"
+          return 1
+        fi
+      fi
+    fi
+  fi
   local out rc last
-  out="$(bash "$script" 2>&1)"
+  out="$(DOTS_SYNC_SKIP_FETCH="$skip_fetch" bash "$script" 2>&1)"
   rc=$?
   last="$(echo "$out" | grep -E '^dots-sync:' | tail -1 | sed 's/^dots-sync: //')"
   [ -n "$last" ] || last="$(echo "$out" | tail -1)"
@@ -591,6 +638,8 @@ setup_gate_selftest() {
   brain_sync_needs_setup 3 "3 commit(s) behind but tree dirty — not pulling" && fail=1
   brain_sync_needs_setup 4 "diverged from origin/main (3 behind, 1 ahead) — needs a manual merge" && fail=1
   brain_sync_needs_setup 1 "brain-sync: fetch failed (offline or key not available)" && fail=1
+  brain_sync_needs_setup 5 "2 behind, not pulled — abc1234 was made on github.com (web-flow signature)" && fail=1
+  brain_sync_needs_setup 6 "2 behind, NOT pulled — abc1234 is unsigned" && fail=1
   if [ "$fail" -ne 0 ]; then
     echo "setup-gate selftest failed" >&2
     return 1

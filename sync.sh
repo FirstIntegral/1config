@@ -9,6 +9,10 @@
 # allowlisted as the verified push path. Canonical permissions.json still lists generic
 # `git push` as ask (restore-gate); live tools omit that ask while bash_without_prompt is true.
 # Signing is NEVER bypassed — a locked key is an error to fix, not to work around.
+#
+# Order: fetch, take what origin has (fast-forward only, signed by a listed key), install and
+# verify that tree, scan for secrets, commit, check outgoing signatures, push. A diverged
+# brain stops before anything is installed. Nothing here merges, rebases, or forces.
 set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
@@ -16,13 +20,14 @@ BRANCH="main"
 run_setup=1
 dry_run=0
 msg=""
+orig_args=("$@")
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -m|--message) msg="${2:-}"; shift 2 ;;
     --no-setup)   run_setup=0; shift ;;
     --dry-run)    dry_run=1; shift ;;
-    -h|--help)    sed -n '2,10p' "$0"; exit 0 ;;
+    -h|--help)    sed -n '2,14p' "$0"; exit 0 ;;
     *)            echo "sync.sh: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -72,7 +77,6 @@ for remote in "${push_urls[@]}"; do
   fi
 done
 
-# 1. install + verify: never push a brain that fails its own checks
 if [ "$dry_run" != 1 ] && [ "${AGENTS_UPDATE_LOCK_HELD:-0}" != 1 ]; then
   command -v flock >/dev/null || { echo "sync.sh: flock required" >&2; exit 1; }
   update_dir="$HOME/cron-jobs/ai-terminal-tools-update-on-boot"
@@ -81,6 +85,50 @@ if [ "$dry_run" != 1 ] && [ "${AGENTS_UPDATE_LOCK_HELD:-0}" != 1 ]; then
   flock 8
   export AGENTS_UPDATE_LOCK_HELD=1
 fi
+
+# 1. origin first. Verifying, then finding out origin moved, means a commit on a
+# stale base and a rejected push. Take what origin has before anything is installed.
+echo "[sync 1/5] origin"
+if [ "$dry_run" = 1 ]; then
+  echo "  fetch    skipped under --dry-run (local refs only)"
+elif ! git fetch -q origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
+  echo "sync.sh: fetch failed — not committing against stale remote state" >&2
+  exit 1
+elif git rev-parse -q --verify "refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
+  behind="$(git rev-list --count "$BRANCH..origin/$BRANCH")"
+  ahead="$(git rev-list --count "origin/$BRANCH..$BRANCH")"
+  if [ "$behind" -gt 0 ] && [ "$ahead" -gt 0 ]; then
+    echo "sync.sh: diverged from origin/$BRANCH ($behind behind, $ahead ahead) — not committing." >&2
+    echo "  merge by hand, then re-run: git -C $AGENTS_HOME merge origin/$BRANCH" >&2
+    exit 1
+  fi
+  if [ "$behind" -gt 0 ]; then
+    gate_rc=0
+    gate_out="$(bash "$_script_dir/hooks/verify-incoming.sh" "$AGENTS_HOME" "$BRANCH" "origin/$BRANCH" 2>&1)" || gate_rc=$?
+    if [ "$gate_rc" -ne 0 ]; then
+      echo "sync.sh: origin/$BRANCH is $behind commit(s) ahead and not signed by a listed key — not taken." >&2
+      echo "  $gate_out" >&2
+      echo "  review, then: git -C $AGENTS_HOME merge --ff-only origin/$BRANCH" >&2
+      exit 1
+    fi
+    # A fast-forward leaves edits to other files in place and refuses an overlap.
+    if ! ff_out="$(git merge --ff-only "origin/$BRANCH" 2>&1)"; then
+      echo "sync.sh: origin/$BRANCH is $behind commit(s) ahead and overlaps local edits — not committing." >&2
+      printf '%s\n' "$ff_out" | sed 's/^/  /' >&2
+      echo "  set the edits aside or resolve by hand, then re-run." >&2
+      exit 1
+    fi
+    echo "  took     $behind commit(s) from origin/$BRANCH"
+    # The pull may have replaced this file, and bash reads a script as it runs.
+    # Start over on the script that is now on disk. It fetches, finds nothing new,
+    # and installs the tree that was just pulled.
+    export AGENTS_HOME
+    exec bash "$_script_dir/sync.sh" ${orig_args[@]+"${orig_args[@]}"}
+  fi
+  echo "  current  nothing new on origin/$BRANCH"
+fi
+
+# 2. install + verify: never push a brain that fails its own checks
 check_log="$(mktemp /tmp/agents-sync-check.XXXXXX)"
 trap 'rm -f "$check_log"' EXIT
 run_check() {
@@ -100,24 +148,18 @@ run_check() {
 }
 
 if [ "$dry_run" = 1 ]; then
-  echo "[sync 1/4] verify.sh (--dry-run; install skipped)"
+  echo "[sync 2/5] verify.sh (--dry-run; install skipped)"
   run_check "verify.sh" bash "$AGENTS_HOME/verify.sh"
 elif [ "$run_setup" = 1 ]; then
-  echo "[sync 1/4] setup.sh (installs + runs verify.sh)"
+  echo "[sync 2/5] setup.sh (installs + runs verify.sh)"
   run_check "setup.sh" env AGENTS_UPDATE_LOCK_HELD=1 bash "$AGENTS_HOME/setup.sh"
 else
-  echo "[sync 1/4] verify.sh (--no-setup skips install only)"
+  echo "[sync 2/5] verify.sh (--no-setup skips install only)"
   run_check "verify.sh" bash "$AGENTS_HOME/verify.sh"
 fi
 
-# 2. anything to commit?
-echo "[sync 2/4] working tree"
-if [ "$dry_run" = 1 ]; then
-  echo "  fetch    skipped under --dry-run (local refs only)"
-elif ! git fetch -q origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
-  echo "sync.sh: fetch failed — not committing against stale remote state" >&2
-  exit 1
-fi
+# 3. anything to commit?
+echo "[sync 3/5] working tree"
 if [ -z "$(git status --porcelain)" ]; then
   echo "  clean    nothing to commit"
   if [ -n "$(git log "origin/$BRANCH..$BRANCH" --oneline 2>/dev/null)" ]; then
@@ -130,13 +172,24 @@ else
   git status --short | sed 's/^/  /'
 fi
 
+# This repo is public. A token in a hook or a doc must stop here, not on GitHub.
+# The scan covers the edits about to be committed and any commit not yet pushed.
+scan_base="origin/$BRANCH"
+git rev-parse -q --verify "$scan_base" >/dev/null 2>&1 || scan_base=""
+if ! bash "$_script_dir/hooks/secret-scan.sh" "$AGENTS_HOME" ${scan_base:+"$scan_base"}; then
+  echo "sync.sh: a secret-shaped string is about to be published — not committing." >&2
+  echo "  remove it. A fixture that needs a fake token carries gitleaks:allow on that line." >&2
+  exit 1
+fi
+echo "  scan     no secret-shaped strings"
+
 if [ "$dry_run" = 1 ]; then
   echo "[sync] --dry-run: stopping before commit"
   exit 0
 fi
 
-# 3. commit (signed; gpg agent is unlocked from the keyring, never bypassed)
-echo "[sync 3/4] commit"
+# 4. commit (signed; gpg agent is unlocked from the keyring, never bypassed)
+echo "[sync 4/5] commit"
 if [ -n "$(git status --porcelain)" ]; then
   [ -n "$msg" ] || msg="Update brain: $(git status --porcelain | awk '{print $NF}' | xargs -n99 echo | cut -c1-60)"
   [ -x "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" ] && bash "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
@@ -164,8 +217,8 @@ while IFS= read -r commit; do
   esac
 done <<< "$outgoing"
 
-# 4. push
-echo "[sync 4/4] push origin $BRANCH"
+# 5. push
+echo "[sync 5/5] push origin $BRANCH"
 git push -q origin "$BRANCH"
 git log -1 --format='  pushed   %h %s'
 echo "  brain in sync with github"
