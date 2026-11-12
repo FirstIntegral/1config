@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-12 — The updater drops a GitHub token that gets a 401; revoking one gh token ended them all
+
+**Decision:** `updater/update-apps.sh` asks GitHub about each token candidate once (`GET /rate_limit`). A 401 skips that source and names it in the log. Any other answer, or no answer, keeps the token. `update-apps.sh --token-source` prints the source that would be used and the sources GitHub refused, with no lock, no log line, and no upgrade.
+
+**Why:** On 2026-11-12 five old GitHub CLI tokens that sat in parked keyring files were revoked through `POST /credentials/revoke`, after the owner chose that. The token `gh` was using was not in that request. It stopped working within the minute: `gh auth status` said the token in `hosts.yml` was invalid, and the owner had to run `gh auth login` again. The endpoint's page lists `gho_` tokens and does not say that revoking one ends the others; the agent had told the owner the current login would stay, and that was wrong. Since the first commit of this review the updater takes `gh auth token` before a token file. On a machine where OpenCode is not managed by mise, a dead `gh` login would have made every boot's `opencode upgrade` fail with 401 until someone logged in again, although an unauthenticated call works.
+
+**Rejected:** Treating any failed probe as a refusal (a machine that is offline would throw a good token away). Asking `gh auth status` (slower, and it also fails for another host's login). Leaving the order alone and telling the owner to log in (the dashboard would show a failed update for a reason that is not an update).
+
+Before a `gho_` token goes through that endpoint again: expect every GitHub CLI login of that account to end, on every machine, and say so first.
+
 ## 2026-11-12 — GitHub guards on the brain repo: a ruleset on `main`, secret scanning, private reports
 
 **Policy:** github_main_ruleset=signed-no-force-no-delete

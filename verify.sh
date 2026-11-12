@@ -1546,6 +1546,45 @@ if [ -d "$UPD_SRC" ]; then
     info "systemd resume shim not installed (optional): sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh"
   fi
 
+  # A token GitHub refuses must not be used: every call would fail with 401 where an
+  # unauthenticated one works. Stub gh and curl sit in a scratch home; no network.
+  _tk="$(mktemp -d -p "$VTMP")"
+  mkdir -p "$_tk/.local/bin" "$_tk/.config/github"
+  cat > "$_tk/.local/bin/gh" <<'EOF'
+#!/bin/sh
+[ "$1 $2" = "auth token" ] || exit 1
+[ -n "${STUB_GH_TOKEN:-}" ] || exit 1
+printf '%s\n' "$STUB_GH_TOKEN"
+EOF
+  cat > "$_tk/.local/bin/curl" <<'EOF'
+#!/bin/sh
+# Answers the rate_limit probe only: 401 for a token named in STUB_DEAD, else STUB_CODE or 200.
+tok=""
+for a in "$@"; do
+  case "$a" in "Authorization: Bearer "*) tok="${a#Authorization: Bearer }" ;; esac
+done
+case " ${STUB_DEAD:-} " in
+  *" $tok "*) printf '401' ;;
+  *) printf '%s' "${STUB_CODE:-200}" ;;
+esac
+EOF
+  chmod +x "$_tk/.local/bin/gh" "$_tk/.local/bin/curl"
+  _tksrc() { env -i HOME="$_tk" PATH=/usr/bin:/bin "$@" bash "$UPD_SRC/update-apps.sh" --token-source 2>/dev/null || true; }
+  _t1="$(_tksrc STUB_GH_TOKEN=tok-live)"
+  _t2="$(_tksrc STUB_GH_TOKEN=tok-dead STUB_DEAD=tok-dead)"
+  printf 'tok-file\n' > "$_tk/.config/github/token"
+  _t3="$(_tksrc STUB_GH_TOKEN=tok-dead STUB_DEAD=tok-dead)"
+  _t4="$(_tksrc GITHUB_TOKEN=tok-env STUB_GH_TOKEN=tok-live STUB_DEAD=tok-env)"
+  _t5="$(_tksrc STUB_GH_TOKEN=tok-live STUB_CODE=000)"
+  if [ "$_t1" = "source=gh refused=-" ] && [ "$_t2" = "source=none refused=gh" ] \
+     && [ "$_t3" = "source=file refused=gh" ] && [ "$_t4" = "source=gh refused=env-GITHUB_TOKEN" ] \
+     && [ "$_t5" = "source=gh refused=-" ] \
+     && [ -z "$(find "$_tk" -name '*.log' -o -name '.update.lock' | head -n 1)" ]; then
+    ok "updater skips a GitHub token that gets a 401, falls back to the next source, and keeps one it cannot ask about"
+  else
+    bad "updater token choice wrong: live='$_t1' dead='$_t2' dead+file='$_t3' dead-env='$_t4' offline='$_t5'"
+  fi
+
   # Exercise user/home discovery and systemd-run arguments without scheduling a unit.
   # The home is a scratch one with its own on-resume.sh, so the smoke does not
   # depend on what this machine has installed.

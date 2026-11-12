@@ -53,6 +53,62 @@ direct_opencode() { [ "$MANAGED_opencode" = 0 ] && command -v opencode >/dev/nul
 direct_grok()     { [ "$MANAGED_grok" = 0 ] && command -v grok >/dev/null 2>&1; }
 direct_claude()   { [ "$MANAGED_claude" = 0 ] && { command -v claude >/dev/null 2>&1 || [ -d "$CLAUDE_VERSIONS_DIR" ]; }; }
 
+# --- GitHub token (raises unauth 60/hr → 5000/hr; opencode upgrade hits api.github.com) ---
+# Order: the environment, then the GitHub CLI's own login, then a token file.
+# gh keeps its token in the keyring, or in ~/.config/gh/hosts.yml when it has
+# no keyring; a token file is the plaintext fallback.
+#
+# A token GitHub refuses is worse than none: every call fails with 401 where
+# an unauthenticated call would work. So each candidate is asked about once.
+# A clear 401 skips that source and names it in GITHUB_TOKEN_REFUSED. Any other
+# answer, or no answer (offline), keeps the token.
+github_token_refused() {
+  local code
+  code="$(curl -s -o /dev/null --max-time 15 -w '%{http_code}' \
+    -H "Authorization: Bearer $1" \
+    -H "Accept: application/vnd.github+json" \
+    https://api.github.com/rate_limit 2>/dev/null || true)"
+  [ "$code" = "401" ]
+}
+
+# Sets GITHUB_TOKEN (exported), GITHUB_TOKEN_SOURCE, and GITHUB_TOKEN_REFUSED.
+load_github_token() {
+  local source candidate f
+  GITHUB_TOKEN_SOURCE=""
+  GITHUB_TOKEN_REFUSED=""
+  for source in env-GITHUB_TOKEN env-GH_TOKEN gh file; do
+    candidate=""
+    case "$source" in
+      env-GITHUB_TOKEN) candidate="${GITHUB_TOKEN:-}" ;;
+      env-GH_TOKEN)     candidate="${GH_TOKEN:-}" ;;
+      gh)
+        if command -v gh >/dev/null 2>&1; then
+          candidate="$(gh auth token 2>/dev/null || true)"
+        fi
+        ;;
+      file)
+        for f in "$HOME/.config/github/token" "$HOME/.config/gh/token" "$HOME/.github_token"; do
+          if [ -f "$f" ] && [ -s "$f" ]; then
+            candidate="$(tr -d '[:space:]' < "$f")"
+            [ -n "$candidate" ] && break
+          fi
+        done
+        ;;
+    esac
+    [ -n "$candidate" ] || continue
+    if github_token_refused "$candidate"; then
+      GITHUB_TOKEN_REFUSED="${GITHUB_TOKEN_REFUSED:+$GITHUB_TOKEN_REFUSED }$source"
+      continue
+    fi
+    export GITHUB_TOKEN="$candidate"
+    GITHUB_TOKEN_SOURCE="$source"
+    return 0
+  done
+  # Nothing usable. A refused token must not reach a child through the environment.
+  unset GITHUB_TOKEN
+  return 1
+}
+
 # --needs-net: exit 0 when a direct upgrade would run, 3 when none would.
 # boot-check.sh asks before it waits for the network: on a machine where mise
 # owns every CLI the wait bought nothing and still held the dashboard.
@@ -61,6 +117,14 @@ if [ "${1:-}" = "--needs-net" ]; then
     exit 0
   fi
   exit 3
+fi
+
+# --token-source: say which source the GitHub token would come from, and which
+# sources GitHub refused. Takes no lock, writes no log, upgrades nothing.
+if [ "${1:-}" = "--token-source" ]; then
+  load_github_token || true
+  echo "source=${GITHUB_TOKEN_SOURCE:-none} refused=${GITHUB_TOKEN_REFUSED:--}"
+  exit 0
 fi
 
 # Refuse to run if another update is already in progress (boot-check or resume)
@@ -88,42 +152,6 @@ describe_tool() {
   else
     echo "not installed"
   fi
-}
-
-# --- GitHub token (raises unauth 60/hr → 5000/hr; opencode upgrade hits api.github.com) ---
-# Order: the environment, then the GitHub CLI's own login, then a token file.
-# gh keeps its token in the keyring; a file is the plaintext fallback.
-load_github_token() {
-  if [ -n "${GITHUB_TOKEN:-}" ]; then
-    export GITHUB_TOKEN
-    return 0
-  fi
-  if [ -n "${GH_TOKEN:-}" ]; then
-    export GITHUB_TOKEN="$GH_TOKEN"
-    return 0
-  fi
-  if command -v gh >/dev/null 2>&1; then
-    GITHUB_TOKEN="$(gh auth token 2>/dev/null || true)"
-    if [ -n "$GITHUB_TOKEN" ]; then
-      export GITHUB_TOKEN
-      return 0
-    fi
-  fi
-  local f
-  for f in \
-    "$HOME/.config/github/token" \
-    "$HOME/.config/gh/token" \
-    "$HOME/.github_token"
-  do
-    if [ -f "$f" ] && [ -s "$f" ]; then
-      GITHUB_TOKEN="$(tr -d '[:space:]' < "$f")"
-      if [ -n "$GITHUB_TOKEN" ]; then
-        export GITHUB_TOKEN
-        return 0
-      fi
-    fi
-  done
-  return 1
 }
 
 gh_api() {
@@ -354,9 +382,12 @@ if [ "$MANAGED_opencode" = 1 ]; then
 elif command -v opencode >/dev/null 2>&1; then
   echo "[$(ts)] -> opencode upgrade" >> "$LOG"
   if load_github_token; then
-    echo "[$(ts)]    github token loaded (authenticated API rate limit)" >> "$LOG"
+    echo "[$(ts)]    github token loaded from ${GITHUB_TOKEN_SOURCE} (authenticated API rate limit)" >> "$LOG"
   else
     echo "[$(ts)]    no github token (unauth 60/hr) — run 'gh auth login', or put a PAT in ~/.config/github/token" >> "$LOG"
+  fi
+  if [ -n "$GITHUB_TOKEN_REFUSED" ]; then
+    echo "[$(ts)]    GitHub refused the token from: ${GITHUB_TOKEN_REFUSED} (401) — not used. If that is gh: run 'gh auth login'" >> "$LOG"
   fi
   remaining="$(gh_rate_remaining || true)"
   if [ -n "${remaining:-}" ]; then
