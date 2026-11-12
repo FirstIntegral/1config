@@ -2,7 +2,7 @@
 
 Complete, unambiguous spec of this machine's AI-tool setup. `setup-infographic.svg` is the visual summary; THIS file is the authoritative version. An AI given this file + the `~/.agents/` folder can recreate everything exactly. If a brain change alters what the figure depicts (components, flows, toolchain), regenerate `setup-infographic.svg` in the same turn.
 
-**TL;DR (Omarchy or Ubuntu):** clone this repo to `~/.agents` → install whatever `[0] platform` prints as missing → `bash ~/.agents/setup.sh` → machine-local GPG + `gh auth` (see `README.md`). Existing box: `git pull && bash ~/.agents/setup.sh`. Manual path: §8.
+**TL;DR (Omarchy or Ubuntu):** clone this repo to `~/.agents` → install whatever `[0] platform` prints as missing → `bash ~/.agents/setup.sh` (`--dry-run` first shows the config diffs, §8a) → machine-local GPG + `gh auth` (see `README.md`). Existing box: `git pull && bash ~/.agents/setup.sh`. Manual path: §8. Leaving: `bash ~/.agents/uninstall.sh` (§8b). Threat model: `SECURITY.md`.
 
 Human report + opinionated-default table: **`README.md`**. ADRs: **`docs/DECISIONS.md`**. This file remains the machine spec.
 
@@ -141,7 +141,7 @@ Reads `AGENTS.md` natively at global and project level — no rules wiring neede
 
 Cursor Code (the editor Agent and the `cursor-agent` CLI) reads the same rules through two generated paths, both from canonical `~/.agents/AGENTS.md`:
 
-- **Global rules** — `~/.cursor/AGENTS.md` symlink (§3) plus the generated User Rule `~/.cursor/rules/1config.mdc` (`alwaysApply: true`), written by `setup.sh` step `1c` and byte-checked by `verify.sh`. Project `AGENTS.md` files are read natively (project root and subdirectories). Cursor's own per-tool dirs under `~/.cursor/` (agents, skills-cursor, sandbox-policies) are left alone.
+- **Global rules** — `~/.cursor/AGENTS.md` symlink (§3) plus the generated User Rule `~/.cursor/rules/1config.mdc` (`alwaysApply: true`), written by `setup.sh` step `1c` and byte-checked by `verify.sh`. Project `AGENTS.md` files are read natively (project root and subdirectories). Cursor's own per-tool dirs under `~/.cursor/` (agents, skills-cursor, sandbox-policies) are left alone. The rules are not injected twice: `cursor-agent` 2026.11.11 loads the generated rule and does not read `~/.cursor/AGENTS.md` (probe 2026-11-12, a workspace under `$HOME` with no project `AGENTS.md`: one copy in context, named `~/.cursor/rules/1config.mdc`). The symlink stays, because the guard, the dashboard, and the vitals count four links.
 - **Permissions** — no persistent permission file. Command autonomy is per-invocation (`cursor-agent --force` / `--yolo` / `--sandbox`), so `permissions.json` does not fan out to Cursor. Recorded per the parity rule.
 - **Skills / memory** — tracked `~/.agents/skills` are not linked into Cursor, and Cursor's `~/.cursor/skills-cursor/` is Cursor's own. Recorded per the parity rule.
 - **Vitals** — `usage.py` counts Cursor in the links check (4 symlinks) and the agent-tools check (`claude`, `grok`, `opencode`, `cursor-agent`), and the spend roster keeps a Cursor card (`cursor-agent` presence; `~/.cursor/ai-tracking/ai-code-tracking.db` has no usage rows on this machine, so the card says there is no usage record and notes it is covered by the unified X plan).
@@ -603,6 +603,30 @@ This is the Omarchy surface of 1config. Claude, Grok, and OpenCode do not each g
 
 **Authority chain:** `SETUP.md` = machine wiring spec. `setup.sh` implements it. `AGENTS.md` = AI runtime rules (session workflow, memory policy). Keep them in sync when changing behavior.
 
+### 8a. Dry run
+
+```sh
+bash ~/.agents/setup.sh --dry-run
+```
+
+The platform probe and the config steps (`1c`, `2`, `5`, `5a` to `5f`) run against a scratch copy of the eight files they write: the Grok config, the Claude settings, the OpenCode config, the generated Cursor rule, and the four local rules. The output is a unified diff per changed file (the first 60 lines of each) and one line for every later step: the links it would create or replace, the guard and updater scripts it would copy, the scheduler, `gpg.program`, the web-flow key import, the notes clone, the autostart entry, the bar plugin, and the `1config` link. The script exits before any of those steps. It writes nothing under `$HOME` and nothing in this checkout, and it takes no lock. `verify.sh` runs it against an empty home and fails when a file appears or the tree changes.
+
+### 8b. Uninstall
+
+```sh
+bash ~/.agents/uninstall.sh                          # the plan; changes nothing
+bash ~/.agents/uninstall.sh --yes                    # remove
+bash ~/.agents/uninstall.sh --yes --restore-configs  # also put the oldest saved tool configs back
+```
+
+A plan is the default, because an uninstall typed by mistake should cost nothing. `--yes` is a red line for an agent. Each thing is removed only while it is still ours: a rules link that resolves to the canonical file, the generated Cursor rule (matched by its description line), the four local rules, a Claude skill link that points into `skills/`, the two Claude hook entries (the settings file is copied to `backups/uninstall-<ts>/` first), the schedule (`hooks/scheduler.sh remove`; other crontab lines stay), the installed script copies under `~/cron-jobs/`, the autostart entry, the `1config` link, and `gpg.program` when it still points at `hooks/gpg-git.sh`. A real file at a rules path, a skill that is not ours, and a hook that is not ours are left alone.
+
+Left in place and named at the end: the permission lists and modes in the three tool configs, the Grok memory and compat switches, the bar plugin, logs and flags under `~/cron-jobs/`, the machine-notes clone, the keyring, and this checkout with `backups/`. `--restore-configs` copies back the oldest file `setup.sh` saved under `backups/setup-*/` for each tool config, after it saves the current one. Without it, a tool keeps running Bash without a prompt if `setup.sh` turned that on; the plan says so.
+
+### 8c. The `1config` command
+
+`bin/1config <command>` runs the script that already holds the behaviour: `setup`, `verify`, `sync`, `pull` (`hooks/brain-sync.sh`), `checkpoint`, `notes`, `scan` (`hooks/secret-scan.sh`), `scheduler`, `dashboard`, `welcome`, `uninstall`. `status` prints the checkout, the scheduler, and the last boot slip. An unknown command exits 2. `setup.sh` links it to `~/.local/bin/1config`; that is a link to this checkout and not a tool binary. Agents keep calling the scripts by path, as `AGENTS.md` writes them.
+
 ### After any edit under `~/.agents/` (HARD RULE)
 
 `~/.agents/` is the source tree. Installed copies live elsewhere (`~/cron-jobs/*`, tool symlinks, Claude settings). **Any edit under `~/.agents/` must be followed by:**
@@ -620,9 +644,16 @@ bash ~/.agents/verify.sh
 Preferred (full ecosystem):
 
 ```bash
-bash ~/.agents/setup.sh    # sync + verify
-bash ~/.agents/verify.sh   # check-only; exit 0 = green
+bash ~/.agents/setup.sh          # sync + verify
+bash ~/.agents/verify.sh         # check-only; exit 0 = green
+bash ~/.agents/verify.sh --repo  # only what a clone carries; this is what CI runs
 ```
+
+**Scope.** `verify.sh` is one file with two scopes. The default checks the repo and this machine. `--repo` skips every check that reads machine state (the symlinks, the live tool configs, the installed copies, the scheduler, the brain's own git state) and keeps the fixtures, the self-tests, and the doc parity checks. A check that reads machine state sits behind the `machine` predicate. Fixtures share one scratch root that an exit trap removes, a fixture git config (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`), a fixture `BRAIN_REMOTE` and `fork-parents.txt` with the owner `fixture-owner`, and throwaway gpg keys in a scratch `GNUPGHOME`. No fixture uses the network.
+
+**CI.** `.github/workflows/ci.yml` runs on every pull request and every push to `main`, on `ubuntu-24.04`: `bash -n` on every tracked shell file, `shellcheck --severity=error -x`, `python3 -m py_compile` on every tracked Python file, `verify.sh --repo` with the checkout linked to `~/.agents` (after `apt-get` installs `texlive-latex-base` and `poppler-utils`, because the digit-refuse fixtures build real PDFs and read them back), then the skill fixtures (`skills/research-loop/orx-install-test.sh`, `skills/verification-before-completion/collect-evidence-test.sh`, and the two `skills/security-audit/*.test.cjs` files under `node --test`). The token is `contents: read`, the job reads no secret, and `actions/checkout` is pinned to a commit, so a pull request from a fork runs the same steps. `verify.sh` fails when the workflow loses a check, gains a write permission or a secret, or names an action by tag. CI does not gate a login: a merge made on github.com is refused by the signature gate until someone pulls it by hand (§1).
+
+**Security policy.** `SECURITY.md` holds the report path and the threat model: what each guard covers, what it does not, and what is not defended on purpose. `verify.sh` checks its sections, the README link, and that it lists every deny rule in `permissions.json`.
 
 Manual smoke (subset of what `verify.sh` does):
 

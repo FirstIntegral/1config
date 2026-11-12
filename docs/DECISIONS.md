@@ -1,5 +1,39 @@
 # Brain decisions
 
+## 2026-11-12 — CI runs the repo scope; its token is read-only and its action is pinned
+
+**Policy:** ci=verify-repo-scope
+
+**Decision:** `.github/workflows/ci.yml` runs on every pull request and every push to `main`, on `ubuntu-24.04`: `bash -n` and `shellcheck --severity=error -x` on every tracked shell file, `py_compile` on every tracked Python file, `verify.sh --repo` with the checkout linked to `~/.agents`, then the skill fixtures (two shell fixtures and the two `security-audit` test files under `node --test`). One step installs `texlive-latex-base` and `poppler-utils` with apt first, because the digit-refuse fixtures build real PDFs and read them back. The workflow has `permissions: contents: read`, reads no secret, and pins `actions/checkout` to commit `3d3c42e5aac5ba805825da76410c181273ba90b1` (v7.0.1) with `persist-credentials: false`. `verify.sh` fails when one of those properties goes.
+
+**Why:** The repo had no CI, and what lands on `main` reaches every machine. The repo scope already existed so that one file serves a login and a runner. ShellCheck gates on errors only: the tree still has style warnings (a tilde inside a message string, an unused variable), and a gate that starts red teaches people to ignore it. The runner's own ShellCheck is used because the image is pinned by name and a download step would be one more thing to verify. The event is `pull_request`, so code from a fork never sees a token that can write.
+
+**Rejected:** `pull_request_target`. An action named by tag (`@v7` moves). Warning-level ShellCheck as the gate. Running the machine scope on a runner (it has no install). Skipping the digit-refuse fixtures where TeX is missing (a skipped gate looks green). Making a green run a condition of the login pull: the signature gate already holds a merge made on github.com, and a login must not depend on GitHub's API.
+
+## 2026-11-12 — A dry run on a copy, an uninstall that plans first, and one entrypoint
+
+**Decision:** (1) `setup.sh --dry-run` runs the real config steps against a scratch copy of the eight files they write (`TARGET_HOME`), prints a diff per file, lists what each later step would do, and exits before any of them. (2) `uninstall.sh` prints a plan unless `--yes` is given. It removes a thing only while it is still what `setup.sh` put there, and it leaves the permission lists and modes in the three tool configs unless `--restore-configs` asks for the oldest saved copy, after saving the current one. (3) `bin/1config <command>` calls the existing scripts, and `setup.sh` links it to `~/.local/bin/1config`.
+
+**Why:** A person deciding whether to run this had no way to see what it writes into three tool configs short of reading the installer, and no way out except by hand. The dry run executes the same code on a copy, because a separate "describe" path drifts from the code it describes. The uninstall plans first because it removes links that live sessions read; `--yes` is a red line for an agent. It does not restore tool configs by default: the tools and the owner edit those files after setup, so the oldest backup can be older than changes the owner wants. The entrypoint adds no behaviour, so there is still one place to change each script. Its link is the one thing 1config puts in `~/.local/bin`; the older sentence about not linking there was about tool binaries, and the README now says so.
+
+**Rejected:** A dry run that only prints step names. An uninstall that deletes this checkout, `backups/`, the logs, the notes clone, or the keyring. Restoring tool configs by default. A copied `1config` binary (stale after every pull). A second implementation of any command inside the entrypoint.
+
+## 2026-11-12 — SECURITY.md says what is not defended
+
+**Decision:** `SECURITY.md` holds the report path, a table of when code runs, a table of guard and limit per threat, and a list of what is not defended on purpose: agents that run Bash without a prompt, a signature that means "one of the owner's machines", machines that trust each other's keys, GitHub settings, private notes that are not encrypted, the fix button, and a model's judgement. `verify.sh` checks the sections, the README link, and that the file lists every deny rule in `permissions.json`.
+
+**Why:** The README warned that the defaults are opinionated and did not say what they imply: text an agent reads can steer it, and the command then runs with the owner's rights, the signing key included. A reader who forks this should learn that from one page, next to the guards that do exist. The report path is GitHub's private advisory button when it is offered and a details-free issue otherwise, so the file is true whether or not that setting is on.
+
+**Rejected:** An email address in the file (the owner has not chosen one for this). Claiming branch protection, secret scanning, or push protection (repository settings, not managed from here). A threat model that lists only the guards.
+
+## 2026-11-12 — Cursor loads the rules once, and the fourth symlink stays
+
+**Decision:** No change to the Cursor wiring. `cursor-agent` loads the generated `~/.cursor/rules/1config.mdc`. The `~/.cursor/AGENTS.md` link stays as the fourth rules symlink. `SETUP.md` §4 records the probe.
+
+**Why:** The review asked whether Cursor reads both files and pays for the rules twice. Probe on 2026-11-12 with `cursor-agent` 2026.11.11, ask mode, in a workspace under `$HOME` that has no project `AGENTS.md`: one copy in context, an `always_applied_workspace_rule` named `~/.cursor/rules/1config.mdc`. The CLI bundle agrees: one loader reads `<home>/.cursor/rules/**/*.mdc`, and `AGENTS.md` is read only in the workspace and its parent directories. Dropping the link would change the count in the guard, the dashboard, the vitals, and the uninstall, and it would save nothing.
+
+**Rejected:** Dropping the symlink. Dropping the generated rule (then nothing loads). Not checked: the Cursor editor, and a workspace that is `~/.agents` itself, where the project file and the global rule are the same text.
+
 ## 2026-11-12 — Guards and the updater run from systemd user units; cron is the fallback
 
 **Policy:** scheduler=systemd-user-units

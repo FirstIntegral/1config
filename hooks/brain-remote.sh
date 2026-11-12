@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# brain-remote.sh — sourced by sync.sh, brain-sync.sh, and verify.sh.
+# brain-remote.sh — sourced by sync.sh, brain-sync.sh, checkpoint.sh, notes-sync.sh, and verify.sh.
 # Loads the URL allowlist from BRAIN_REMOTE. Does not hardcode a GitHub path.
+# One reader for that file: comments, blank lines, and CRLF are handled here only.
 
 brain_remote_load() {
   local file="$1" line

@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# 1config — one entrypoint for the scripts in this repo.
+#
+#   1config <command> [args]
+#
+# Every command is a thin call to a script that already exists; the script is
+# the behaviour and its own --help is the reference. setup.sh links this file
+# into ~/.local/bin. Agents keep calling the scripts by path, as AGENTS.md says.
+set -uo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+AGENTS_HOME="$(cd "$(dirname "$SELF")/.." && pwd -P)"
+export AGENTS_HOME
+
+usage() {
+  cat <<'EOF'
+usage: 1config <command> [args]
+
+  setup [--dry-run]         install or refresh this machine (setup.sh)
+  verify [--repo]           check the install; --repo checks only what a clone carries
+  sync -m "subject"         install, verify, signed commit, push the brain (sync.sh)
+  pull                      take origin/main: fast-forward only, signed commits only
+  status                    checkout, scheduler, and the last boot slip, in a few lines
+  checkpoint [dir] [-m s]   the git half of checkpoint_project (hooks/checkpoint.sh)
+  notes <setup|push|pull|backfill> [dir]   private machine-notes (hooks/notes-sync.sh)
+  scan [repo] [base]        secret scan of what a commit would add (hooks/secret-scan.sh)
+  scheduler <install|status> [auto|timers|cron]   guards and updater schedule
+  dashboard                 the boot status screen
+  welcome                   the 8-page walkthrough
+  uninstall [--dry-run]     remove what setup.sh installed (uninstall.sh)
+  help                      this text
+EOF
+}
+
+status() {
+  local slip="$AGENTS_HOME/boot-dashboard/close-slip.txt" dirty ahead behind
+  echo "brain     $AGENTS_HOME"
+  if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+    dirty="$(git -C "$AGENTS_HOME" status --porcelain | wc -l)"
+    ahead="$(git -C "$AGENTS_HOME" rev-list --count origin/main..main 2>/dev/null || echo '?')"
+    behind="$(git -C "$AGENTS_HOME" rev-list --count main..origin/main 2>/dev/null || echo '?')"
+    echo "checkout  $(git -C "$AGENTS_HOME" log -1 --format='%h %s' | cut -c1-70)"
+    echo "tree      $dirty uncommitted · $ahead unpushed · $behind behind (as of the last fetch)"
+  else
+    echo "checkout  not a git repo"
+  fi
+  echo "schedule  $(bash "$AGENTS_HOME/hooks/scheduler.sh" status 2>/dev/null || echo unknown)"
+  if [ -f "$slip" ]; then
+    echo "boot slip $(tr '\n' ';' < "$slip" | sed 's/;$//; s/;/ · /g' | cut -c1-200)"
+  else
+    echo "boot slip none (the dashboard has not exited since the slip existed)"
+  fi
+}
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  setup)      exec bash "$AGENTS_HOME/setup.sh" "$@" ;;
+  verify)     exec bash "$AGENTS_HOME/verify.sh" "$@" ;;
+  sync)       exec bash "$AGENTS_HOME/sync.sh" "$@" ;;
+  pull)       exec bash "$AGENTS_HOME/hooks/brain-sync.sh" "$@" ;;
+  status)     status ;;
+  checkpoint) exec bash "$AGENTS_HOME/hooks/checkpoint.sh" "$@" ;;
+  notes)      exec bash "$AGENTS_HOME/hooks/notes-sync.sh" "$@" ;;
+  scan)       exec bash "$AGENTS_HOME/hooks/secret-scan.sh" "${@:-$PWD}" ;;
+  scheduler)  exec bash "$AGENTS_HOME/hooks/scheduler.sh" "$@" ;;
+  dashboard)  exec bash "$AGENTS_HOME/boot-dashboard/dashboard.sh" "$@" ;;
+  welcome)    exec node "$AGENTS_HOME/hooks/welcome.js" "$@" ;;
+  uninstall)  exec bash "$AGENTS_HOME/uninstall.sh" "$@" ;;
+  help|-h|--help) usage ;;
+  *) echo "1config: unknown command: $cmd" >&2; usage >&2; exit 2 ;;
+esac

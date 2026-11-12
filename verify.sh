@@ -1671,7 +1671,9 @@ fi
 fi  # machine
 _wf="$HOOKS/github-web-flow.asc"
 _wf_fpr="968479A1AFF927E37D1A566BB5690EEEBB952194"
-if [ -f "$_wf" ] && gpg --show-keys --with-colons "$_wf" 2>/dev/null | grep -q "$_wf_fpr"; then
+# A scratch home: reading a key file must not create ~/.gnupg on a machine that has none.
+mkdir -p -m 700 "$VTMP/gnupg-show"
+if [ -f "$_wf" ] && GNUPGHOME="$VTMP/gnupg-show" gpg --batch --show-keys --with-colons "$_wf" 2>/dev/null | grep -q "$_wf_fpr"; then
   ok "hooks/github-web-flow.asc has GitHub web-flow fingerprint $_wf_fpr"
 else
   bad "hooks/github-web-flow.asc missing GitHub web-flow fingerprint $_wf_fpr"
@@ -2097,7 +2099,7 @@ else
   bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
 fi
 for f in "$CANON" "$SETUP"; do
-  for needle in checkpoint_project writepaper_project explain_thing global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'welcome.js' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**'; do
+  for needle in checkpoint_project writepaper_project explain_thing global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'welcome.js' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**' 'setup.sh --dry-run' 'uninstall.sh' 'verify.sh --repo' 'SECURITY.md'; do
     if grep -qF "$needle" "$f"; then
       ok "$needle present in $(basename "$f")"
     else
@@ -3146,6 +3148,16 @@ if grep -q 'lean/' "$AGENTS_HOME/setup-infographic.svg" \
 else
   bad "infographic missing Lean paper toolchain or digit-refuse"
 fi
+if grep -q '1config-guards.timer' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'BRAIN_SIGNERS' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'secret scan' "$AGENTS_HOME/setup-infographic.svg" \
+   && grep -q 'uninstall.sh' "$AGENTS_HOME/setup-infographic.svg" \
+   && ! grep -q '@daily' "$AGENTS_HOME/setup-infographic.svg" \
+   && python3 -c 'import sys, xml.dom.minidom; xml.dom.minidom.parse(sys.argv[1])' "$AGENTS_HOME/setup-infographic.svg" 2>/dev/null; then
+  ok "infographic shows the guard timer, the signer gate, the secret scan, and uninstall, and parses as XML"
+else
+  bad "infographic still shows cron schedules, omits the signer gate / secret scan / uninstall, or is not well-formed XML"
+fi
 
 echo "[lean toolchain]"
 if grep -q 'figures/`, `lean/`' "$CANON" && grep -q 'figures/`, `lean/`' "$SETUP"; then
@@ -3426,6 +3438,186 @@ _tracked="$(git -C "$AGENTS_HOME" ls-files skills/ | cut -d/ -f2 | sort -u | tr 
 _want="$(printf '%s\n' $_skill_list | sort -u | tr '\n' ' ')"
 if [ -n "$_tracked" ] && [ "$_tracked" != "$_want" ]; then
   bad "git ls-files skills/ ($_tracked) != .gitignore allowlist ($_want)"
+fi
+
+# --- entrypoint, dry run, uninstall ------------------------------------------
+echo "[entrypoint, dry run, uninstall]"
+_cli="$AGENTS_HOME/bin/1config"
+_rc=0; bash "$_cli" no-such-command >/dev/null 2>&1 || _rc=$?
+if [ -x "$_cli" ] && bash "$_cli" help 2>/dev/null | grep -q '^usage: 1config <command>' && [ "$_rc" -eq 2 ]; then
+  ok "bin/1config prints its commands and rejects an unknown one (exit 2)"
+else
+  bad "bin/1config missing, not executable, or accepts an unknown command"
+fi
+if machine; then
+  if [ -L "$HOME/.local/bin/1config" ] && [ "$(readlink -f "$HOME/.local/bin/1config")" = "$(readlink -f "$_cli")" ]; then
+    ok "~/.local/bin/1config → bin/1config"
+  else
+    bad "~/.local/bin/1config is not a link to bin/1config (run setup.sh)"
+  fi
+fi
+
+# A dry run changes nothing: an empty home stays empty and this tree is untouched,
+# while the output still shows the config it would write and the links it would make.
+_dh="$(mktemp -d -p "$VTMP")"
+_tree_before="$(git -C "$AGENTS_HOME" status --porcelain 2>/dev/null || true)"
+_rc=0
+env -u XDG_CONFIG_HOME -u AGENTS_UPDATE_LOCK_HELD HOME="$_dh" AGENTS_HOME="$AGENTS_HOME" \
+  bash "$AGENTS_HOME/setup.sh" --dry-run >"$VTMP/dry.out" 2>&1 || _rc=$?
+_tree_after="$(git -C "$AGENTS_HOME" status --porcelain 2>/dev/null || true)"
+if [ "$_rc" -eq 0 ] && [ -z "$(find "$_dh" -mindepth 1 | head -n 1)" ] \
+   && [ "$_tree_before" = "$_tree_after" ] \
+   && grep -q '^== dry run done' "$VTMP/dry.out" \
+   && grep -q '^--- ~/.claude/settings.json' "$VTMP/dry.out" \
+   && grep -q 'load-project-agents.sh' "$VTMP/dry.out" \
+   && grep -q "link     $_dh/.claude/CLAUDE.md" "$VTMP/dry.out"; then
+  ok "setup.sh --dry-run shows the config diff and the plan, and writes nothing"
+else
+  bad "setup.sh --dry-run changed something, or printed no plan (exit $_rc)"
+fi
+
+# Uninstall: a plan by default, and with --yes it removes only what is still ours.
+_uh="$(mktemp -d -p "$VTMP")"
+_ust="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_uh/.grok" "$_uh/.claude/skills/my-own" "$_uh/.config/opencode" "$_uh/.cursor/rules" \
+  "$_uh/.config/autostart" "$_uh/cron-jobs/agents-symlink-guard" "$_uh/.local/bin"
+ln -s "$CANON" "$_uh/.grok/AGENTS.md"
+ln -s "$CANON" "$_uh/.claude/CLAUDE.md"
+printf 'my own rules\n' > "$_uh/.config/opencode/AGENTS.md"
+ln -s "$AGENTS_HOME/skills/tdd" "$_uh/.claude/skills/tdd"
+printf '%s\n' '---' 'description: 1config global rules (generated — edit ~/.agents/AGENTS.md)' > "$_uh/.cursor/rules/1config.mdc"
+printf 'x\n' > "$_uh/cron-jobs/agents-symlink-guard/check-links.sh"
+printf 'log\n' > "$_uh/cron-jobs/agents-symlink-guard/check-links.log"
+printf 'x\n' > "$_uh/.config/autostart/agents-boot-status.desktop"
+ln -s "$_cli" "$_uh/.local/bin/1config"
+cat > "$_uh/.claude/settings.json" <<'EOF'
+{
+  "permissions": {"defaultMode": "bypassPermissions", "allow": ["Bash(ls *)"]},
+  "hooks": {
+    "SessionStart": [{"hooks": [
+      {"type": "command", "command": "bash \"$HOME/.agents/hooks/load-project-agents.sh\""},
+      {"type": "command", "command": "echo mine"}]}],
+    "PreToolUse": [{"matcher": "Bash", "hooks": [
+      {"type": "command", "command": "bash \"$HOME/.agents/hooks/heredoc-rewrite.sh\""}]}]
+  }
+}
+EOF
+_un() {
+  env -u XDG_CONFIG_HOME -u GIT_CONFIG_GLOBAL -u AGENTS_SCHEDULER HOME="$_uh" AGENTS_HOME="$AGENTS_HOME" \
+    STUB_DIR="$_ust" UNINSTALL_BACKUP_DIR="$_ust/keep" PATH="$_sc/bin:/usr/bin:/bin" "$@"
+}
+_un bash "$HOOKS/scheduler.sh" install auto >/dev/null 2>&1 || true
+_un bash "$AGENTS_HOME/uninstall.sh" >"$VTMP/un-plan.out" 2>&1 || true
+if grep -q '^== plan only' "$VTMP/un-plan.out" && [ -L "$_uh/.grok/AGENTS.md" ] \
+   && [ -f "$_uh/cron-jobs/agents-symlink-guard/check-links.sh" ] \
+   && [ "$(_un bash "$HOOKS/scheduler.sh" status)" = "timers" ] \
+   && grep -q 'load-project-agents' "$_uh/.claude/settings.json"; then
+  ok "uninstall.sh without --yes prints a plan and removes nothing"
+else
+  bad "uninstall.sh removed something without --yes"
+fi
+_rc=0; _un bash "$AGENTS_HOME/uninstall.sh" --yes >"$VTMP/un.out" 2>&1 || _rc=$?
+if [ "$_rc" -eq 0 ] \
+   && [ ! -e "$_uh/.grok/AGENTS.md" ] && [ ! -e "$_uh/.claude/CLAUDE.md" ] \
+   && [ "$(cat "$_uh/.config/opencode/AGENTS.md")" = "my own rules" ] \
+   && [ ! -e "$_uh/.claude/skills/tdd" ] && [ -d "$_uh/.claude/skills/my-own" ] \
+   && [ ! -e "$_uh/.cursor/rules/1config.mdc" ] \
+   && [ ! -e "$_uh/cron-jobs/agents-symlink-guard/check-links.sh" ] \
+   && [ -f "$_uh/cron-jobs/agents-symlink-guard/check-links.log" ] \
+   && [ ! -e "$_uh/.config/autostart/agents-boot-status.desktop" ] \
+   && [ ! -e "$_uh/.local/bin/1config" ] \
+   && [ "$(_un bash "$HOOKS/scheduler.sh" status)" = "none" ] \
+   && ! grep -q 'load-project-agents\|heredoc-rewrite' "$_uh/.claude/settings.json" \
+   && grep -q 'echo mine' "$_uh/.claude/settings.json" \
+   && grep -q '"bypassPermissions"' "$_uh/.claude/settings.json" \
+   && grep -q 'load-project-agents' "$_ust"/keep/uninstall-*/claude-settings.json; then
+  ok "uninstall.sh --yes removes what is ours and leaves a real file, a foreign skill, a foreign hook, and the logs"
+else
+  bad "uninstall.sh --yes removed too much or too little (exit $_rc)"
+fi
+
+# --- CI workflow, security policy ---------------------------------------------
+echo "[ci, security policy]"
+_wf="$AGENTS_HOME/.github/workflows/ci.yml"
+if [ -f "$_wf" ] && git -C "$AGENTS_HOME" ls-files --error-unmatch .github/workflows/ci.yml >/dev/null 2>&1; then
+  ok ".github/workflows/ci.yml tracked"
+else
+  bad ".github/workflows/ci.yml missing or untracked"
+fi
+# The workflow runs code from a pull request. It must keep the checks, and it
+# must not hand that code a writable token, a secret, or a moving action tag.
+_wf_rc=0
+_wf_why="$(WF="$_wf" python3 - <<'PY' 2>&1
+import os
+import re
+import sys
+
+try:
+    lines = open(os.environ["WF"], encoding="utf-8").read().splitlines()
+except OSError as err:
+    print(err)
+    sys.exit(1)
+code = [l for l in lines if not l.lstrip().startswith("#")]
+text = "\n".join(code) + "\n"
+why = []
+for needle in ("pull_request:", 'verify.sh" --repo', "shellcheck --severity=error",
+               "py_compile", "persist-credentials: false"):
+    if needle not in text:
+        why.append(f"missing `{needle}`")
+if "pull_request_target" in text:
+    why.append("pull_request_target")
+if "secrets." in text:
+    why.append("reads a secret")
+m = re.search(r"^permissions:\n((?:[ \t]+\S.*\n)+)", text, re.M)
+perms = [l.strip() for l in m.group(1).splitlines()] if m else []
+if perms != ["contents: read"]:
+    why.append(f"top-level permissions is {perms or 'absent'}, want contents: read only")
+if re.search(r"^[ \t]+permissions:", text, re.M):
+    why.append("a job sets its own permissions")
+uses = [l.strip() for l in code if re.match(r"\s*(?:-\s*)?uses:", l)]
+if not uses:
+    why.append("no uses: line")
+for u in uses:
+    if not re.search(r"uses:\s*[\w.-]+/[\w./-]+@[0-9a-f]{40}(?:\s|$)", u):
+        why.append(f"not pinned to a commit: {u}")
+print("; ".join(why))
+sys.exit(1 if why else 0)
+PY
+)" || _wf_rc=$?
+if [ "$_wf_rc" -eq 0 ]; then
+  ok "ci.yml keeps verify.sh --repo, ShellCheck, and py_compile; read-only token, no secret, actions pinned to a commit"
+else
+  bad "ci.yml: $_wf_why"
+fi
+_sec="$AGENTS_HOME/SECURITY.md"
+if [ -f "$_sec" ] && git -C "$AGENTS_HOME" ls-files --error-unmatch SECURITY.md >/dev/null 2>&1 \
+   && grep -q '^## Report a vulnerability' "$_sec" \
+   && grep -q '^## Threat model' "$_sec" \
+   && grep -q '^### Not defended, on purpose' "$_sec" \
+   && grep -qF 'BRAIN_SIGNERS' "$_sec" \
+   && grep -qF 'bash_without_prompt' "$_sec" \
+   && grep -qF 'setup.sh --dry-run' "$_sec" \
+   && grep -qF 'uninstall.sh' "$_sec" \
+   && grep -qF '](SECURITY.md)' "$AGENTS_HOME/README.md"; then
+  ok "SECURITY.md has the report path and the threat model, and README links it"
+else
+  bad "SECURITY.md missing, untracked, lost a section, or README does not link it"
+fi
+# The threat model quotes the deny list. A rule added to permissions.json must show up there.
+if SEC="$_sec" PERMS="$AGENTS_HOME/permissions.json" python3 - <<'PY' 2>/dev/null
+import json
+import os
+import sys
+
+sec = open(os.environ["SEC"], encoding="utf-8").read()
+deny = json.load(open(os.environ["PERMS"], encoding="utf-8"))["permissions"]["deny"]
+shown = [d[len("Bash("):-1] if d.startswith("Bash(") and d.endswith(")") else d for d in deny]
+sys.exit(0 if deny and all(f"`{s}`" in sec for s in shown) else 1)
+PY
+then
+  ok "SECURITY.md lists every deny rule in permissions.json"
+else
+  bad "SECURITY.md deny list differs from permissions.json"
 fi
 
 # --- summary ---------------------------------------------------------------

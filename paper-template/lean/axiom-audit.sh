@@ -13,7 +13,7 @@
 # Exit 1 only when the audit itself could not run.
 set -uo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 export PATH="${HOME}/.elan/bin:${PATH:-}"
 command -v lake >/dev/null 2>&1 || { echo "lean: lake not on PATH — axiom audit skipped"; exit 1; }
 

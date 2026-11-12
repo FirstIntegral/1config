@@ -293,18 +293,12 @@ TOP="$(git -C "$PROJECT" rev-parse --show-toplevel 2>/dev/null || true)"
 # 1config stays on sync.sh. Skip only when this project's origin URL is listed
 # in this brain's BRAIN_REMOTE. Another repo's own BRAIN_REMOTE file is not
 # the test. Untracked transcripts of other projects still ride.
-if [ -f "$BRAIN_DIR/BRAIN_REMOTE" ]; then
-  _origin="$(git -C "$PROJECT" config --get remote.origin.pushurl 2>/dev/null || true)"
-  [ -n "$_origin" ] || _origin="$(git -C "$PROJECT" config --get remote.origin.url 2>/dev/null || true)"
-  if [ -n "$_origin" ]; then
-    while IFS= read -r _url || [ -n "$_url" ]; do
-      _url="${_url%$'\r'}"
-      case "$_url" in ''|'#'*) continue ;; esac
-      if [ "$_origin" = "$_url" ]; then
-        skip_line
-      fi
-    done < "$BRAIN_DIR/BRAIN_REMOTE"
-  fi
+_origin="$(git -C "$PROJECT" config --get remote.origin.pushurl 2>/dev/null || true)"
+[ -n "$_origin" ] || _origin="$(git -C "$PROJECT" config --get remote.origin.url 2>/dev/null || true)"
+# shellcheck disable=SC1091
+. "$BRAIN_DIR/hooks/brain-remote.sh"
+if [ -n "$_origin" ] && brain_remote_load "$BRAIN_DIR/BRAIN_REMOTE" && brain_remote_ok "$_origin"; then
+  skip_line
 fi
 
 RAW="$(git -C "$PROJECT" config --get remote.origin.pushurl 2>/dev/null || true)"

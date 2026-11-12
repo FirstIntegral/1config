@@ -50,7 +50,9 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project'\''s
 '
 
 is_clean_memory_dir() {
-  local d="$1" f="$d/MEMORY.md"
+  # Two locals: one `local d=… f="$d/…"` expands $d before d is assigned.
+  local d="$1"
+  local f="$d/MEMORY.md"
   [ -f "$f" ] || return 1
   grep -qi "disabled by user policy" "$f" 2>/dev/null || return 1
   local x base

@@ -8,7 +8,7 @@ Canonical AI-terminal brain for **Claude Code**, **Grok**, **OpenCode**, and **C
 
 License: [MIT](LICENSE). Use it, including commercially. Keep the copyright notice: Brusk Kawa Abdalla and `github:FirstIntegral/1config`. That notice is the credit.
 
-This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runtime rules the four tools load every session are [`AGENTS.md`](AGENTS.md). Opinionated choices and *why* are [`docs/DECISIONS.md`](docs/DECISIONS.md).
+This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runtime rules the four tools load every session are [`AGENTS.md`](AGENTS.md). Opinionated choices and *why* are [`docs/DECISIONS.md`](docs/DECISIONS.md). What the guards cover, what they do not, and how to report a hole are in [`SECURITY.md`](SECURITY.md). Read it before you install: by default the agents run shell commands without asking.
 
 ## Supported systems
 
@@ -35,6 +35,7 @@ git clone https://github.com/FirstIntegral/1config.git ~/.agents
 #             sudo systemctl enable --now cronie   # Omarchy/Arch
 
 # 3. Wire the brain (idempotent; launches the 8-page welcome walkthrough on first interactive install)
+bash ~/.agents/setup.sh --dry-run   # optional: print every tool-config diff and the plan, change nothing
 bash ~/.agents/setup.sh
 
 # 4. Machine-local, once
@@ -77,7 +78,24 @@ git pull origin main
 bash ~/.agents/setup.sh
 ```
 
-`setup.sh` is idempotent: re-copies hooks, refreshes the scheduled guards, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. 1config does not edit your `.profile` and does not symlink into `~/.local/bin`.
+A commit made on github.com (a merged pull request, an edit in the browser) is not pulled at login: the signature gate holds it, the dashboard names it, and the three commands above take it after you have read it.
+
+`setup.sh` is idempotent: re-copies hooks, refreshes the scheduled guards, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. 1config does not edit your `.profile` and does not link a tool binary into `~/.local/bin`. The one link it makes there is its own `1config` command.
+
+## One command, and the way out
+
+```bash
+1config status                       # checkout, scheduler, last boot slip
+1config verify                       # the same as bash ~/.agents/verify.sh
+1config help                         # every command
+
+bash ~/.agents/uninstall.sh          # print what it would remove; change nothing
+bash ~/.agents/uninstall.sh --yes    # remove it
+```
+
+`setup.sh` links `bin/1config` into `~/.local/bin`. Each command is a thin call to a script in this repo, and the agents keep calling those scripts by path.
+
+`uninstall.sh` removes the rules links, the generated rules, the two Claude hooks, the schedule, the installed script copies, the autostart entry, the `1config` link, and git's `gpg.program`. Each one goes only while it is still what `setup.sh` put there. The permission lists and modes in the three tool configs stay, so a tool keeps running Bash without a prompt until you add `--restore-configs`, which puts back the oldest copies `setup.sh` saved. This checkout, the notes clone, and the keyring stay.
 
 ## Opinionated defaults — read before you fork
 
@@ -126,6 +144,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 |------|------|
 | `AGENTS.md` | Rules every tool loads (via symlinks). Keep lean. |
 | `SETUP.md` | Full install spec. Authoritative for AIs recreating the machine. |
+| `SECURITY.md` | How to report a hole, and the threat model: what each guard covers and what is not defended on purpose. |
 | `LICENSE` | MIT. Commercial use is fine. Keep the copyright notice. |
 | `BRAIN_REMOTE` | Origin allowlist. Its host and owner are "ours" for checkpoints. Forks change this file, not the scripts. |
 | `BRAIN_SIGNERS` | Signer allowlist for incoming commits: one key fingerprint per line. |
@@ -133,7 +152,10 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `fork-parents.txt` | Forks we contribute back to: `ourOwner/repo parentOwner/repo`. May be empty. |
 | `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. |
 | `permissions.json` | One policy, fanned out to Claude, Grok, and OpenCode. Cursor Code autonomy is per-invocation (`--force`/`--sandbox`). `bash_without_prompt` is true. |
-| `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
+| `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. `setup.sh --dry-run` previews. `verify.sh --repo` checks only what a clone carries. |
+| `uninstall.sh` | Removes what `setup.sh` installed. A plan by default; `--yes` acts. |
+| `bin/1config` | One entrypoint for the scripts. Linked into `~/.local/bin`. |
+| `.github/workflows/ci.yml` | CI on every pull request and push to `main`: `verify.sh --repo`, ShellCheck at error severity, the skill fixtures. Read-only token, pinned action. |
 | `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite, `welcome.js` walkthrough. |
 | `systemd/` | User units for the guards and the tool updater. `hooks/scheduler.sh` installs them, or cron lines where no user manager runs. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |

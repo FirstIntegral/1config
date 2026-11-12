@@ -6,6 +6,9 @@
 # Existing machine (either distro): git pull && bash ~/.agents/setup.sh
 # Idempotent. Backs up anything it replaces to ~/.agents/backups/setup-<timestamp>/.
 #
+#   bash ~/.agents/setup.sh --dry-run   change nothing: diff the tool configs this run would
+#                                       write, and list what else it would install
+#
 # Env: SKIP_CRON=1              skip the scheduler step (testing)
 #      AGENTS_SCHEDULER=cron    force cron; =timers forces systemd user units (default: auto)
 set -euo pipefail
@@ -20,6 +23,16 @@ MEM_GUARD_SRC="$AGENTS_HOME/hooks/check-claude-memory.sh"
 UPD_DIR="$HOME/cron-jobs/ai-terminal-tools-update-on-boot"
 UPD_SRC="$AGENTS_HOME/updater"
 SKIP_CRON="${SKIP_CRON:-0}"
+DRY=0
+case "${1:-}" in
+  --dry-run) DRY=1 ;;
+  '') ;;
+  -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+  *) echo "setup.sh: unknown argument: $1" >&2; exit 2 ;;
+esac
+# Where the tool configs are written. A dry run points this at a scratch copy.
+TARGET_HOME="$HOME"
+live() { [ "$DRY" != 1 ]; }
 
 log() { echo "  $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -90,7 +103,23 @@ fi
 
 [ -f "$CANON" ] || die "canonical $CANON not found — copy ~/.agents first"
 [ -d "$AGENTS_HOME/project-template" ] || log "WARNING: $AGENTS_HOME/project-template missing — create_project scaffolding will have no source"
-if [ "${AGENTS_UPDATE_LOCK_HELD:-0}" != 1 ]; then
+# The files the config steps rewrite. A dry run copies them and works on the copy.
+CONFIG_FILES=".grok/config.toml .claude/settings.json .config/opencode/opencode.jsonc .cursor/rules/1config.mdc \
+.claude/rules/1config-local.md .grok/rules/1config-local.md .cursor/rules/1config-local.mdc .config/opencode/1config-local.md"
+if ! live; then
+  PREVIEW="$(mktemp -d)"
+  trap 'rm -rf "$PREVIEW"' EXIT
+  TARGET_HOME="$PREVIEW/home"
+  BACKUP_DIR="$PREVIEW/backups"
+  mkdir -p "$TARGET_HOME"
+  for f in $CONFIG_FILES; do
+    if [ -f "$HOME/$f" ]; then
+      mkdir -p "$(dirname "$TARGET_HOME/$f")"
+      cp -p "$HOME/$f" "$TARGET_HOME/$f"
+    fi
+  done
+  echo "DRY RUN — nothing on this machine is changed. The config steps run on a scratch copy."
+elif [ "${AGENTS_UPDATE_LOCK_HELD:-0}" != 1 ]; then
   mkdir -p "$UPD_DIR"
   exec 8>"$UPD_DIR/.update.lock"
   flock 8
@@ -114,17 +143,19 @@ link_one() {
     log "linked   $link"
   fi
 }
-link_one "$HOME/.grok/AGENTS.md"
-link_one "$HOME/.config/opencode/AGENTS.md"
-link_one "$HOME/.claude/CLAUDE.md"
-link_one "$HOME/.cursor/AGENTS.md"
+if live; then
+  link_one "$HOME/.grok/AGENTS.md"
+  link_one "$HOME/.config/opencode/AGENTS.md"
+  link_one "$HOME/.claude/CLAUDE.md"
+  link_one "$HOME/.cursor/AGENTS.md"
+fi
 
 # --- 1c Cursor user rule (alwaysApply mirror of canonical) ------------------
 # Cursor Code's global mechanism is a user rule; the ~/.cursor/AGENTS.md link
 # above covers its AGENTS.md discovery. This file is generated, never edited.
 echo "[1c] Cursor user rule → ~/.cursor/rules/1config.mdc"
-mkdir -p "$HOME/.cursor/rules"
-CURSOR_RULE="$HOME/.cursor/rules/1config.mdc"
+mkdir -p "$TARGET_HOME/.cursor/rules"
+CURSOR_RULE="$TARGET_HOME/.cursor/rules/1config.mdc"
 CURSOR_TMP="$(mktemp)"
 {
   printf '%s\n' '---'
@@ -150,9 +181,9 @@ rm -f "$CURSOR_TMP"
 # ~/.claude/skills/<name>, so each TRACKED skill (the !skills/<name>/ lines in
 # .gitignore) gets a per-skill symlink. Machine-local skills are not exposed.
 echo "[1b] tracked skills → ~/.claude/skills"
-mkdir -p "$HOME/.claude/skills"
 TRACKED_SKILLS="$(sed -n 's#^!skills/\([^/]*\)/$#\1#p' "$AGENTS_HOME/.gitignore")"
-for s in $TRACKED_SKILLS; do
+live && mkdir -p "$HOME/.claude/skills"
+for s in $(live && echo "$TRACKED_SKILLS"); do
   src="$AGENTS_HOME/skills/$s"
   dst="$HOME/.claude/skills/$s"
   [ -f "$src/SKILL.md" ] || die "tracked skill $s has no $src/SKILL.md"
@@ -168,7 +199,7 @@ done
 
 # --- 2 grok config.toml ------------------------------------------------------
 echo "[2] grok config.toml switches"
-GROK_CFG="$HOME/.grok/config.toml"
+GROK_CFG="$TARGET_HOME/.grok/config.toml"
 if [ -f "$GROK_CFG" ]; then
   cp -p "$GROK_CFG" "$BACKUP_DIR/"
 fi
@@ -208,6 +239,7 @@ fi
 
 # --- 3 grok memory dir removal -----------------------------------------------
 echo "[3] grok memory dir removal"
+if live; then
 GROK_MEM="$HOME/.grok/memory"
 if [ -e "$GROK_MEM" ]; then
   mkdir -p "$BACKUP_DIR"
@@ -218,8 +250,10 @@ else
   log "ok       no $GROK_MEM"
 fi
 
+fi  # live
 # --- 4 claude auto-memory wipe-to-stub ----------------------------------------
 echo "[4] claude auto-memory wipe-to-stub"
+if live; then
 DISABLED_STUB='# Memory Index — DISABLED
 
 Disabled by user policy. Do not write memories here.
@@ -257,14 +291,15 @@ done
 shopt -u nullglob
 [ "$found" = 0 ] && log "ok       all claude memory dirs already stub-only (or none exist)"
 
+fi  # live
 # --- 5 claude SessionStart hook: project AGENTS.md loader -------------------
 echo "[5] claude AGENTS.md SessionStart hook"
 HOOK_SCRIPT="$AGENTS_HOME/hooks/load-project-agents.sh"
-CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+CLAUDE_SETTINGS="$TARGET_HOME/.claude/settings.json"
 if [ ! -f "$HOOK_SCRIPT" ]; then
   log "WARNING: $HOOK_SCRIPT missing — copy ~/.agents fully; skipping hook wiring"
 else
-  chmod +x "$HOOK_SCRIPT"
+  live && chmod +x "$HOOK_SCRIPT"
   [ -f "$CLAUDE_SETTINGS" ] && cp -p "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings.json"
   CLAUDE_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PYEOF'
 import json, os, pathlib
@@ -324,7 +359,7 @@ fi
 
 # --- 5b claude global permission policy (source: effective permissions) ------
 echo "[5b] permission rules → claude"
-CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+CLAUDE_SETTINGS="$TARGET_HOME/.claude/settings.json"
 if [ ! -f "$PERMS_SRC" ]; then
   log "WARNING: $PERMS_SRC missing — copy ~/.agents fully; skipping permission merge"
 else
@@ -380,7 +415,7 @@ fi
 
 # --- 5c grok permission rules (same canonical source, native rule syntax) ----
 echo "[5c] permission rules → grok"
-GROK_CFG="$HOME/.grok/config.toml"
+GROK_CFG="$TARGET_HOME/.grok/config.toml"
 if [ ! -f "$PERMS_SRC" ]; then
   log "WARNING: $PERMS_SRC missing — skipping grok permission merge"
 else
@@ -471,7 +506,7 @@ fi
 
 # --- 5d opencode permission rules (Bash(X) → permission.bash "X") ------------
 echo "[5d] permission rules → opencode"
-OC_CFG="$HOME/.config/opencode/opencode.jsonc"
+OC_CFG="$TARGET_HOME/.config/opencode/opencode.jsonc"
 if [ ! -f "$PERMS_SRC" ]; then
   log "WARNING: $PERMS_SRC missing — skipping opencode permission merge"
 else
@@ -615,11 +650,11 @@ rm -f "${EFFECTIVE_PERMS:-}"
 echo "[5e] claude PreToolUse heredoc-rewrite hook"
 HR_SH="$AGENTS_HOME/hooks/heredoc-rewrite.sh"
 HR_PY="$AGENTS_HOME/hooks/heredoc-rewrite.py"
-CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+CLAUDE_SETTINGS="$TARGET_HOME/.claude/settings.json"
 if [ ! -f "$HR_SH" ] || [ ! -f "$HR_PY" ]; then
   log "WARNING: hooks/heredoc-rewrite.{sh,py} missing — copy ~/.agents fully; skipping PreToolUse wiring"
 else
-  chmod +x "$HR_SH" "$HR_PY"
+  live && chmod +x "$HR_SH" "$HR_PY"
   [ -f "$CLAUDE_SETTINGS" ] && cp -p "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-heredoc.json"
   CLAUDE_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PYEOF'
 import json, os, pathlib
@@ -651,11 +686,98 @@ fi
 echo "[5f] local.json overrides → per-tool local rule"
 LOCAL_RULES="$AGENTS_HOME/hooks/local-rules.py"
 if [ -f "$LOCAL_RULES" ]; then
-  chmod +x "$LOCAL_RULES"
-  python3 "$LOCAL_RULES" apply --local-json "$AGENTS_HOME/local.json" \
+  live && chmod +x "$LOCAL_RULES"
+  python3 "$LOCAL_RULES" apply --home "$TARGET_HOME" --local-json "$AGENTS_HOME/local.json" \
     || die "hooks/local-rules.py apply failed"
 else
   log "WARNING: hooks/local-rules.py missing — a local.json caveman level is not applied"
+fi
+
+# --- dry run ends here ---------------------------------------------------------
+# Everything above that writes ran on the scratch copy. Show what it changed,
+# say what the remaining steps would do, and stop before any of them.
+if ! live; then
+  echo
+  echo "== dry run: tool configs =="
+  _changed=0
+  for f in $CONFIG_FILES; do
+    _old="$HOME/$f"
+    _new="$TARGET_HOME/$f"
+    [ -e "$_old" ] || _old=/dev/null
+    [ -e "$_new" ] || _new=/dev/null
+    if ! cmp -s "$_old" "$_new"; then
+      _changed=$((_changed + 1))
+      echo "--- ~/$f"
+      _diff="$(diff -u "$_old" "$_new" | sed '1,2d' || true)"
+      printf '%s\n' "$_diff" | head -n 60 || true
+      _more=$(( $(printf '%s\n' "$_diff" | wc -l) - 60 ))
+      if [ "$_more" -gt 0 ]; then
+        echo "  … $_more more line(s) in this diff"
+      fi
+    fi
+  done
+  [ "$_changed" -eq 0 ] && echo "  no change to any tool config"
+  echo
+  echo "== dry run: the remaining steps would =="
+  for link in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.cursor/AGENTS.md"; do
+    if [ -L "$link" ] && [ "$(readlink -f "$link")" = "$CANON" ]; then
+      log "keep     $link"
+    elif [ -e "$link" ] && [ ! -L "$link" ]; then
+      log "REPLACE  $link with a symlink to $CANON (the file is backed up first)"
+    else
+      log "link     $link → $CANON"
+    fi
+  done
+  _n=0
+  for s in $TRACKED_SKILLS; do
+    [ -L "$HOME/.claude/skills/$s" ] || _n=$((_n + 1))
+  done
+  log "link     $_n tracked skill(s) into ~/.claude/skills"
+  [ -e "$HOME/.grok/memory" ] && log "REMOVE   ~/.grok/memory (archived under backups/ first)"
+  _n=0
+  for d in "$HOME"/.claude/projects/*/memory; do
+    [ -d "$d" ] || continue
+    if [ -f "$d/MEMORY.md" ] && grep -qi "disabled by user policy" "$d/MEMORY.md" 2>/dev/null \
+       && [ "$(find "$d" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]; then
+      continue
+    fi
+    _n=$((_n + 1))
+  done
+  [ "$_n" -gt 0 ] && log "WIPE     $_n Claude auto-memory dir(s) down to a DISABLED stub (each archived under backups/ first)"
+  _n=0
+  for pair in \
+    "hooks/check-links.sh:$GUARD_DIR/check-links.sh" \
+    "hooks/merge-strays.sh:$GUARD_DIR/merge-strays.sh" \
+    "hooks/check-claude-memory.sh:$MEM_GUARD_DIR/check-memory.sh" \
+    "updater/boot-check.sh:$UPD_DIR/boot-check.sh" \
+    "updater/update-apps.sh:$UPD_DIR/update-apps.sh" \
+    "updater/on-resume.sh:$UPD_DIR/on-resume.sh" \
+    "updater/refresh-inventory.py:$UPD_DIR/refresh-inventory.py"; do
+    cmp -s "$AGENTS_HOME/${pair%%:*}" "${pair#*:}" || _n=$((_n + 1))
+  done
+  log "copy     $_n of 7 guard and updater script(s) into ~/cron-jobs (the rest are current)"
+  log "schedule currently $(bash "$AGENTS_HOME/hooks/scheduler.sh" status 2>/dev/null || echo unknown); setup installs systemd user units, or cron where no user manager runs"
+  if [ "$(git config --global --get gpg.program 2>/dev/null || true)" = "$AGENTS_HOME/hooks/gpg-git.sh" ]; then
+    log "keep     git config --global gpg.program"
+  else
+    log "set      git config --global gpg.program → hooks/gpg-git.sh"
+  fi
+  log "import   GitHub's web-flow public key into the gpg keyring (no ownertrust)"
+  [ -e "$HOME/.local/share/machine-notes/.git" ] || log "clone    the private machine-notes repo named in NOTES_REMOTE"
+  if cmp -s <(sed "s|^Exec=.*|Exec=$AGENTS_HOME/boot-dashboard/launch.sh|" "$AGENTS_HOME/boot-dashboard/agents-boot-status.desktop" 2>/dev/null) \
+       "$HOME/.config/autostart/agents-boot-status.desktop" 2>/dev/null; then
+    log "keep     the boot dashboard autostart entry"
+  else
+    log "write    ~/.config/autostart/agents-boot-status.desktop (boot dashboard at login)"
+  fi
+  if [ -d "$HOME/.config/omarchy/plugins" ]; then
+    log "copy     the firstintegral.1config bar plugin, and add its id to ~/.config/omarchy/shell.json if missing"
+  fi
+  [ -L "$HOME/.local/bin/1config" ] || log "link     ~/.local/bin/1config → bin/1config"
+  log "refresh  inventory.local.md, then run verify.sh"
+  echo
+  echo "== dry run done. Nothing was changed. Run without --dry-run to install. =="
+  exit 0
 fi
 
 # --- 6 symlink guard (source: hooks/check-links.sh) -------------------------
@@ -876,6 +998,28 @@ if [ -d "$BD" ]; then
   fi
 else
   log "WARNING: boot-dashboard/ missing — skip autostart"
+fi
+
+# --- 1config command: one entrypoint, linked into ~/.local/bin ----------------
+echo "[1config] ~/.local/bin/1config"
+CLI_SRC="$AGENTS_HOME/bin/1config"
+CLI_DST="$HOME/.local/bin/1config"
+if [ -f "$CLI_SRC" ]; then
+  chmod +x "$CLI_SRC" "$AGENTS_HOME/uninstall.sh" 2>/dev/null || true
+  mkdir -p "$HOME/.local/bin"
+  if [ -L "$CLI_DST" ] && [ "$(readlink -f "$CLI_DST")" = "$(readlink -f "$CLI_SRC")" ]; then
+    log "ok       $CLI_DST (already linked)"
+  elif [ -e "$CLI_DST" ] && [ ! -L "$CLI_DST" ]; then
+    log "WARN     $CLI_DST is a real file — left untouched"
+  elif [ -L "$CLI_DST" ] && [ -e "$CLI_DST" ] && [ "$(basename "$(readlink -f "$CLI_DST")")" != 1config ]; then
+    # A live link to something that is not a 1config entrypoint belongs to someone else.
+    log "WARN     $CLI_DST links to $(readlink -f "$CLI_DST") — left untouched"
+  else
+    ln -sfn "$CLI_SRC" "$CLI_DST"
+    log "linked   $CLI_DST"
+  fi
+else
+  log "WARNING: bin/1config missing — copy ~/.agents fully"
 fi
 
 # --- omarchy plugin: 1config usage ------------------------------------------

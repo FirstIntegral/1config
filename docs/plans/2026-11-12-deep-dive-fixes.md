@@ -118,16 +118,22 @@
 
 ### Task 9: adoption kit and entrypoint (I5, I6, I9)
 
-- [ ] `bin/1config <cmd>` dispatches to the existing scripts; setup links it into `~/.local/bin`.
-- [ ] `setup.sh --dry-run` runs against a copy of the files it edits and prints the diff.
-- [ ] `uninstall.sh` removes links, units, cron lines, and generated rules; it restores nothing it did not back up.
-- [ ] `SECURITY.md` with the threat model.
+- [x] `bin/1config <cmd>` dispatches to the existing scripts; setup links it into `~/.local/bin`.
+- [x] `setup.sh --dry-run` runs against a copy of the files it edits and prints the diff.
+- [x] `uninstall.sh` removes links, units, cron lines, and generated rules; it restores nothing it did not back up.
+- [x] `SECURITY.md` with the threat model.
 - [x] Updater reads `gh auth token` before a token file. `watch-stale.sh` sums CPU over the process tree.
 
 ### Task 10: CI (I2)
 
-- [ ] `.github/workflows/ci.yml`: `verify.sh --repo`, shellcheck at error severity, `py_compile`, on pull requests and pushes to `main`.
+- [x] `.github/workflows/ci.yml`: `verify.sh --repo`, shellcheck at error severity, `py_compile`, on pull requests and pushes to `main`.
 
 ### Task 11: docs
 
-- [ ] `AGENTS.md`, `SETUP.md`, `README.md`, `docs/DECISIONS.md`, `hooks/welcome.js`, `setup-infographic.svg` for each task above, in the same commit as the code.
+- [x] `AGENTS.md`, `SETUP.md`, `README.md`, `docs/DECISIONS.md` for each task above, in the same commit as the code. `hooks/welcome.js` and `setup-infographic.svg` caught up in the third commit.
+- [x] I1 sub-check: `cursor-agent` loads the rules once (`SETUP.md` §4, ADR "Cursor loads the rules once").
+
+## Left for the owner
+
+- GitHub repository settings: branch protection on `main`, secret scanning, push protection, private vulnerability reporting.
+- Leftover `Default*.bricked-*` keyring files, where a machine has them: deleting a file is a red line.

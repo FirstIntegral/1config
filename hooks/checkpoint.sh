@@ -50,6 +50,13 @@ FOREIGN_END="# end 1config-foreign"
 
 # shellcheck disable=SC1091
 . "$ROOT/hooks/git-url.sh"
+# shellcheck disable=SC1091
+. "$ROOT/hooks/brain-remote.sh"
+# The brain's allowlist, read once. A missing file means nothing is ours.
+OUR_URLS=()
+if brain_remote_load "$BRAIN_URLS"; then
+  OUR_URLS=("${BRAIN_REMOTE_URLS[@]}")
+fi
 
 # owner/repo, lowercase. Empty if unparsed. The host is not part of a slug.
 slug_of() {
@@ -79,16 +86,11 @@ pair_of() {
 # Not the project's own files. The same owner name on another host is not ours.
 inside_pair() {
   local want_host="$1" want_owner="$2" url host owner
-  [ -f "$BRAIN_URLS" ] || return 1
-  while IFS= read -r url || [ -n "$url" ]; do
-    url="${url%$'\r'}"
-    case "$url" in
-      ''|'#'*) continue ;;
-    esac
+  for url in ${OUR_URLS[@]+"${OUR_URLS[@]}"}; do
     read -r host owner <<<"$(pair_of "$url")"
     [ -n "${owner:-}" ] || continue
     [ "$host" = "$want_host" ] && [ "$owner" = "$want_owner" ] && return 0
-  done < "$BRAIN_URLS"
+  done
   return 1
 }
 
@@ -96,15 +98,10 @@ inside_pair() {
 # fork-parents.txt records without a host.
 inside_owner() {
   local url host owner
-  [ -f "$BRAIN_URLS" ] || return 1
-  while IFS= read -r url || [ -n "$url" ]; do
-    url="${url%$'\r'}"
-    case "$url" in
-      ''|'#'*) continue ;;
-    esac
+  for url in ${OUR_URLS[@]+"${OUR_URLS[@]}"}; do
     read -r host owner <<<"$(pair_of "$url")"
     [ "${owner:-}" = "$1" ] && return 0
-  done < "$BRAIN_URLS"
+  done
   return 1
 }
 
@@ -363,16 +360,9 @@ if [ "$PROJECT" = "$BRAIN_DIR" ]; then
 fi
 if [ -f "$PROJECT/setup.sh" ] && [ -f "$PROJECT/verify.sh" ] && [ -f "$PROJECT/BRAIN_REMOTE" ]; then
   _origin="$(git -C "$PROJECT" remote get-url --push origin 2>/dev/null || true)"
-  if [ -n "$_origin" ]; then
-    while IFS= read -r _url || [ -n "$_url" ]; do
-      _url="${_url%$'\r'}"
-      case "$_url" in
-        ''|'#'*) continue ;;
-      esac
-      if [ "$_origin" = "$_url" ]; then
-        refuse_brain
-      fi
-    done < "$PROJECT/BRAIN_REMOTE"
+  # That checkout's own allowlist decides whether it is a brain, not ours.
+  if [ -n "$_origin" ] && brain_remote_load "$PROJECT/BRAIN_REMOTE" && brain_remote_ok "$_origin"; then
+    refuse_brain
   fi
 fi
 

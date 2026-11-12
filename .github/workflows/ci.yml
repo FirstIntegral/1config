@@ -1,0 +1,84 @@
+# CI for 1config: what a clone carries, on every pull request and every push to main.
+#
+# Syntax, ShellCheck at error severity, Python byte-compile, `verify.sh --repo`
+# (fixtures, self-tests, doc parity), and the skill fixtures. Machine state is
+# not checked here; that is `verify.sh` with no argument, on a real install.
+#
+# The token is read-only and the job uses no secret, so a pull request from a
+# fork runs the same steps. An action is pinned to a commit, not to a tag.
+# `verify.sh` checks those three properties of this file.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request replaces its older run. Every commit on main keeps its own.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  repo:
+    name: verify.sh --repo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The scripts find the tree at ~/.agents, the same path a real install uses.
+      - name: Link the checkout to ~/.agents
+        run: ln -sfn "$GITHUB_WORKSPACE" "$HOME/.agents"
+
+      - name: Tool versions
+        run: |
+          bash --version | sed -n 1p
+          git --version
+          gpg --version | sed -n 1p
+          python3 --version
+          node --version
+          shellcheck --version | sed -n 2p
+
+      - name: Shell syntax
+        run: |
+          rc=0
+          while IFS= read -r f; do
+            bash -n "$f" || rc=1
+          done < <(git ls-files '*.sh' bin/1config)
+          exit "$rc"
+
+      - name: ShellCheck, errors only
+        run: git ls-files -z '*.sh' bin/1config | xargs -0 shellcheck --severity=error -x
+
+      - name: Python byte-compile
+        run: git ls-files -z '*.py' | xargs -0 python3 -m py_compile
+
+      # The digit-refuse fixtures build real PDFs and read them back.
+      - name: TeX and pdftotext
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends texlive-latex-base poppler-utils
+          pdflatex --version | sed -n 1p
+          pdftotext -v 2>&1 | sed -n 1p
+
+      - name: Repo checks
+        run: bash "$HOME/.agents/verify.sh" --repo
+
+      - name: Skill fixtures
+        run: |
+          bash skills/research-loop/orx-install-test.sh
+          bash skills/verification-before-completion/collect-evidence-test.sh
+          node --test skills/security-audit/validate-coverage-ledger.test.cjs \
+            skills/security-audit/validate-findings.test.cjs

@@ -3,6 +3,7 @@
 #
 #   bash ~/.agents/hooks/scheduler.sh install [auto|timers|cron]   # setup.sh runs `install`
 #   bash ~/.agents/hooks/scheduler.sh status                        # timers | cron | both | none
+#   bash ~/.agents/hooks/scheduler.sh remove                        # neither (uninstall.sh)
 #
 # auto (the default, or $AGENTS_SCHEDULER): systemd user units when a user
 # manager answers, cron when none does.
@@ -67,6 +68,7 @@ remove_timers() {
   for u in $UNITS; do
     [ -e "$UNIT_DIR/$u" ] && had=1
   done
+  timers_enabled && had=1
   [ "$had" = 1 ] || return 0
   if command -v systemctl >/dev/null 2>&1; then
     systemctl --user disable --now 1config-guards.timer >/dev/null 2>&1 || true
@@ -180,8 +182,19 @@ install() {
   return 1
 }
 
+# remove: neither scheduler. uninstall.sh runs this. Other crontab lines stay.
+remove() {
+  local rc=0
+  remove_timers
+  if command -v crontab >/dev/null 2>&1; then
+    cron_remove || rc=1
+  fi
+  return "$rc"
+}
+
 case "${1:-}" in
   install) install "${2:-${AGENTS_SCHEDULER:-auto}}" ;;
   status)  status ;;
-  *) echo "usage: scheduler.sh install [auto|timers|cron] | status" >&2; exit 2 ;;
+  remove)  remove ;;
+  *) echo "usage: scheduler.sh install [auto|timers|cron] | status | remove" >&2; exit 2 ;;
 esac

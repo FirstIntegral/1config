@@ -11,7 +11,7 @@ Edit here (or via any of those paths — same bytes). Applies to Grok, OpenCode,
 
 Project-level: `<repo>/AGENTS.md` is the ONLY project rules file. Grok and OpenCode read it natively. Claude Code 2.1.277 and later also reads it, unless a `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` sits in the project or a parent directory. `~/.claude/CLAUDE.md` is the user file and does not count. `hooks/load-project-agents.sh` prints the project file only when that native read will not happen (older Claude, instruction mode `claude-md` or `managed-only`, or one of those three files is present). **Never create a project CLAUDE.md** — it hides `AGENTS.md` from Claude's native reader.
 
-Fresh machine (Omarchy or Ubuntu): clone this repo to `~/.agents/` and run `bash ~/.agents/setup.sh` — recreates symlinks, tool configs, and the cron guards (idempotent). Existing box: `git pull && bash ~/.agents/setup.sh`. Human report + opinionated defaults: `README.md`. Full spec: `SETUP.md`. Runtime archives land under `~/.agents/backups/` only when needed — do not treat that folder as source of truth.
+Fresh machine (Omarchy or Ubuntu): clone this repo to `~/.agents/` and run `bash ~/.agents/setup.sh` — recreates symlinks, tool configs, and the cron guards (idempotent). Existing box: `git pull && bash ~/.agents/setup.sh`. `bash ~/.agents/setup.sh --dry-run` prints the config diffs and changes nothing. `bash ~/.agents/uninstall.sh` prints a removal plan; `--yes` removes, and that is a red line. Human report + opinionated defaults: `README.md`. Full spec: `SETUP.md`. Threat model: `SECURITY.md`. Runtime archives land under `~/.agents/backups/` only when needed — do not treat that folder as source of truth.
 
 ## Name
 
@@ -29,6 +29,8 @@ bash ~/.agents/sync.sh -m "<subject>"   # setup + verify + signed commit + push 
 ```
 
 Do not end a turn that edited `~/.agents/**` without running **both**. `verify.sh` alone is check-only (does not install); `sync.sh` re-runs `setup.sh` itself and refuses to commit if verify fails. It fetches first: a brain that is behind is fast-forwarded over signed commits only, and a diverged one stops before anything is installed. It also refuses to commit a token-shaped string (`hooks/secret-scan.sh`; a fixture line carries `gitleaks:allow`). The brain is a git repo — a local-only edit is an unfinished edit (see `global_brain_update`).
+
+CI (`.github/workflows/ci.yml`) runs `verify.sh --repo`, ShellCheck at error severity, and the skill fixtures on every pull request and every push to `main`. `--repo` is what a clone carries. A new check that reads this machine's state goes behind `machine` in `verify.sh`. A fixture does not touch the network or this machine's git config.
 
 Same-turn also means **the figure**: if the edit alters what `setup-infographic.svg` depicts (components, flows, toolchain, repo list), regenerate `setup-infographic.svg` in the same turn, before `sync.sh`. The figure is part of the spec surface; a brain change that leaves it stale is unfinished. (This repeats `global_brain_update` step 2b on purpose — it applies to every brain edit, trigger typed or not.)
 
