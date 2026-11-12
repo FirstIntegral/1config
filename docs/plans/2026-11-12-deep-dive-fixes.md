@@ -95,26 +95,26 @@
 
 - [x] Prompt goes in through a file or stdin. Claude runs with `--tools ""`, Grok with `--tools list_dir` (its allowlist cannot be empty) and no subagents or web, OpenCode with a deny-all permission env. Backends are tried in order.
 - [x] `agents_tool_path` is the login-shell PATH, then the vendor dirs. Dashboard and merge-strays use it.
-- [ ] The guard run is one ordered chain: links, stray merge, memory.
+- [x] The guard run is one ordered chain: links, stray merge, memory.
 
 ### Task 7: bugs
 
-- [ ] B3 `heredoc-rewrite.py`: `hookSpecificOutput.updatedInput`, no permission decision, `io.py` opens with a mode, body keeps its last newline. Verify runs the rewritten command.
-- [ ] B4 `local.json` `caveman`: setup writes one generated rule per tool; verify checks all four.
+- [x] B3 `heredoc-rewrite.py`: `hookSpecificOutput.updatedInput`, no permission decision, `io.py` opens with a mode, body keeps its last newline. Verify runs the rewritten command.
+- [x] B4 `local.json` `caveman`: setup writes one generated rule per tool; verify checks all four.
 - [x] B5 `safe_rel` rejects `*`, `?`, `[`, and a backslash.
-- [ ] B8 `opencode-skill-list.sh`: an empty standalone list retries against the running service.
-- [ ] B9 Claude deny rules hold under `bypassPermissions`: `AGENTS.md`, `SETUP.md`, `README.md`, one ADR.
+- [x] B8 `opencode-skill-list.sh`: an empty standalone list retries against the running service.
+- [x] B9 Claude deny rules hold under `bypassPermissions`: `AGENTS.md`, `SETUP.md`, `README.md`, one ADR.
 - [x] B10 `notes-sync.sh` stashes a leftover from an interrupted run; fetch and push are time-bounded. I9c: an offline pull prints `notes: skipped`.
-- [ ] B11 `setup.sh` removes its backup dir when empty and prunes empty `setup-*` dirs.
+- [x] B11 `setup.sh` removes its backup dir when empty and prunes empty `setup-*` dirs.
 - [x] B12 `boot-check.sh` skips the network wait when no tool needs a direct update.
-- [ ] B14 `paper-template/build.sh` skips `.lake/` and prints an axiom audit.
-- [ ] B15 `setup.sh`: `shell.json` is validated before it is replaced; a failed `crontab -l` leaves the crontab alone.
-- [ ] B16 dashboard checks four links and never prints a blank version; README facts; checkpoint push is time-bounded; guard logs are capped.
+- [x] B14 `paper-template/build.sh` skips `.lake/` and prints an axiom audit.
+- [x] B15 `setup.sh`: `shell.json` is validated before it is replaced; a failed `crontab -l` leaves the crontab alone.
+- [x] B16 dashboard checks four links and never prints a blank version; README facts; checkpoint push is time-bounded; guard logs are capped.
 
 ### Task 8: timers (I4)
 
-- [ ] `setup.sh` installs `1config-guards.timer` (daily, `Persistent=true`, plus at login) and `1config-updater.service` when a user manager answers, then drops its own crontab lines. No user manager: cron as before. `AGENTS_SCHEDULER=cron` forces cron.
-- [ ] Verify accepts either scheduler and fails on both or neither.
+- [x] `setup.sh` installs `1config-guards.timer` (daily, `Persistent=true`, plus at login) and `1config-updater.service` when a user manager answers, then drops its own crontab lines. No user manager: cron as before. `AGENTS_SCHEDULER=cron` forces cron.
+- [x] Verify accepts either scheduler and fails on both or neither.
 
 ### Task 9: adoption kit and entrypoint (I5, I6, I9)
 
@@ -122,7 +122,7 @@
 - [ ] `setup.sh --dry-run` runs against a copy of the files it edits and prints the diff.
 - [ ] `uninstall.sh` removes links, units, cron lines, and generated rules; it restores nothing it did not back up.
 - [ ] `SECURITY.md` with the threat model.
-- [ ] Updater reads `gh auth token` before a token file. `watch-stale.sh` sums CPU over the process tree.
+- [x] Updater reads `gh auth token` before a token file. `watch-stale.sh` sums CPU over the process tree.
 
 ### Task 10: CI (I2)
 

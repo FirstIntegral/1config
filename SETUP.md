@@ -16,7 +16,7 @@ Inventory resolution, in order: (1) login shell `env -i bash -lc command -v` —
 
 Tools whose login-shell PATH resolves under mise are skipped by the updater; mise's own upgrade cadence (`minimum_release_age`) governs them. The updater still refreshes inventory (which may show the mise path from step 1).
 
-**Platform:** Linux. **Supported: Omarchy (Arch) and Ubuntu (Debian).** Requires: `python3`, `flock`, `git`. Wants: `cron` (Ubuntu) / `cronie` (Omarchy/Arch), `gpg`, `gnome-keyring`. Optional: `texlive-full` (Ubuntu) / `texlive-meta` (Omarchy); Lean 4 via user-space `elan` (`bash ~/.agents/hooks/install-elan.sh` — not a distro package, not `setup.sh`). No root, no package installs from `setup.sh` (except the optional systemd-sleep shim — see that cron-job’s README). `setup.sh` `[0] platform` detects the family and prints the distro-correct install line.
+**Platform:** Linux. **Supported: Omarchy (Arch) and Ubuntu (Debian).** Requires: `python3`, `flock`, `git`. Wants: a systemd user manager (both distros have one; `cron` on Ubuntu or `cronie` on Omarchy/Arch is the fallback scheduler, §7.0), `gpg`, `gnome-keyring`. Optional: `texlive-full` (Ubuntu) / `texlive-meta` (Omarchy); Lean 4 via user-space `elan` (`bash ~/.agents/hooks/install-elan.sh` — not a distro package, not `setup.sh`). No root, no package installs from `setup.sh` (except the optional systemd-sleep shim — see that cron-job’s README). `setup.sh` `[0] platform` detects the family and prints the distro-correct install line.
 
 ### Opinionated defaults (this repo — many people will not want them)
 
@@ -24,7 +24,7 @@ Canonical file: `permissions.json`. The opinionated default is on: `bash_without
 
 ### Local overlay
 
-`local.json` is gitignored and optional. Missing file means the opinionated default is on: Bash autonomy and caveman full. Copy `local.json.example` to `local.json` only to opt out (`bash_without_prompt` false, `caveman` off). `BRAIN_REMOTE` is the origin allowlist for `sync.sh`, `verify.sh`, and boot sync. A host and owner on one of its lines is "ours" for `checkpoint.sh`. `BRAIN_SIGNERS` is the signer allowlist for incoming commits: one primary-key fingerprint per line, as `git log --format=%GP` prints it. A fork edits those two files, not the scripts.
+`local.json` is gitignored and optional. Missing file means the opinionated default is on: Bash autonomy and caveman full. Copy `local.json.example` to `local.json` only to opt out (`bash_without_prompt` false, `caveman` off). `setup.sh` merges the Bash key into the live permission configs. The `caveman` key (`off`, `lite`, `ultra`) goes through `hooks/local-rules.py`, because the canonical `AGENTS.md` is a tracked file behind four symlinks and cannot hold a per-machine value: it writes one generated rule per tool, where that tool always loads rules. Those are `~/.claude/rules/1config-local.md`, `~/.grok/rules/1config-local.md`, `~/.cursor/rules/1config-local.mdc` (`alwaysApply`), and `~/.config/opencode/1config-local.md`, which it lists in OpenCode's `instructions`. No key, the value `full`, or no `local.json` removes all four. `verify.sh` runs `local-rules.py check` and fails on drift. `BRAIN_REMOTE` is the origin allowlist for `sync.sh`, `verify.sh`, and boot sync. A host and owner on one of its lines is "ours" for `checkpoint.sh`. `BRAIN_SIGNERS` is the signer allowlist for incoming commits: one primary-key fingerprint per line, as `git log --format=%GP` prints it. A fork edits those two files, not the scripts.
 
 ### Red lines
 
@@ -117,7 +117,7 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
 ```
 
 - Claude `#` memory shortcut is NOT used (creates project CLAUDE.md / feeds auto-memory — both forbidden).
-- **Global permission policy** — canonical source `~/.agents/permissions.json`. `setup.sh` step `5b` replaces `permissions.allow / ask / deny` so removing a canonical rule removes it from the live policy. Other Claude settings survive. Matched allow calls run silently; explicit ask calls prompt; denies block. **While `bash_without_prompt` is true, the ask bucket is written empty** (parity with Grok/OpenCode; Claude bypass already skips ask). Never hand-edit generated global permission buckets. The same file drives Grok and OpenCode; `verify.sh` checks exact content, including stale grants.
+- **Global permission policy** — canonical source `~/.agents/permissions.json`. `setup.sh` step `5b` replaces `permissions.allow / ask / deny` so removing a canonical rule removes it from the live policy. Other Claude settings survive. Matched allow calls run silently; explicit ask calls prompt; denies block. **While `bash_without_prompt` is true, the ask bucket is written empty** (parity with Grok/OpenCode; an explicit ask rule can still prompt under Claude bypass). Claude deny rules block in every mode, `bypassPermissions` included, so the deny bucket is enforced there and not best-effort. Never hand-edit generated global permission buckets. The same file drives Grok and OpenCode; `verify.sh` checks exact content, including stale grants.
 - **`permissions.defaultMode`** (added 2026-08-07 as `acceptEdits`; extended 2026-08-07 for full bash auto-approve) — written by step `5b` from the canonical defaults:
   - `bash_without_prompt: true` → `"bypassPermissions"` (**wins**; only mode that kills hard-coded Claude safety prompts such as *cd with write operation* and *cd before git / untrusted hooks*)
   - else `edit_without_prompt: true` → `"acceptEdits"` (file writes only; Bash still uses allow list)
@@ -125,7 +125,7 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project's
   **Current `permissions.json`: `bash_without_prompt` true → Claude `bypassPermissions`.** Flip the flag to restore the generic-push review gate.
 - **Compound-command matching** (relevant only when not in `bypassPermissions`) — Claude approves a pipeline / `;` / `&&` chain only when **every** segment matches a rule. Allowlist still carries the read-only sysinfo set, read-only git verbs, `sed`/`awk`, etc., so flipping `bash_without_prompt` off does not immediately re-prompt day-to-day probes.
 - **Prompts the allowlist can't remove** — obfuscation/parse verdicts, exec wrappers, env runners, and hard-coded compound safety (`cd`+write path-bypass, `cd`+git untrusted-hooks). Full Bash autonomy removes them **and** the generic-push review gate. This repo currently has autonomy **on**; set `bash_without_prompt` false to restore the gate. Heredoc f-strings are separately rewritten by the PreToolUse hook below.
-- **Quoted-heredoc parse-verdict class — auto-rewritten via PreToolUse hook** (added 2026-08-07, prompted by 21 heredoc prompts in one Claude session). `setup.sh` step `5e` wires `~/.agents/hooks/heredoc-rewrite.sh` (bash wrapper → `heredoc-rewrite.py`) into `~/.claude/settings.json` `hooks.PreToolUse` with `matcher: Bash`. The hook rewrites quoted-delimiter `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs to scratchpad files under `~/.cache/agents-heredoc/` (7-day sweep) and answers `decision: allow` for the rewritten form, which is allowlist-shaped (`python3 <file>`). Unquoted heredocs and heredocs under `bash`/`sh`/`sudo`/anything else produce **no decision** and still prompt. **Claude-only, recorded per the parity rule:** Grok and OpenCode do not have Claude's parse-verdict prompt class or a matching PreToolUse rewrite mechanism; the behavioral rule in `AGENTS.md` (prefer script files over heredocs) applies everywhere. Verified by `verify.sh` `[claude heredoc-rewrite hook]` section, including five smoke tests.
+- **Quoted-heredoc parse-verdict class — auto-rewritten via PreToolUse hook** (added 2026-08-07, prompted by 21 heredoc prompts in one Claude session). `setup.sh` step `5e` wires `~/.agents/hooks/heredoc-rewrite.sh` (bash wrapper → `heredoc-rewrite.py`) into `~/.claude/settings.json` `hooks.PreToolUse` with `matcher: Bash`. The hook rewrites quoted-delimiter `python3 -` / `python -` / `cat >> file` / `cat > file` heredocs to scratchpad files under `~/.cache/agents-heredoc/` (7-day sweep) and returns the rewritten command as `hookSpecificOutput.updatedInput`, with every other input field carried over and **no permission decision**. Claude Code evaluates its permission rules against the input a hook returns, and the rewritten form is allowlist-shaped (`python3 <file>`), so the allowlist approves it; whatever stood before or after the heredoc is still judged by those rules. Until 2026-11-12 the hook printed a top-level `decision` and `tool_input`, which Claude Code does not read for this event, so it rewrote nothing; an `allow` in the right place would have approved the surrounding text too. Unquoted heredocs and heredocs under `bash`/`sh`/`sudo`/anything else produce **no output** and still prompt. **Claude-only, recorded per the parity rule:** Grok and OpenCode do not have Claude's parse-verdict prompt class or a matching PreToolUse rewrite mechanism; the behavioral rule in `AGENTS.md` (prefer script files over heredocs) applies everywhere. Verified by `verify.sh` `[claude heredoc-rewrite hook]` section: four cases run the original command and the rewrite and compare exit code, stdout, and the files written, and three smoke tests check that a command outside the class gets no output.
 - **TeX** — `texlive-full` (TeX Live 2025) is installed machine-wide, plus `tectonic` in `~/.local/bin`. All engines/build tools are allowlisted; `tlmgr install` is not, and is unnecessary under the full scheme.
 - **Lean 4** — `elan` → `lean` + `lake`, user-space under `~/.elan`. Not a distro package. `setup.sh` probes non-fatally (`ok elan` / `MISSING` + the hook command), same shape as TeX, and **never downloads**. Install path is `bash ~/.agents/hooks/install-elan.sh` (official GitHub tarball, then run the binary — never `curl | sh`; `--default-toolchain none`; does not edit `.bashrc`/`.profile`). The hook pins an exact elan release and its sha256 per arch (`PIN_VERSION`, `PIN_SHA256_*`), downloads that version and not `releases/latest`, and runs nothing when the sum differs. `install-elan.sh pin-info <version>` prints the local sums and GitHub's digests for a bump; `--version` with `--sha256` installs another release. Paper `build.sh` prepends `~/.elan/bin`. Allowlisted: `elan`/`lean`/`lake` + the hook. Not allowlisted: `curl`, AUR `elan-lean`, distro `lean4`. Pin lives in `paper-template/lean/lean-toolchain` as exact `leanprover/lean4:vX.Y.Z`. Mathlib is opt-in per paper, never in the template. `leanlab` (PyPI) is unrelated.
 - **Android SDK** — when a project needs one, the only root is `$HOME/Android/Sdk`. Never `$HOME/android-sdk`, never a second tree, never inside a repo. `local.properties` `sdk.dir` is the absolute path of that directory and stays gitignored. A project build sets `ANDROID_HOME` to the same directory. Look there before installing anything. If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms. `setup.sh` does not download it, does not probe it, and a missing tree is not a verify failure or a vitals fault. There is no install hook. Android Studio joins this directory.
@@ -248,16 +248,21 @@ Invariants, covered by `verify.sh`:
 - **Stale requires BOTH** flat log growth and under 1s of CPU across the interval. Either signal
   alone is a working run — a job inside one expensive step writes nothing, a job blocked on I/O
   still writes — and single-signal alerting yields false hangs until the watch is ignored.
-- **CPU is read from `/proc/<pid>/stat` fields 14+15** (utime+stime), parsed *after* stripping
-  through the last `)`: the comm field can contain spaces and parens, so positional `awk` on the
-  raw line misreads any process whose name is not a single bare word.
+- **CPU is the whole tree under the pid.** For the pid and each live descendant it reads
+  `/proc/<pid>/stat` fields 14–17: utime + stime, plus cutime + cstime, the time of children that
+  process has already reaped. A child's time sits in exactly one place, so the sum only grows.
+  Each line is parsed *after* stripping through the last `)`: the comm field can contain spaces
+  and parens, so positional `awk` on the raw line misreads any process whose name is not a single
+  bare word.
 - Reports every interval including quiet ones — a watch that speaks only on bad news cannot be
   told apart from a watch that died.
-- Watches the pid it is given and never guesses; the caller resolves the *worker* pid
-  (`pgrep -af '<interpreter> -u <script> <args>'`), because a shell wrapper burns no CPU and would
-  read as hung forever.
-- `verify.sh` exercises it for real against a scratch process: an idle pid with a flat log must
-  report `STALE`, and the same watch must end with `EXITED` once that pid is gone.
+- Watches the pid it is given and never guesses. The caller still resolves the *worker* pid when
+  it can (`pgrep -af '<interpreter> -u <script> <args>'`), because `EXITED` is about that pid. A
+  shell wrapper used to burn no CPU of its own and read as hung forever; with the tree sum it reads
+  as alive while its child works.
+- `verify.sh` exercises it for real against scratch processes: an idle pid with a flat log must
+  report `STALE`, the same watch must end with `EXITED` once that pid is gone, and a wrapper whose
+  child spins must report `alive`.
 
 ## 5. Per-project standard — `create_project`
 
@@ -428,7 +433,7 @@ Trigger: user says **`writepaper_project`** (optionally with a path or topic/ven
 - **No references, by design.** AI-written papers are self-contained: no bibliography, no `refs.bib`, no `\cite`, no reference list. Prior art is described in prose. `verify.sh` fails if bibliography machinery reappears in the template.
 - **Build:** `bash docs/paper/build.sh` → `latexmk -pdf` → `main.pdf`, then `~/.agents/hooks/digit-refuse.sh main.tex main.pdf`, then the page count and every open `\TODO`. If `lean/` exists and `lake` is on PATH (build.sh prepends `~/.elan/bin`), also `lake build` and a sorry count. Type errors fail the script. A digit-refuse miss fails the script. Missing `lake` prints `LEAN SKIPPED` and the PDF still ships. `clean` runs `latexmk -C` and `lake clean` when present. Never `lake exe cache get` from `build.sh`. No tool has a Lean plugin, and no tool has its own digit checker — all three run `lake` and digit-refuse via `build.sh`.
 - **Digit refuse.** A measurement token in prose must occur as that same token inside a `tabular`, `tabularx`, `tabular*`, `longtable`, `longtabu`, or `tblr`, or inside a `\caption`, in the paper. Tokens are fractions (`100/135`), decimals (`0.212`), percents (`45%`), scientific (`1.2e3`), dash-pairs (`13--2`, `7--3--5`), and integers of three or more digits (`8000`). `\frac{100}{135}` is the token `100/135`. A calendar year `19xx` or `20xx` is not a token. A single-hyphen digit group (`02-23-20174`) is an identifier, not a measurement. An en-dash pair (`13--2`) still is. `\TODO{...}` is not a claim; a cemetery token inside a `\TODO` still fails because it is typeset. Comments are not typeset. Text before `\begin{document}` is not a claim. `digit-refuse.deny` beside `main.tex` is one exact token per line. A bare integer in that file exits 2 and the check does not run. Flags `--fuzzy`, `--near`, `--llm`, `--repo`, `--anywhere`, `--close`, `--substr`, and any other `--` flag exit 2 and write nothing. Scope lives in `digit-refuse.cfg` (`scope=paper|chapter|section`, default `paper`). Chapter and section scope let text before the first marker use every table; a later chapter cannot borrow an earlier table. `skip-cmd=Name` masks one command the way `\TODO` is masked (author slots). The legal tokens are only those reached by `\input` / `\include` on the tex input path, never a repo-wide search. A clean check prints nothing. A miss prints `file:line` and the token. `verify.sh` builds the fixture PDFs.
-- **Content hard rules** (in `AGENTS.md`): no invented numbers, no references, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps. Kernel-checked = `lake build` green **and** that declaration has no `sorryAx`. Report `n/m kernel-checked Lean statements`. `lake` green is **not** a proof that the Lean statement matches the LaTeX theorem.
+- **Content hard rules** (in `AGENTS.md`): no invented numbers, no references, no overclaiming — missing measurements become `\TODO{measure: …}` and are reported as Gaps. Kernel-checked = `lake build` green **and** that declaration has no `sorryAx`. Report `n/m kernel-checked Lean statements`. `build.sh` prints that line from `lean/axiom-audit.sh`, which asks Lean for the axioms of every theorem in the paper's own `lean_lib` roots (`Lean.collectAxioms`) and names each one that depends on `sorryAx`. The text search for the word `sorry` stays as a second line and skips `.lake/`, where a dependency such as Mathlib has its own. A paper scaffolded before this script exists keeps its own `build.sh` and is not backfilled. `lake` green is **not** a proof that the Lean statement matches the LaTeX theorem.
 - **Lean conversion (fidelity).** The kernel checks the declared Lean type, not the paper sentence. When formalizing: (1) write the statement in Lean first and quote the pretty-printed type in LaTeX, **or** (2) decompose the LaTeX theorem into a committed parts list (objects, hypotheses, conclusion, quantifier order, boundary flags) bound to `\label{thm:…}` not line numbers, emit pedantic Lean from those rows, and script-diff the compiled signature against the rows. Do not freely restate then `lake build`. Until a mechanical xwalk hook exists, Gaps must include `statement-fidelity unmeasured` for every formalized theorem. Dual-formalizer / mutation probes / `xwalk.lock` / litex are **not** installed (P2). `leanlab` is unrelated.
 - **Mathlib** is opt-in in that paper's `lakefile.toml` when statements need ℝ / polynomials / ODEs. Template stays core Lean so `verify.sh` never downloads a cache.
 - **The paper stays current.** Once `docs/paper/` exists, any scientifically relevant change (method, theorem, assumption, experimental setup, measured number, limitation) updates the paper and rebuilds it in the **same turn** — the trigger does not have to be re-typed. Refactors/tooling changes do not count unless a reported number or stated claim moves. Theory-statement changes update the Lean mirror **if** `lean/` already exists; non-theory edits do not start a proof hunt.
@@ -490,24 +495,19 @@ Trigger: user says **`explain_thing`** (optionally a path or a subject). Full sp
 - "Remember X": global fact → global file; project fact → project files. Same turn, no exceptions.
 - Claude's `#` shortcut is NOT used (user policy). If ever triggered inside a project it would CREATE a project `CLAUDE.md` (retired) or feed auto-memory — never do that; durable facts go to `AGENTS.md` / `session_compact.md` instead.
 
-### 6b. Claude/Grok residue guard (cron)
+### 6b. Claude/Grok residue guard (scheduled)
 
-Claude can re-create topic files under `~/.claude/projects/*/memory/` despite the stub. Cron catches that.
+Claude can re-create topic files under `~/.claude/projects/*/memory/` despite the stub. The scheduled guard catches that.
 
 - **Source:** `~/.agents/hooks/check-claude-memory.sh`
 - **Installed as:** `~/cron-jobs/claude-memory-guard/check-memory.sh` (copied by `setup.sh` each run)
-- **Schedule:**
-
-```
-@daily  $HOME/cron-jobs/claude-memory-guard/check-memory.sh
-@reboot $HOME/cron-jobs/claude-memory-guard/check-memory.sh
-```
+- **Schedule:** the last step of the guard chain in §7 (daily, after login, and at every boot-dashboard run).
 
 - **Behavior:**
   1. Scan every Claude `memory/` dir. Clean = only `MEMORY.md` with "Disabled by user policy".
   2. If residue (topic files, non-stub MEMORY, empty→uncontrolled dir, etc.): archive under `~/.agents/backups/claude-residue/<ts>/`, append to `PENDING.md`, write project `claude_memory_import.md` when path can be resolved, set **`NEEDS-MEMORY-MERGE`** flag, wipe dir back to DISABLED stub only.
   3. If `~/.grok/memory/` exists: archive under the same packet dir, delete it, flag pending.
-- **AI merge duty** (cron has no LLM): on session start / `continue_project`, if `NEEDS-MEMORY-MERGE` or `PENDING.md` or `claude_memory_import.md` exists → merge durable facts into standard files, then clear flag/pending/import. Do not write `session_transcript.md`. Full procedure in canonical `AGENTS.md`.
+- **AI merge duty** (the guard has no LLM): on session start / `continue_project`, if `NEEDS-MEMORY-MERGE` or `PENDING.md` or `claude_memory_import.md` exists → merge durable facts into standard files, then clear flag/pending/import. Do not write `session_transcript.md`. Full procedure in canonical `AGENTS.md`.
 - Log: `~/cron-jobs/claude-memory-guard/check-memory.log`.
 
 ### 6c. Sites exception (`~/Projects/sites/*`)
@@ -516,11 +516,27 @@ Public site repos: gitignore `AGENTS.md` (+ `CLAUDE.md`). Commit `docs/DECISIONS
 
 ## 7. Cron guards
 
+The name is historical: the installed copies live under `~/cron-jobs/`. What runs them is `hooks/scheduler.sh`, which `setup.sh` step `8` calls.
+
+### 7.0 Scheduler
+
+```sh
+bash ~/.agents/hooks/scheduler.sh install [auto|timers|cron]   # setup.sh runs `install`
+bash ~/.agents/hooks/scheduler.sh status                        # timers | cron | both | none
+```
+
+- **`auto`** (the default, or `AGENTS_SCHEDULER`): systemd user units when a user manager answers `systemctl --user daemon-reload`, cron when none does (a container, a box with no user session).
+- **Units** are the files in `systemd/`, copied to `~/.config/systemd/user/`. `1config-guards.timer` is `OnCalendar=daily` with `Persistent=true` (a machine that was off at midnight runs the missed day at the next login) and `OnStartupSec=2min`. `1config-guards.service` is one ordered chain: `check-links.sh`, then `merge-strays.sh`, then `check-memory.sh`. The merge reads the flag the symlink guard raises, so it has to follow it; each `ExecStart` has a leading `-` because `check-links.sh` exits 2 exactly when there is a stray to merge. `1config-updater.service` runs `boot-check.sh` and is enabled for `default.target`: once per login, before the boot dashboard opens. Output goes to the journal (`journalctl --user -u 1config-guards.service`) as well as each script's own log.
+- **Cron** is the same jobs: `@daily` and `@reboot` lines that hold the whole guard chain, joined by `;`, and one `@reboot` line for `boot-check.sh`. Before 2026-11-12 the merge had its own `@daily` line in the same minute as the guard, with no ordering and no catch-up.
+- **Exactly one is left installed.** The other is removed only after the chosen one is confirmed: the crontab lines go once both units report `enabled`, and the units go once the crontab holds our lines. A crontab line that is not ours is never touched. A `crontab -l` that fails for any reason other than "no crontab" leaves the crontab as it is, because writing back an empty read would delete the user's own jobs. A crontab that held only our lines is removed.
+- **Back to cron:** `AGENTS_SCHEDULER=cron bash ~/.agents/setup.sh`. `SKIP_CRON=1` skips the step.
+- `verify.sh` fails when both are installed (every guard would run twice), when neither is, or when an installed unit differs from `systemd/`. Its fixtures drive `scheduler.sh` with stub `systemctl` and `crontab` commands in a scratch home.
+
 ### 7a. Symlink guard
 
 - **Source:** `~/.agents/hooks/check-links.sh`
 - **Installed as:** `~/cron-jobs/agents-symlink-guard/check-links.sh` (copied by `setup.sh` each run)
-- Schedule: `@daily` + `@reboot`
+- Schedule: first step of the guard chain (§7.0), and every boot-dashboard run.
 
 | State found | Action | Log word |
 |---|---|---|
@@ -534,7 +550,7 @@ Public site repos: gitignore `AGENTS.md` (+ `CLAUDE.md`). Commit `docs/DECISIONS
 
 - Log: `~/cron-jobs/agents-symlink-guard/check-links.log`.
 - Flag: **`NEEDS-SYMLINK-MERGE`** in same folder (exists only after a CONFLICT).
-- **AI merge is automated:** `hooks/merge-strays.sh` (installed to the guard dir, byte-verified; cron `@daily`) feeds each stray to a headless LLM, sanitizes the markdown output, appends to canonical with a provenance comment, deletes the stray, clears the flag. Backends are tried in order, `claude`, `grok`, `opencode`: the first installed CLI that answers wins, so a machine where one of them is logged out still merges (`MERGE_LLM_BACKEND` names a single one). The prompt holds the bytes of a quarantined file, so the model runs with no way to act on them: `claude -p --tools "" --strict-mcp-config --permission-prompts none`, `grok --prompt-file … --tools list_dir --disallowed-tools Agent --disable-web-search --no-subagents`, `opencode run --standalone` with `OPENCODE_PERMISSION` deny-all. The prompt travels as stdin or a file, never as an argument: one argv string caps at 128 KiB and the canonical file is most of that. The script's PATH is the login shell's PATH and then the vendor dirs (`hooks/tool-path.sh`), so a mise-managed CLI is found from cron or a timer. If no backend answers, the flag survives for the next run; manual fallback procedure lives in canonical `AGENTS.md`. Sandbox knobs: `CANON`, `GUARD_DIR`, `STRAYS_DIR`, `MERGE_LLM_MODEL`, `MERGE_MAX_BYTES` (4000), `MERGE_TIMEOUT` (120), `MERGE_SKIP_LLM=1` (report only). The guard logs (`check-links.log`, `merge-strays.log`, `check-memory.log`) keep their last 2000 lines once they pass 4000.
+- **AI merge is automated:** `hooks/merge-strays.sh` (installed to the guard dir, byte-verified; second step of the guard chain, right after the guard) feeds each stray to a headless LLM, sanitizes the markdown output, appends to canonical with a provenance comment, deletes the stray, clears the flag. Backends are tried in order, `claude`, `grok`, `opencode`: the first installed CLI that answers wins, so a machine where one of them is logged out still merges (`MERGE_LLM_BACKEND` names a single one). The prompt holds the bytes of a quarantined file, so the model runs with no way to act on them: `claude -p --tools "" --strict-mcp-config --permission-prompts none`, `grok --prompt-file … --tools list_dir --disallowed-tools Agent --disable-web-search --no-subagents`, `opencode run --standalone` with `OPENCODE_PERMISSION` deny-all. The prompt travels as stdin or a file, never as an argument: one argv string caps at 128 KiB and the canonical file is most of that. The script's PATH is the login shell's PATH and then the vendor dirs (`hooks/tool-path.sh`), so a mise-managed CLI is found from cron or a timer. If no backend answers, the flag survives for the next run; manual fallback procedure lives in canonical `AGENTS.md`. Sandbox knobs: `CANON`, `GUARD_DIR`, `STRAYS_DIR`, `MERGE_LLM_MODEL`, `MERGE_MAX_BYTES` (4000), `MERGE_TIMEOUT` (120), `MERGE_SKIP_LLM=1` (report only). The guard logs (`check-links.log`, `merge-strays.log`, `check-memory.log`) keep their last 2000 lines once they pass 4000.
 
 ### 7b. Tool-memory residue guard
 
@@ -544,7 +560,7 @@ See §6b. Flag: **`NEEDS-MEMORY-MERGE`** under `~/cron-jobs/claude-memory-guard/
 
 - **Source:** `~/.agents/updater/` (`boot-check.sh`, `update-apps.sh`, `on-resume.sh`, `refresh-inventory.py`, `system-sleep-shim.sh`).
 - **Installed by** `setup.sh` → `~/cron-jobs/ai-terminal-tools-update-on-boot/` (user scripts only, byte-identical; `update-apps.log` + `.update.lock` stay in the installed dir). `verify.sh` byte-compares.
-- **Crontab:** `@reboot .../boot-check.sh` (managed by setup.sh). **Resume:** root-installed systemd hook `/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`; install or refresh with `sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`.
+- **Boot:** `1config-updater.service` at login, or the `@reboot .../boot-check.sh` crontab line where cron is the scheduler (§7.0). **Resume:** root-installed systemd hook `/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`; install or refresh with `sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh`.
 - The root hook discovers logged-in users through `loginctl`/`getent`, then asks the system manager to start a delayed transient service with explicit `--uid`, `HOME`, `USER`, and `LOGNAME`. It never executes a user-owned script as root, never relies on root's `$HOME`, and does not detach a child into the sleep hook's cgroup.
 - `update-apps.sh` and `setup.sh` refresh **gitignored** `inventory.local.md` only when version rows change. They must not write live versions into this spec. Inventory uses login PATH then vendor-dir fallback (§1); `mise_managed()` stays login-PATH-only.
 - mise-managed tools are skipped by `update-apps.sh`: the login-resolved (`env -i bash -lc`) binary is under `~/.local/share/mise/` or is a wrapper delegating to `mise x` (those wrappers set `MISE_MINIMUM_RELEASE_AGE=0`, so mise cadence = every invocation). Direct CDN/`update` calls for them only hit shadowed bins or interactive "managed by a package manager" prompts. The updater still refreshes the inventory. `update-apps.sh --needs-net` exits 0 when a direct upgrade would run and 3 when none would; `boot-check.sh` asks it first and skips the network wait on a machine where mise owns every installed CLI. The log header names a mise-managed tool by the path the login shell resolves, not `NOT FOUND`. The updater keeps a PATH without mise on purpose; `hooks/tool-path.sh` (login PATH first) is for the dashboard and the stray merge.
@@ -576,14 +592,14 @@ This is the Omarchy surface of 1config. Claude, Grok, and OpenCode do not each g
 6. Install/refresh symlink guard + stray-merge hook (§7a) — copied from `hooks/check-links.sh` + `hooks/merge-strays.sh`.
 7. Install/refresh claude-memory-guard (§6b/§7b) — copied from `hooks/check-claude-memory.sh`.
 8. Install/refresh tool updater (§7c) — user scripts copied from `updater/`; install the root resume shim with the `sudo install` command above and repeat after shim changes.
-9. Crontab entries for guards + updater (§7) — preserves other crontab lines.
+9. Scheduler for guards + updater (§7.0): `bash ~/.agents/hooks/scheduler.sh install` — systemd user units, or cron, and other crontab lines are preserved.
 10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py hooks/gpg-signing-key.sh hooks/gpg-git.sh`. Point `git config --global gpg.program` at `hooks/gpg-git.sh`. Set `git config --global user.signingkey` to **this** machine's key, then run the store script once (see §4 GPG). Dedicated `gpg-signing` collection, not default.
 11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
 12. `watch-stale.sh` — `chmod +x hooks/watch-stale.sh` + `bash -n` syntax gate (§4c).
 13. Optional Lean: `bash ~/.agents/hooks/install-elan.sh` if the setup probe said `MISSING elan`. Not in the distro pkg line. `setup.sh` never downloads it.
 14. Verify (+ refresh of gitignored `inventory.local.md`).
 
-`setup.sh` does the above except the optional elan install (step 13 is the hook; setup only probes). Idempotent, backs up anything it replaces to `~/.agents/backups/setup-<ts>/`, self-verifies. `SKIP_CRON=1` skips the crontab step.
+`setup.sh` does the above except the optional elan install (step 13 is the hook; setup only probes). Idempotent, backs up anything it replaces to `~/.agents/backups/setup-<ts>/`, self-verifies. A run that replaced nothing leaves no backup directory, and empty `setup-*` directories from earlier runs are removed. `SKIP_CRON=1` skips the scheduler step.
 
 **Authority chain:** `SETUP.md` = machine wiring spec. `setup.sh` implements it. `AGENTS.md` = AI runtime rules (session workflow, memory policy). Keep them in sync when changing behavior.
 
@@ -615,7 +631,8 @@ for f in ~/.grok/AGENTS.md ~/.config/opencode/AGENTS.md ~/.claude/CLAUDE.md; do
   [ -L "$f" ] && [ "$(readlink -f "$f")" = "$HOME/.agents/AGENTS.md" ] && echo "OK   $f" || echo "FAIL $f"
 done
 python3 -c "import tomllib,os; tomllib.load(open(os.path.expanduser('~/.grok/config.toml'),'rb'))" && echo TOML-OK
-crontab -l | grep -E 'agents-symlink-guard|claude-memory-guard|ai-terminal-tools-update'
+bash ~/.agents/hooks/scheduler.sh status          # timers or cron; both or none is a fault
+systemctl --user list-timers 1config-guards.timer  # when status is timers
 cmp -s ~/.agents/hooks/check-links.sh ~/cron-jobs/agents-symlink-guard/check-links.sh && echo LINKS-SYNC-OK
 cmp -s ~/.agents/hooks/merge-strays.sh ~/cron-jobs/agents-symlink-guard/merge-strays.sh && echo MERGE-SYNC-OK
 cmp -s ~/.agents/hooks/check-claude-memory.sh ~/cron-jobs/claude-memory-guard/check-memory.sh && echo MEM-SYNC-OK

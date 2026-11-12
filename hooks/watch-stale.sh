@@ -8,9 +8,10 @@
 #
 # Why this exists: "it has been quiet for a while" is not evidence of a hang,
 # and neither is "CPU looks low" when the pid being watched is a bash wrapper
-# that burns nothing while its child does the work. Stale is BOTH signals flat
-# over a full interval — no log growth AND effectively no CPU. A run that is
-# silently grinding through one expensive step trips neither.
+# that burns nothing while its child does the work. So CPU is summed over the
+# pid and all of its descendants, and stale is BOTH signals flat over a full
+# interval — no log growth AND effectively no CPU. A run that is silently
+# grinding through one expensive step trips neither.
 #
 # Exit codes: 0 = watched process exited · 2 = bad usage · 3 = no such pid.
 set -uo pipefail
@@ -19,8 +20,10 @@ usage() {
     cat >&2 <<'EOF'
 usage: watch-stale.sh <pid> <logfile|-> [interval_seconds]
 
-  pid       PID of the REAL worker process, not a shell wrapper around it.
-            Find it with: pgrep -af '<interpreter> -u <script> <args>'
+  pid       PID of the run. Prefer the worker itself:
+              pgrep -af '<interpreter> -u <script> <args>'
+            A wrapper pid works too. CPU is summed over the pid and its
+            descendants. EXITED is about the pid given here.
   logfile   file the run appends to; "-" to watch CPU only
   interval  seconds between checks (default 600)
 EOF
@@ -46,13 +49,35 @@ log_size() {
     stat -c %s "$LOG" 2>/dev/null || echo 0
 }
 
-# /proc/<pid>/stat fields 14 (utime) + 15 (stime), in clock ticks. The comm field
-# can contain spaces and parens, so cut everything through the last ')' first.
+# The pid and every live descendant, one per line.
+tree_pids() {
+    local queue="$1" p kids
+    while [ -n "$queue" ]; do
+        p="${queue%% *}"
+        if [ "$p" = "$queue" ]; then queue=""; else queue="${queue#* }"; fi
+        echo "$p"
+        kids="$(pgrep -P "$p" 2>/dev/null | tr '\n' ' ')"
+        kids="${kids% }"
+        [ -n "$kids" ] && queue="${queue:+$queue }$kids"
+    done
+}
+
+# CPU of the whole tree under <pid>, in clock ticks. For each live process:
+# /proc/<pid>/stat fields 14-17, its own utime + stime plus cutime + cstime, the
+# time of children it has already reaped. A child's time is in exactly one
+# place, so the sum only grows. A `bash -c` wrapper burns nothing itself, and
+# watching it used to read as a hang while its child did the work.
+# The comm field can contain spaces and parens, so cut through the last ')' first.
 cpu_ticks() {
-    local raw rest
-    raw="$(cat "/proc/$1/stat" 2>/dev/null)" || return 1
-    rest="${raw#*) }"
-    awk '{print $12 + $13}' <<<"$rest" 2>/dev/null || return 1
+    local p raw rest total=0 t
+    [ -r "/proc/$1/stat" ] || return 1
+    while IFS= read -r p; do
+        raw="$(cat "/proc/$p/stat" 2>/dev/null)" || continue
+        rest="${raw##*) }"
+        t="$(awk '{print $12 + $13 + $14 + $15}' <<<"$rest" 2>/dev/null)" || continue
+        total=$(( total + ${t:-0} ))
+    done < <(tree_pids "$1")
+    echo "$total"
 }
 
 last_stage() {

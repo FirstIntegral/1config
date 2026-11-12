@@ -1,5 +1,47 @@
 # Brain decisions
 
+## 2026-11-12 — Guards and the updater run from systemd user units; cron is the fallback
+
+**Policy:** scheduler=systemd-user-units
+
+**Decision:** `hooks/scheduler.sh install` (setup step `8`) installs the units in `systemd/` when a systemd user manager answers, and cron lines when none does. `1config-guards.timer` is daily with `Persistent=true` and also fires two minutes after login. Its service is one chain: symlink guard, stray merge, memory guard. `1config-updater.service` is enabled for `default.target`. In cron the chain is one line. Exactly one scheduler is left installed, and the other is removed only after the chosen one is confirmed. `AGENTS_SCHEDULER=cron` goes back. The directory is still `~/cron-jobs/` and the section is still called Cron guards.
+
+**Why:** The stray merge had its own `@daily` line in the same minute as the guard that feeds it, with no ordering. `@daily` has no catch-up, so on a machine that is off at midnight the merge and the memory guard never ran except at boot. cronie was a package the brain needed and Omarchy does not ship. The crontab was rewritten on every `setup.sh`, and `crontab -l || true` meant a failed read installed a crontab with only our lines. The updater is an enabled service and not a timer because the boot dashboard waits on it before it verifies, and a timer would start after the dashboard had already looked.
+
+**Rejected:** Running both schedulers during a transition (every guard twice, and the next reader cannot tell which is live). Renaming `~/cron-jobs/` (the vitals tiles, the dashboard, the resume shim, and both machines' logs point there). A system-level unit (needs root). `loginctl enable-linger` (a login-scoped guard is enough for a desktop, and linger is the owner's switch).
+
+## 2026-11-12 — local.json caveman becomes one generated rule per tool
+
+**Decision:** `hooks/local-rules.py apply` (setup step `5f`) reads `caveman` from `local.json`. For `off`, `lite`, or `ultra` it writes one small generated rule where each tool always loads rules: `~/.claude/rules/1config-local.md`, `~/.grok/rules/1config-local.md`, `~/.cursor/rules/1config-local.mdc`, and `~/.config/opencode/1config-local.md`, which it lists in OpenCode's `instructions`. No key, `full`, or no `local.json` removes all four. `verify.sh` runs `check`. `AGENTS.md` says that rule wins over the Caveman section.
+
+**Why:** Three documents promised the opt-out and no script read the key. The canonical file is tracked and sits behind four symlinks, so it cannot hold a per-machine value, and telling every agent to read `local.json` at session start costs a tool call in every session to learn that the file is not there. Each tool has a user-level rules location that is read without a hook: Claude and Grok document a home rules directory, OpenCode documents `instructions`, and Cursor already loads the generated `1config.mdc` from the same directory.
+
+**Rejected:** A generated copy of `AGENTS.md` as the symlink target (edits through a symlink must land in canonical). A SessionStart hook (Claude only). Removing the promise from the docs (the 2026-09-27 ADR keeps `local.json` as the opt-out).
+
+## 2026-11-12 — The heredoc hook returns updatedInput and decides nothing
+
+**Decision:** `hooks/heredoc-rewrite.py` prints `{"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {…}}}` with every field of the tool input carried over and the command replaced. It makes no permission decision. The scratch `io.py` opens its target with a mode, and the body keeps its last newline. `verify.sh` runs the original command and the rewrite for four cases and compares exit code, stdout, and files.
+
+**Why:** The hook printed a top-level `decision` and `tool_input`. Claude Code reads `hookSpecificOutput` for this event and replaces the whole input with `updatedInput`, so nothing was ever rewritten, and the smoke tests only grepped the JSON. Behind that, `io.py` passed the mode as an encoding (`LookupError: unknown encoding: w`) and an appended body lost its final newline. Claude Code evaluates permission rules against the input a hook returns, so the rewrite alone is enough for the allowlist to match `python3 <file>`. An `allow` would have approved whatever stood before and after the heredoc as well.
+
+**Rejected:** Deleting the hook (it is the documented answer to the parse-verdict prompts when autonomy is off). `permissionDecision: "allow"` limited to an empty prefix (a second classifier beside the allowlist).
+
+## 2026-11-12 — Claude deny rules hold under bypassPermissions
+
+**Decision:** `AGENTS.md`, `SETUP.md`, and the note in `permissions.json` say that Claude deny rules block in every mode, `bypassPermissions` included, and that an explicit ask rule can still prompt. The sentence "Claude ask/deny lists become best-effort (bypass skips checks)" in "2026-08-29 — Full Bash autonomy" is historical. Setup still writes the ask bucket empty while autonomy is on.
+
+**Why:** Claude Code's permission-modes page, read 2026-11-12: "Deny rules block in every mode, including `bypassPermissions`." The repo told agents and forks that the deny list was advisory under the default mode, which undersold the one guard that survives autonomy.
+
+**Rejected:** Editing the 2026-08-29 ADR in place (whole headings stay). Writing the ask rules back (the 2026-09-03 ADR omits them on purpose).
+
+## 2026-11-12 — More review fixes that carried a choice
+
+**Decision:** (1) `hooks/bar-widget.py` adds the bar id. It writes `shell.json` only when the file parses as JSON with a `bar.layout.right` list before the edit and the result parses and differs by exactly the one id; it backs the old file up and replaces it atomically. The `brwsk.vigil` anchor and the start-of-list fallback are unchanged. (2) `setup.sh` removes its backup directory when nothing was replaced, and removes empty `setup-*` directories from earlier runs. (3) `paper-template/lean/axiom-audit.sh` asks Lean for the axioms of every theorem in the paper's own `lean_lib` roots and prints `n/m kernel-checked Lean statements`; `build.sh` calls it and its text search skips `.lake/`. (4) `hooks/opencode-skill-list.sh` asks an already-running background service when the private server lists no skills. (5) `hooks/watch-stale.sh` sums CPU over the pid and its descendants.
+
+**Why:** (1) The bar edit was a text insert into a file the shell reads at every start, with no check that the result parsed. (2) 118 of 146 backup directories were empty. (3) The rule defines kernel-checked by `sorryAx`, and the build only grepped for the word, including inside Mathlib under `.lake/`. (4) On OpenCode 2.2.7 the private server answers `"data":[]` while the service lists all 13 tracked skills, so the check was an INFO on every run. `opencode api` without `--standalone` may start a service, and a check must not start a daemon, so the fallback asks only one that is already running. (5) A watch on a `bash -c` wrapper read zero CPU forever.
+
+**Rejected:** Rewriting `shell.json` through a JSON dump (it would reformat a file Omarchy and omarchy-dots also write). Pruning backup directories that hold files. Failing the paper build on a hole (the rule says a hole is a Gap). Dropping `--standalone` (the 2026-10-14 ADR chose it, and the service may not exist at login).
+
 ## 2026-11-12 — Login and sync take only commits signed by a listed key
 
 **Policy:** incoming_signers=BRAIN_SIGNERS

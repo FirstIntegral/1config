@@ -47,9 +47,10 @@
       "  opencode also gets permission.external_directory = allow while bash_without_prompt is true",
       "  (OpenCode-only gate: file access outside project cwd, e.g. /tmp scratch scripts — Claude",
       "  bypass and Grok always-approve cover that natively). Otherwise external_directory = ask.",
-      "With bash_without_prompt true, setup omits ask fan-out (OpenCode last-match and Grok",
-      "shell-ask would otherwise still prompt git push). Deny still copies. Claude deny is",
-      "best-effort only — bypass skips checks. The opinionated default is on:",
+      "With bash_without_prompt true, setup omits ask fan-out (an explicit ask rule can still",
+      "prompt in all three tools, which would bring the git push prompt back). Deny still",
+      "copies, and Claude deny rules block in every mode, bypassPermissions included (Claude",
+      "Code permission-modes docs, read 2026-11-12). The opinionated default is on:",
       "bash_without_prompt true. Gitignored local.json may set it false as an opt-out;",
       "setup merges that into the live tools only and does not write it back here.",
       "edit_without_prompt stays true."

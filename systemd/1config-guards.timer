@@ -1,0 +1,12 @@
+[Unit]
+Description=1config guards, daily and shortly after login
+Documentation=file://%h/.agents/SETUP.md
+
+[Timer]
+OnCalendar=daily
+# A machine that was off at midnight runs the missed day at the next login.
+Persistent=true
+OnStartupSec=2min
+
+[Install]
+WantedBy=timers.target

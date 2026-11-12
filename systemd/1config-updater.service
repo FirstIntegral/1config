@@ -1,0 +1,14 @@
+[Unit]
+Description=1config tool updater (boot check)
+Documentation=file://%h/.agents/SETUP.md
+
+[Service]
+Type=oneshot
+ExecStart=%h/cron-jobs/ai-terminal-tools-update-on-boot/boot-check.sh
+# boot-check.sh may wait up to 34 minutes for the network before it gives up.
+TimeoutStartSec=60min
+
+# Enabled, not timed: it starts once, when the user manager comes up. That is
+# before the boot dashboard opens, which waits on this run before it verifies.
+[Install]
+WantedBy=default.target

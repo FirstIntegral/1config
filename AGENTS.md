@@ -95,7 +95,7 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 - Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
 - **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
 - **Cursor Code has no persistent permission file.** Its command autonomy is per-invocation (`cursor-agent --force` / `--yolo` / `--sandbox`), so the policy does not fan out to it. The rules file still applies (see Tool parity).
-- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; `permission.external_directory` (any file access outside the project cwd, e.g. `/tmp` scratch work) follows the same switch — OpenCode-only, the other two tools cover out-of-tree access with their autonomy modes. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude bypass already skips). Deny still fans out after `*` so last-match deny holds.
+- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; `permission.external_directory` (any file access outside the project cwd, e.g. `/tmp` scratch work) follows the same switch — OpenCode-only, the other two tools cover out-of-tree access with their autonomy modes. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude can still prompt on an explicit ask rule). Deny still fans out after `*` so last-match deny holds.
 - **The opinionated default is on.** `permissions.json` ships `bash_without_prompt` true. A fresh clone gets Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`, and no ask rules. Generic `git push` does not prompt. Deny still applies. Red lines still wait for a yes. Gitignored `local.json` may set the key false; `setup.sh` merges that into the live tools only. Missing `local.json` means the committed true.
 - `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
 - Deny `rm -rf` is exact `/`, `~`, `$HOME` only. Never `rm -rf /*` / `~/*` / `$HOME/*`: `*` is a glob in Claude, Grok, and OpenCode, so those rules match every recursive delete under `/` or home. Vigil's rm-root classifier owns wiping `/` or `$HOME` including a trailing `/*`.
@@ -112,7 +112,7 @@ Same canonical file, `defaults` block. `edit_without_prompt` is **true**. `bash_
 
 **Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. This repo ships the flag **true**. That is the direction. `local.json` is only an opt-out.
 
-With the effective flag true, setup does **not** copy ask rules into any tool — that is what makes generic `git push` prompt-free (Claude bypass would skip them anyway; Grok always-approve would not; OpenCode last-match would not). Deny still copies. Claude deny is still best-effort (bypass skips checks). Red lines above still wait for a yes.
+With the effective flag true, setup does **not** copy ask rules into any tool — that is what makes generic `git push` prompt-free (an explicit ask rule can still prompt in Claude, in Grok always-approve, and through OpenCode last-match). Deny still copies. Claude deny rules block in every mode, `bypassPermissions` included. Red lines above still wait for a yes.
 
 ### Compound commands (when bash_without_prompt is false)
 
@@ -177,10 +177,10 @@ bash ~/.agents/hooks/watch-stale.sh <pid> <logfile|-> [interval_seconds]   # def
 One line per interval on stdout, so it feeds a monitor directly (each line = one notification);
 it ends by itself when the pid is gone. Exit `0` watched process exited · `2` usage · `3` no such pid.
 
-- **Watch the worker pid, not a wrapper.** A `bash -c` around the real process burns no CPU, so a
-  naive CPU check on it reads zero forever and cries hang. Resolve the pid against the interpreter
-  and script (`pgrep -af 'bin/python -u path/to/script.py args'`) and take the process that is
-  actually doing the work.
+- **Watch the worker pid when you can.** Resolve it against the interpreter and script
+  (`pgrep -af 'bin/python -u path/to/script.py args'`). The watch sums CPU over that pid and its
+  descendants, so a `bash -c` wrapper no longer reads as a hang. `EXITED` is still about the pid
+  it was given.
 - **Stale means BOTH signals flat** — no log growth *and* effectively no CPU across a whole
   interval. Either alone is a normal working run: a job grinding through one expensive step is
   silent, and a job blocked on I/O still writes. Alerting on one signal produces false hangs, which
@@ -228,7 +228,7 @@ Talk terse like smart caveman. Keep all technical accuracy. Drop articles, fille
 - Security warnings and irreversible actions: write **clear**, then resume caveman.
 - User says **stop caveman** or **normal mode** → normal prose for the rest of the session.
 - `/caveman lite|full|ultra` sets the level for the rest of the session.
-- Durable opt-out only: gitignored `local.json` key `caveman` set to `off`, `lite`, or `ultra`. Missing file means full.
+- Durable opt-out only: gitignored `local.json` key `caveman` set to `off`, `lite`, or `ultra`. Missing file means full. `setup.sh` copies that level into each tool's own rules as `1config-local`. When that rule is in context, it wins over this section.
 
 ---
 
@@ -493,7 +493,7 @@ Use the science the project actually needs and do not water it down: formal stat
 - Keep the paper a **living artifact**: re-running `writepaper_project` updates and extends it (new results, new sections), it does not restart from scratch.
 - **Lean mirror — default on new papers.** First `writepaper_project` copies `~/.agents/paper-template/lean/` with the rest of `docs/paper/`. Do not backfill existing papers that have no `lean/`. Never overwrite a paper's existing Lean files. `leanlab` (PyPI) is unrelated.
   1. When `docs/paper/lean/` exists, `build.sh` runs `lake build` after latexmk (PATH prepends `~/.elan/bin`). Type errors fail the build. Missing `lake` → Gap, PDF still ships. Never `lake exe cache get` from `build.sh`; never compile Mathlib from source.
-  2. Kernel-checked means that Lean declaration's axiom audit has no `sorryAx`. Unproved statements stay `sorry` and go on Gaps. Report `n/m kernel-checked Lean statements`. **Do not** claim the paper sentence was checked — `lake` green is not fidelity to LaTeX.
+  2. Kernel-checked means that Lean declaration's axiom audit has no `sorryAx`. Unproved statements stay `sorry` and go on Gaps. Report `n/m kernel-checked Lean statements`; `build.sh` prints that count from `lean/axiom-audit.sh`. **Do not** claim the paper sentence was checked — `lake` green is not fidelity to LaTeX.
   3. 1:1 names: `\label{thm:foo}` ↔ `thm_foo` (or a listed rename). Delete `template_sanity` once real theorems exist.
   4. Conversion (so Lean does not prove a different claim): write the statement in Lean first and quote it in LaTeX, **or** decompose the LaTeX into a committed parts list and emit pedantic Lean from those rows, then script-diff the compiled signature. Do not freely restate then `lake build`. Until a mechanical xwalk exists, Gaps must include `statement-fidelity unmeasured` for every formalized theorem. Details: SETUP.md §5d.
   5. Mathlib only in that paper's `lakefile.toml` when statements need it (ℝ, polynomials, ODEs). Template stays core Lean.
@@ -636,7 +636,7 @@ Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does
 | Symlink | `~/.agents/hooks/check-links.sh` | `~/cron-jobs/agents-symlink-guard/check-links.sh` | `NEEDS-SYMLINK-MERGE` | Keep the 4 AGENTS symlinks healthy |
 | Tool memory | `~/.agents/hooks/check-claude-memory.sh` | `~/cron-jobs/claude-memory-guard/check-memory.sh` | `NEEDS-MEMORY-MERGE` | Detect Claude/Grok memory residue → archive → stage → wipe to stub |
 
-Both installed by `setup.sh` (copy from `hooks/`). Schedule: `@daily` + `@reboot` each. Stray merging is automated by `~/.agents/hooks/merge-strays.sh` (cron `@daily`, see Symlink conflict section below).
+Both installed by `setup.sh` (copy from `hooks/`). Schedule: `1config-guards.timer`, a systemd user timer. It runs daily, catches up a missed day, and runs two minutes after login. One run is the symlink guard, then the stray merge (`~/.agents/hooks/merge-strays.sh`, see Symlink conflict section below), then the memory guard. A machine with no systemd user manager gets the same chain in cron. `hooks/scheduler.sh` picks, and leaves exactly one of the two installed.
 
 **Two different flags — do not mix them up:**
 
@@ -669,7 +669,7 @@ Cron **cannot** judge “important facts” (no LLM). It only stages. **You (the
 
 ### Symlink conflict → merge into canonical (AUTOMATED)
 
-**`~/.agents/hooks/merge-strays.sh` does this automatically** (cron @daily, after the guard): each quarantined stray is fed to a headless LLM ("extract unique durable rules not already in canonical → one markdown section or SKIP"), output is sanitized and appended to canonical, the stray is deleted, the flag cleared. That model runs with no tools, and the first installed CLI that answers is used (claude, then grok, then opencode). A reply that contains a name from `hooks/kill-tokens.deny` is not appended; the stray stays for a human. Nothing to type when the reply is clean.
+**`~/.agents/hooks/merge-strays.sh` does this automatically** (same scheduled run, right after the guard): each quarantined stray is fed to a headless LLM ("extract unique durable rules not already in canonical → one markdown section or SKIP"), output is sanitized and appended to canonical, the stray is deleted, the flag cleared. That model runs with no tools, and the first installed CLI that answers is used (claude, then grok, then opencode). A reply that contains a name from `hooks/kill-tokens.deny` is not appended; the stray stays for a human. Nothing to type when the reply is clean.
 
 **You (AI/human) intervene only when:** the flag survives two merge runs (LLM failing), or you want to relocate merged content from the file tail into its proper section.
 

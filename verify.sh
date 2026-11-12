@@ -163,7 +163,7 @@ fi
 [ -f "$AGENTS_HOME/permissions.json" ] && ok "permissions.json (canonical, all 3 tools)" || bad "permissions.json missing"
 PAPER_TPL="$AGENTS_HOME/paper-template"
 if [ -d "$PAPER_TPL" ]; then
-  for f in main.tex build.sh lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore; do
+  for f in main.tex build.sh lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore lean/axiom-audit.sh; do
     [ -e "$PAPER_TPL/$f" ] && ok "paper-template $f" || bad "paper-template missing $f"
   done
   [ -x "$PAPER_TPL/build.sh" ] || note "paper-template/build.sh not executable"
@@ -194,6 +194,13 @@ if [ -d "$PAPER_TPL" ]; then
   else
     bad "paper-template build.sh missing lake gate"
   fi
+  if grep -q -- '--exclude-dir=.lake' "$PAPER_TPL/build.sh" \
+     && grep -q 'lean/axiom-audit.sh' "$PAPER_TPL/build.sh" \
+     && grep -q 'collectAxioms' "$PAPER_TPL/lean/axiom-audit.sh"; then
+    ok "paper-template build.sh skips .lake/ and counts kernel-checked statements by axiom audit"
+  else
+    bad "paper-template build.sh greps .lake/ for sorry, or has no axiom audit"
+  fi
   if grep -q 'digit-refuse.sh' "$PAPER_TPL/build.sh" \
     && [ -f "$PAPER_TPL/digit-refuse.cfg" ] \
     && [ -f "$PAPER_TPL/digit-refuse.deny" ]; then
@@ -208,7 +215,7 @@ if [ -d "$PAPER_TPL" ]; then
     bad "paper-template digit-refuse.cfg/deny drifted"
   fi
   if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
-    for f in lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore; do
+    for f in lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore lean/axiom-audit.sh; do
       if git -C "$AGENTS_HOME" ls-files --error-unmatch "paper-template/$f" >/dev/null 2>&1; then
         ok "paper-template $f tracked in git"
       else
@@ -221,7 +228,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
+for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -1398,6 +1405,16 @@ if [ -x "$HOOKS/watch-stale.sh" ]; then
     *EXITED*) ok "ends with EXITED once the pid is gone" ;;
     *)        bad "watch-stale.sh did not report EXITED: ${_wsout:-<no output>}" ;;
   esac
+  # A wrapper that only waits while its child burns CPU is alive, not stale:
+  # the watch sums CPU over the whole tree under the pid it is given.
+  bash -c 'timeout 3 sh -c "while :; do :; done"; true' &
+  _wspid=$!
+  _wsout="$(bash "$HOOKS/watch-stale.sh" "$_wspid" "$_wstmp/run.log" 2 2>&1 || true)"
+  wait "$_wspid" 2>/dev/null || true
+  case "$_wsout" in
+    *"[+0m] alive"*) ok "counts a child's CPU when the watched pid is a wrapper" ;;
+    *)               bad "watch-stale.sh called a busy child under a wrapper stale: ${_wsout:-<no output>}" ;;
+  esac
   rm -rf "$_wstmp"
 else
   bad "hooks/watch-stale.sh not executable — detached runs have no staleness watch"
@@ -2139,6 +2156,57 @@ if grep -q '^local.json$' "$AGENTS_HOME/.gitignore" \
 else
   bad "local overlay is not gitignored, or local.json.example is missing"
 fi
+# local.json `caveman` reaches all four tools as one generated rule each.
+# A scratch home proves write, re-level, and removal; then this machine is checked.
+_lr="$HOOKS/local-rules.py"
+if [ -f "$_lr" ] && python3 -m py_compile "$_lr" 2>/dev/null; then
+  _lrh="$(mktemp -d -p "$VTMP")"
+  mkdir -p "$_lrh/.config/opencode"
+  printf '{\n  // kept\n  "permission": {"edit": "allow",},\n}\n' > "$_lrh/.config/opencode/opencode.jsonc"
+  _lr_run() { python3 "$_lr" "$1" --home "$_lrh" --local-json "$_lrh/local.json" >/dev/null 2>&1; }
+  printf '{"caveman": "off"}\n' > "$_lrh/local.json"
+  if ! _lr_run check && _lr_run apply && _lr_run check \
+     && grep -q 'Caveman level on this machine: \*\*off\*\*' "$_lrh/.claude/rules/1config-local.md" \
+     && cmp -s "$_lrh/.claude/rules/1config-local.md" "$_lrh/.grok/rules/1config-local.md" \
+     && cmp -s "$_lrh/.claude/rules/1config-local.md" "$_lrh/.config/opencode/1config-local.md" \
+     && grep -q '^alwaysApply: true$' "$_lrh/.cursor/rules/1config-local.mdc" \
+     && grep -q '"~/.config/opencode/1config-local.md"' "$_lrh/.config/opencode/opencode.jsonc" \
+     && grep -q '"edit": "allow"' "$_lrh/.config/opencode/opencode.jsonc"; then
+    ok "local.json caveman=off writes one rule for each of the four tools"
+  else
+    bad "local.json caveman level did not reach all four tools"
+  fi
+  printf '{"caveman": "ultra"}\n' > "$_lrh/local.json"
+  if ! _lr_run check && _lr_run apply && _lr_run check \
+     && grep -q '\*\*ultra\*\*' "$_lrh/.grok/rules/1config-local.md"; then
+    ok "a changed caveman level rewrites the rules"
+  else
+    bad "a changed caveman level left a stale rule"
+  fi
+  printf '{"bash_without_prompt": true}\n' > "$_lrh/local.json"
+  if ! _lr_run check && _lr_run apply && _lr_run check \
+     && [ ! -e "$_lrh/.claude/rules/1config-local.md" ] && [ ! -e "$_lrh/.grok/rules/1config-local.md" ] \
+     && [ ! -e "$_lrh/.cursor/rules/1config-local.mdc" ] && [ ! -e "$_lrh/.config/opencode/1config-local.md" ] \
+     && ! grep -q 'instructions' "$_lrh/.config/opencode/opencode.jsonc"; then
+    ok "no caveman key removes the four rules and the OpenCode entry"
+  else
+    bad "a removed caveman key left a local rule behind"
+  fi
+  if machine; then
+    if _lr_live="$(python3 "$_lr" check --local-json "$AGENTS_HOME/local.json" 2>&1)"; then
+      ok "local rule matches local.json ($_lr_live)"
+    else
+      bad "local rule drift — $(printf '%s' "$_lr_live" | head -n 1) (run setup.sh)"
+    fi
+  fi
+else
+  bad "hooks/local-rules.py missing or does not compile — local.json caveman is not applied"
+fi
+if grep -q 'local-rules.py' "$AGENTS_HOME/setup.sh" && grep -qF '1config-local' "$CANON" && grep -qF '1config-local' "$SETUP"; then
+  ok "local.json caveman fan-out is wired in setup.sh and documented"
+else
+  bad "local.json caveman fan-out missing from setup.sh, AGENTS.md, or SETUP.md"
+fi
 if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["defaults"]["bash_without_prompt"] is True else 1)' "$AGENTS_HOME/permissions.json"; then
   ok "committed bash_without_prompt default is true"
 else
@@ -2501,27 +2569,73 @@ PY
   else
     note "no claude settings.json — skip wiring check"
   fi
-  # Smoke: python3 heredoc -> rewritten + allowed; cat-append heredoc -> rewritten;
-  # plain command and non-rewrite-class heredoc -> no decision (normal prompt flow).
-  out="$(python3 - <<'SMOKE1' | python3 "$HR_PY"
-import json
-print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cd '/tmp' && python3 - <<'PY'\nP = 1\nprint(f\"n={P}\")\nPY\n"}}))
-SMOKE1
+  # The hook's answer must be the shape Claude Code reads (hookSpecificOutput.updatedInput,
+  # every input field carried over, no permission decision), and the rewrite must DO what
+  # the heredoc did: each case runs the original and the rewrite and compares the results.
+  # Plain commands and heredocs outside the class print nothing (normal prompt flow).
+  hr_out="$(HR_PY="$HR_PY" HR_ROOT="$(mktemp -d -p "$VTMP")" python3 - <<'HRCHECK' || true
+import json, os, pathlib, subprocess, sys
+
+hook = os.environ["HR_PY"]
+root = pathlib.Path(os.environ["HR_ROOT"])
+home = root / "home"
+home.mkdir()
+
+def run_hook(command):
+    payload = {"tool_name": "Bash",
+               "tool_input": {"command": command, "description": "d", "timeout": 5000}}
+    p = subprocess.run([sys.executable, hook], input=json.dumps(payload), capture_output=True,
+                       text=True, env={**os.environ, "HOME": str(home)})
+    return p.stdout.strip()
+
+def run(command, cwd):
+    cwd.mkdir(parents=True, exist_ok=True)
+    p = subprocess.run(["bash", "-c", command], cwd=cwd, capture_output=True, text=True)
+    files = {f.name: f.read_text() for f in sorted(cwd.iterdir()) if f.is_file()}
+    return p.returncode, p.stdout, files
+
+CASES = [
+    ("python3 heredoc with an f-string", "python3 - <<'PY'\nP = 1\nprint(f\"n={P}\")\nPY\n", 1),
+    ("cat >> heredoc, appended twice", "cat >> x.md <<'EOF'\n## 2026-08-07 entry\n(ADR-001) with 'quotes'\nEOF\n", 2),
+    ("cat > heredoc", "printf 'old\\n' > y.md; cat > y.md <<'EOF'\nnew line\nEOF\n", 1),
+    ("text before and after the heredoc", "mkdir -p sub && cd sub && python3 - <<'PY'\nprint(1)\nPY\necho done\n", 1),
+]
+for n, (label, command, times) in enumerate(CASES):
+    try:
+        doc = json.loads(run_hook(command))
+    except Exception:
+        print(f"FAIL\t{label}\tthe hook printed no JSON")
+        continue
+    hso = doc.get("hookSpecificOutput", {})
+    upd = hso.get("updatedInput", {})
+    problems = []
+    if hso.get("hookEventName") != "PreToolUse":
+        problems.append("hookEventName is not PreToolUse")
+    if "permissionDecision" in hso or "decision" in doc:
+        problems.append("it made a permission decision")
+    if upd.get("description") != "d" or upd.get("timeout") != 5000:
+        problems.append("it dropped an input field")
+    new = upd.get("command", "")
+    if not new or "<<" in new:
+        problems.append("the command was not rewritten")
+    want = got = None
+    for _ in range(times):
+        want = run(command, root / f"want{n}")
+        got = run(new, root / f"got{n}")
+    if want != got:
+        problems.append(f"result differs: {want!r} vs {got!r}"[:200])
+    print(("FAIL" if problems else "OK") + f"\t{label}\t" + "; ".join(problems))
+HRCHECK
 )"
-  if printf '%s' "$out" | grep -q '"decision": *"allow"' && printf '%s' "$out" | grep -q 'python3 /'; then
-    ok "smoke: python3 heredoc rewritten + allowed"
+  if [ -z "$hr_out" ]; then
+    bad "heredoc-rewrite equivalence check did not run"
   else
-    bad "smoke: python3 heredoc not rewritten (got: $(printf '%s' "$out" | head -c 120))"
-  fi
-  out="$(python3 - <<'SMOKE2' | python3 "$HR_PY"
-import json
-print(json.dumps({"tool_name":"Bash","tool_input":{"command":"cat >> docs/x.md <<'EOF'\n## 2026-08-07 entry\n(ADR-001) with 'quotes'\nEOF\n"}}))
-SMOKE2
-)"
-  if printf '%s' "$out" | grep -q '"decision": *"allow"' && printf '%s' "$out" | grep -q 'io.py' && printf '%s' "$out" | grep -q ' a'; then
-    ok "smoke: cat-append heredoc rewritten + allowed"
-  else
-    bad "smoke: cat-append heredoc not rewritten (got: $(printf '%s' "$out" | head -c 120))"
+    while IFS=$'\t' read -r _hr_st _hr_label _hr_detail; do
+      case "$_hr_st" in
+        OK)   ok "heredoc rewrite does what the heredoc did: $_hr_label" ;;
+        FAIL) bad "heredoc rewrite: $_hr_label — $_hr_detail" ;;
+      esac
+    done <<< "$hr_out"
   fi
   out="$(python3 - <<'SMOKE3' | python3 "$HR_PY"
 import json
@@ -2545,18 +2659,130 @@ else
   bad "heredoc-rewrite hook files missing (run setup.sh)"
 fi
 
-# --- crontab ---------------------------------------------------------------
-echo "[crontab]"
+# --- scheduler: systemd user units, or cron --------------------------------
+echo "[scheduler]"
+_units="1config-guards.service 1config-guards.timer 1config-updater.service"
+_unit_src_ok=1
+for _u in $_units; do
+  [ -f "$AGENTS_HOME/systemd/$_u" ] || _unit_src_ok=0
+done
+# The chain order is the point of the service: the merge reads the guard's flag.
+if [ "$_unit_src_ok" = 1 ] \
+   && grep -qx 'Persistent=true' "$AGENTS_HOME/systemd/1config-guards.timer" \
+   && grep -qx 'OnCalendar=daily' "$AGENTS_HOME/systemd/1config-guards.timer" \
+   && [ "$(grep -c '^ExecStart=' "$AGENTS_HOME/systemd/1config-guards.service")" -eq 3 ] \
+   && [ "$(grep '^ExecStart=' "$AGENTS_HOME/systemd/1config-guards.service" | sed -n '1p;2p' | tr '\n' ' ')" \
+        = "ExecStart=-%h/cron-jobs/agents-symlink-guard/check-links.sh ExecStart=-%h/cron-jobs/agents-symlink-guard/merge-strays.sh " ] \
+   && grep -qx 'WantedBy=default.target' "$AGENTS_HOME/systemd/1config-updater.service"; then
+  ok "systemd units: daily timer with catch-up, guard then merge then memory, updater at login"
+else
+  bad "systemd/ units missing, or the guard chain / catch-up / login start drifted"
+fi
+# The install logic against stub systemctl and crontab commands in a scratch home.
+_sc="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_sc/bin" "$_sc/home"
+cat > "$_sc/bin/crontab" <<'EOF'
+#!/bin/sh
+f="$STUB_DIR/crontab.txt"
+case "$1" in
+  -l)
+    if [ -n "${STUB_CRON_BROKEN:-}" ]; then echo "crontab: cannot open the spool" >&2; exit 1; fi
+    if [ ! -f "$f" ]; then echo "no crontab for user" >&2; exit 1; fi
+    cat "$f" ;;
+  -r) rm -f "$f" ;;
+  -)  cat > "$f" ;;
+  *)  exit 2 ;;
+esac
+EOF
+cat > "$_sc/bin/systemctl" <<'EOF'
+#!/bin/sh
+[ -n "${STUB_NO_MANAGER:-}" ] && exit 1
+case "$*" in
+  "--user enable --now 1config-guards.timer") : > "$STUB_DIR/enabled-1config-guards.timer" ;;
+  "--user enable 1config-updater.service")    : > "$STUB_DIR/enabled-1config-updater.service" ;;
+  "--user disable --now 1config-guards.timer") rm -f "$STUB_DIR/enabled-1config-guards.timer" ;;
+  "--user disable 1config-updater.service")    rm -f "$STUB_DIR/enabled-1config-updater.service" ;;
+  "--user is-enabled "*)
+    if [ -e "$STUB_DIR/enabled-$3" ]; then echo enabled; exit 0; fi
+    echo disabled; exit 1 ;;
+esac
+exit 0
+EOF
+chmod +x "$_sc/bin/crontab" "$_sc/bin/systemctl"
+_sc_env() {
+  env -u XDG_CONFIG_HOME -u AGENTS_SCHEDULER -u SCHEDULER_UNIT_DIR HOME="$_sc/home" \
+    AGENTS_HOME="$AGENTS_HOME" STUB_DIR="$_sc" PATH="$_sc/bin:/usr/bin:/bin" "$@"
+}
+_sc_install() { _rc=0; _sc_env "$@" bash "$HOOKS/scheduler.sh" install auto >"$VTMP/sched.out" 2>&1 || _rc=$?; }
+_sc_old="$_sc/home/cron-jobs"
+printf '%s\n' '0 3 * * * /usr/local/bin/my-own-job' \
+  "@daily $_sc_old/agents-symlink-guard/check-links.sh" "@reboot $_sc_old/agents-symlink-guard/check-links.sh" \
+  "@daily $_sc_old/agents-symlink-guard/merge-strays.sh" "@daily $_sc_old/claude-memory-guard/check-memory.sh" \
+  "@reboot $_sc_old/claude-memory-guard/check-memory.sh" \
+  "@reboot $_sc_old/ai-terminal-tools-update-on-boot/boot-check.sh" > "$_sc/crontab.txt"
+_sc_install
+if [ "$_rc" -eq 0 ] && [ "$(_sc_env bash "$HOOKS/scheduler.sh" status)" = "timers" ] \
+   && cmp -s "$AGENTS_HOME/systemd/1config-guards.timer" "$_sc/home/.config/systemd/user/1config-guards.timer" \
+   && [ "$(cat "$_sc/crontab.txt")" = '0 3 * * * /usr/local/bin/my-own-job' ]; then
+  ok "scheduler: a user manager gets the units, and only our crontab lines go"
+else
+  bad "scheduler: timers were not installed cleanly over an old crontab (exit $_rc)"
+fi
+_sc_install STUB_NO_MANAGER=1
+if [ "$_rc" -eq 0 ] && [ "$(_sc_env STUB_NO_MANAGER=1 bash "$HOOKS/scheduler.sh" status)" = "cron" ] \
+   && grep -qx '0 3 \* \* \* /usr/local/bin/my-own-job' "$_sc/crontab.txt" \
+   && grep -q "^@daily .*check-links.sh; .*merge-strays.sh; .*check-memory.sh\$" "$_sc/crontab.txt" \
+   && grep -q '^@reboot .*boot-check.sh$' "$_sc/crontab.txt" \
+   && [ ! -e "$_sc/home/.config/systemd/user/1config-guards.timer" ]; then
+  ok "scheduler: no user manager falls back to cron, guard and merge on one line"
+else
+  bad "scheduler: cron fallback is wrong (exit $_rc)"
+fi
+cp "$_sc/crontab.txt" "$_sc/crontab.before"
+_sc_install STUB_NO_MANAGER=1 STUB_CRON_BROKEN=1
+if [ "$_rc" -ne 0 ] && cmp -s "$_sc/crontab.txt" "$_sc/crontab.before"; then
+  ok "scheduler: a crontab that cannot be read is not rewritten"
+else
+  bad "scheduler: rewrote a crontab it could not read (exit $_rc)"
+fi
+grep -vx '0 3 \* \* \* /usr/local/bin/my-own-job' "$_sc/crontab.before" > "$_sc/crontab.txt"
+_sc_install
+if [ "$_rc" -eq 0 ] && [ ! -e "$_sc/crontab.txt" ] \
+   && [ "$(_sc_env bash "$HOOKS/scheduler.sh" status)" = "timers" ]; then
+  ok "scheduler: a crontab that held only our lines is removed"
+else
+  bad "scheduler: left a crontab of our own lines beside the timers (exit $_rc)"
+fi
 if ! machine; then
   :
-elif command -v crontab >/dev/null; then
-  ct="$(crontab -l 2>/dev/null || true)"
-  echo "$ct" | grep -q 'agents-symlink-guard/check-links.sh' && ok "crontab symlink guard" || bad "crontab missing symlink guard"
-  echo "$ct" | grep -q 'agents-symlink-guard/merge-strays.sh' && ok "crontab stray-merge" || bad "crontab missing stray-merge"
-  echo "$ct" | grep -q 'claude-memory-guard/check-memory.sh' && ok "crontab memory guard" || bad "crontab missing memory guard"
-  echo "$ct" | grep -q 'ai-terminal-tools-update-on-boot/boot-check.sh' && ok "crontab tool updater" || bad "crontab missing tool updater"
 else
-  note "crontab not available"
+  _sched="$(bash "$HOOKS/scheduler.sh" status 2>/dev/null || true)"
+  case "$_sched" in
+    timers)
+      ok "scheduler is systemd user units"
+      for _u in $_units; do
+        cmp -s "$AGENTS_HOME/systemd/$_u" "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$_u" \
+          && ok "unit $_u matches systemd/" || bad "unit $_u DRIFT — installed ≠ systemd/ (run setup.sh)"
+      done
+      [ "$(systemctl --user is-active 1config-guards.timer 2>/dev/null)" = "active" ] \
+        && ok "1config-guards.timer is active" || bad "1config-guards.timer is enabled but not active (run setup.sh)"
+      ;;
+    cron)
+      ct="$(crontab -l 2>/dev/null || true)"
+      echo "$ct" | grep -q 'agents-symlink-guard/check-links.sh' && ok "crontab symlink guard" || bad "crontab missing symlink guard"
+      echo "$ct" | grep -q 'check-links.sh; .*agents-symlink-guard/merge-strays.sh' && ok "crontab stray-merge follows the guard" || bad "crontab stray-merge is not chained after the guard (run setup.sh)"
+      echo "$ct" | grep -q 'claude-memory-guard/check-memory.sh' && ok "crontab memory guard" || bad "crontab missing memory guard"
+      echo "$ct" | grep -q 'ai-terminal-tools-update-on-boot/boot-check.sh' && ok "crontab tool updater" || bad "crontab missing tool updater"
+      ;;
+    both) bad "both schedulers are installed — every guard runs twice (run setup.sh)" ;;
+    *)
+      if command -v crontab >/dev/null 2>&1 || command -v systemctl >/dev/null 2>&1; then
+        bad "no scheduler installed — guards and updater never run (run setup.sh)"
+      else
+        note "no systemd user manager and no crontab on this machine"
+      fi
+      ;;
+  esac
 fi
 
 # --- template parity: project-template/ files must equal SETUP.md §5 blocks --
@@ -2783,6 +3009,55 @@ if ! grep -q 'firstintegral.1config' "$AGENTS_HOME/setup.sh" \
 else
   ok "setup.sh installs firstintegral.1config"
 fi
+# The bar edit is a text insert into a file the shell reads at every start.
+# It must land in the right place, and it must write nothing it cannot prove parses.
+_bw="$HOOKS/bar-widget.py"
+if [ -f "$_bw" ] && grep -q 'hooks/bar-widget.py' "$AGENTS_HOME/setup.sh"; then
+  _bwd="$(mktemp -d -p "$VTMP")"
+  _bw_ids() { python3 -c 'import json,sys; print(" ".join(w["id"] for w in json.load(open(sys.argv[1]))["bar"]["layout"]["right"]))' "$1" 2>/dev/null; }
+  _bw_json() {
+    # _bw_json FILE ID...  — a shell.json in Omarchy's own layout
+    local f="$1" first=1 id
+    shift
+    printf '{\n  "bar": {\n    "layout": {\n      "left": [],\n      "right": [\n' > "$f"
+    for id in "$@"; do
+      [ "$first" = 1 ] || printf ',\n' >> "$f"
+      printf '        {\n          "id": "%s"\n        }' "$id" >> "$f"
+      first=0
+    done
+    printf '\n      ]\n    }\n  }\n}\n' >> "$f"
+  }
+  _bw_json "$_bwd/a.json" omarchy.tray brwsk.vigil omarchy.audio
+  python3 "$_bw" "$_bwd/a.json" "$_bwd/bak" >/dev/null 2>&1
+  if [ "$(_bw_ids "$_bwd/a.json")" = "omarchy.tray brwsk.vigil firstintegral.1config omarchy.audio" ] \
+     && [ -f "$_bwd/bak/shell.json" ]; then
+    ok "bar widget lands after brwsk.vigil and the old file is backed up"
+  else
+    bad "bar widget insert after brwsk.vigil is wrong: $(_bw_ids "$_bwd/a.json")"
+  fi
+  _bw_json "$_bwd/b.json" omarchy.tray omarchy.audio
+  python3 "$_bw" "$_bwd/b.json" "$_bwd/bak" >/dev/null 2>&1
+  [ "$(_bw_ids "$_bwd/b.json")" = "firstintegral.1config omarchy.tray omarchy.audio" ] \
+    && ok "bar widget goes first when brwsk.vigil is not on the bar" \
+    || bad "bar widget insert without the anchor is wrong: $(_bw_ids "$_bwd/b.json")"
+  _bw_json "$_bwd/c.json" omarchy.tray brwsk.vigil
+  python3 "$_bw" "$_bwd/c.json" "$_bwd/bak" >/dev/null 2>&1
+  [ "$(_bw_ids "$_bwd/c.json")" = "firstintegral.1config omarchy.tray brwsk.vigil" ] \
+    && ok "bar widget still lands when the anchor is the last entry" \
+    || bad "bar widget insert with a trailing anchor is wrong: $(_bw_ids "$_bwd/c.json")"
+  printf '{\n  // a comment makes this JSONC\n  "bar": {"layout": {"right": [\n        {\n          "id": "x"\n        }\n  ]}}\n}\n' > "$_bwd/d.json"
+  cp "$_bwd/d.json" "$_bwd/d.before"
+  python3 "$_bw" "$_bwd/d.json" "$_bwd/bak" >"$VTMP/bw.out" 2>&1
+  cmp -s "$_bwd/d.json" "$_bwd/d.before" && grep -q 'bar not edited' "$VTMP/bw.out" \
+    && ok "bar widget leaves a file it cannot parse untouched and says so" \
+    || bad "bar widget edited a shell.json it could not parse"
+  cp "$_bwd/a.json" "$_bwd/a.before"
+  python3 "$_bw" "$_bwd/a.json" "$_bwd/bak" >/dev/null 2>&1
+  cmp -s "$_bwd/a.json" "$_bwd/a.before" \
+    && ok "bar widget is idempotent" || bad "bar widget inserted itself twice"
+else
+  bad "hooks/bar-widget.py missing, or setup.sh does not call it"
+fi
 if command -v omarchy-plugin-validate >/dev/null 2>&1; then
   if omarchy-plugin-validate "$PLUGIN" >/dev/null; then
     ok "omarchy-plugin-validate firstintegral.1config"
@@ -2961,6 +3236,15 @@ if [ -n "$_lake" ]; then
   else
     bad "lake build of paper-template/lean/ failed"
   fi
+  # One proved theorem and one with a hole: the audit must count 1 of 2 and name the hole.
+  printf '\nnamespace Fixture\ntheorem thm_open (n : Nat) : n * 1 = n := by sorry\nend Fixture\n' >> "$_leantmp/Paper.lean"
+  _audit="$(cd "$_leantmp" && PATH="${HOME}/.elan/bin:${PATH}" "$_lake" build >/dev/null 2>&1; bash "$_leantmp/axiom-audit.sh" 2>&1 || true)"
+  if printf '%s\n' "$_audit" | grep -qx 'lean: 1/2 kernel-checked Lean statements' \
+     && printf '%s\n' "$_audit" | grep -qx '  Fixture.thm_open'; then
+    ok "axiom audit counts 1/2 kernel-checked and names the theorem with a hole"
+  else
+    bad "axiom audit is wrong: $(printf '%s' "$_audit" | head -n 2 | tr '\n' ' ')"
+  fi
   rm -rf "$_leantmp"
 else
   info "lake not on PATH — skip paper-template lake build (run hooks/install-elan.sh)"
@@ -3078,6 +3362,36 @@ if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q '"data":\[\]'; then
 else
   bad "opencode 2.x empty skill.list was not returned"
 fi
+# 2.2.7: the private server lists nothing and the background service lists
+# everything. The helper asks a service that is already running, and only then.
+cat >"$_oc_fix/opencode" <<'EOF'
+#!/bin/sh
+if [ "$1" = "api" ]; then
+  case " $* " in
+    *" --standalone "*) printf '%s\n' '{"data":[]}' ;;
+    *) printf '%s\n' '{"data":[{"name":"systematic-debugging"}]}' ;;
+  esac
+  exit 0
+fi
+exit 1
+EOF
+printf '#!/bin/sh\nexit 0\n' >"$_oc_fix/pgrep"
+chmod +x "$_oc_fix/pgrep"
+_oc_prc=0
+_oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q 'systematic-debugging'; then
+  ok "opencode 2.x empty private list falls back to a running service"
+else
+  bad "opencode 2.x empty private list did not ask the running service"
+fi
+printf '#!/bin/sh\nexit 1\n' >"$_oc_fix/pgrep"
+_oc_prc=0
+_oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q '"data":\[\]'; then
+  ok "opencode 2.x with no running service does not start one"
+else
+  bad "opencode 2.x asked for a service that was not running"
+fi
 rm -rf "$_oc_fix"
 if command -v opencode >/dev/null 2>&1; then
   # to a file, not $(...): opencode exits before flushing a >64 KB pipe.
@@ -3099,7 +3413,7 @@ if command -v opencode >/dev/null 2>&1; then
     else
       _flat="$(printf '%s' "$_oc" | tr -d '[:space:]')"
       if [ -z "$_flat" ] || printf '%s' "$_flat" | grep -q '"data":\[\]'; then
-        info "opencode skill.list is empty — 2.0.28 scans with a bun brace glob that matches nothing; skill files stay the check"
+        info "opencode skill.list is empty — the private server lists none and no background service is running; skill files stay the check"
       else
         bad "opencode skill.list missing: ${_missing}"
       fi

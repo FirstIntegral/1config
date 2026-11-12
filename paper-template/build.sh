@@ -44,14 +44,20 @@ if [ -d lean ]; then
   if command -v lake >/dev/null 2>&1; then
     echo "lean: lake build"
     (cd lean && lake build)
-    sorry_lines="$(grep -RInE --include='*.lean' -e '\bsorry\b' -e '\badmit\b' lean || true)"
+    # The word in this paper's own sources. .lake/ is dependencies (Mathlib has its own).
+    sorry_lines="$(grep -RInE --include='*.lean' --exclude-dir=.lake --exclude-dir=lake-packages \
+      -e '\bsorry\b' -e '\badmit\b' lean || true)"
     if [ -n "$sorry_lines" ]; then
       echo "lean sorry: $(printf '%s\n' "$sorry_lines" | wc -l)"
       printf '%s\n' "$sorry_lines"
     else
       echo "lean sorry: 0"
     fi
-    echo "lean: lake build ok (kernel-checked Lean statements; not a proof that LaTeX matches)"
+    # The kernel's own count: a theorem is kernel-checked when its axioms have no sorryAx.
+    if [ -f lean/axiom-audit.sh ]; then
+      bash lean/axiom-audit.sh || echo "lean: axiom audit unavailable — report the count from #print axioms by hand"
+    fi
+    echo "lean: lake build ok (a green build is not a proof that the LaTeX statement matches)"
   else
     echo "LEAN SKIPPED: lake not on PATH — bash ~/.agents/hooks/install-elan.sh"
   fi

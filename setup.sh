@@ -6,7 +6,8 @@
 # Existing machine (either distro): git pull && bash ~/.agents/setup.sh
 # Idempotent. Backs up anything it replaces to ~/.agents/backups/setup-<timestamp>/.
 #
-# Env: SKIP_CRON=1  skip crontab install (testing / machine without cron)
+# Env: SKIP_CRON=1              skip the scheduler step (testing)
+#      AGENTS_SCHEDULER=cron    force cron; =timers forces systemd user units (default: auto)
 set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
@@ -54,10 +55,12 @@ for cmd in python3 flock git; do
     need_die=1
   fi
 done
-if command -v crontab >/dev/null; then
+if command -v systemctl >/dev/null 2>&1; then
+  log "ok       systemd (user units schedule the guards; cron is the fallback)"
+elif command -v crontab >/dev/null; then
   log "ok       crontab"
 else
-  log "MISSING  crontab (Ubuntu: apt install cron · Omarchy/Arch: pacman -S cronie)"
+  log "MISSING  a scheduler — systemd user manager, or cron (Ubuntu: apt install cron · Omarchy/Arch: pacman -S cronie)"
 fi
 if command -v gpg >/dev/null; then
   log "ok       gpg"
@@ -641,6 +644,20 @@ PYEOF
   fi
 fi
 
+# --- 5f local.json overrides → one generated rule per tool -------------------
+# AGENTS.md is a tracked file behind four symlinks, so it cannot hold a
+# per-machine value. The caveman level from local.json goes where each tool
+# loads rules on its own. No key, or no local.json, removes those rules.
+echo "[5f] local.json overrides → per-tool local rule"
+LOCAL_RULES="$AGENTS_HOME/hooks/local-rules.py"
+if [ -f "$LOCAL_RULES" ]; then
+  chmod +x "$LOCAL_RULES"
+  python3 "$LOCAL_RULES" apply --local-json "$AGENTS_HOME/local.json" \
+    || die "hooks/local-rules.py apply failed"
+else
+  log "WARNING: hooks/local-rules.py missing — a local.json caveman level is not applied"
+fi
+
 # --- 6 symlink guard (source: hooks/check-links.sh) -------------------------
 echo "[6] symlink guard script (refresh from hooks/)"
 LINK_GUARD_SRC="$AGENTS_HOME/hooks/check-links.sh"
@@ -709,30 +726,18 @@ else
   log "WARNING: hooks/merge-strays.sh missing — skip"
 fi
 
-# --- 8 crontab ---------------------------------------------------------------
-echo "[8] crontab entries"
+# --- 8 scheduler (source: hooks/scheduler.sh + systemd/) ----------------------
+# systemd user units when a user manager answers, cron when none does. The
+# script leaves exactly one of the two installed and never touches a crontab
+# line that is not ours. AGENTS_SCHEDULER=cron|timers forces one.
+echo "[8] scheduler (guards + tool updater)"
 if [ "$SKIP_CRON" = 1 ]; then
   log "skipped (SKIP_CRON=1)"
-elif ! command -v crontab >/dev/null; then
-  log "WARNING: crontab not found — add manually:"
-  log "  @daily  $GUARD_DIR/check-links.sh"
-  log "  @reboot $GUARD_DIR/check-links.sh"
-  log "  @daily  $MEM_GUARD_DIR/check-memory.sh"
-  log "  @reboot $MEM_GUARD_DIR/check-memory.sh"
-  log "  @reboot $UPD_DIR/boot-check.sh"
 else
-  # CRITICAL: never feed `crontab -` an empty stdin (installs an empty crontab).
-  # All greps carry `|| true` so set -e/pipefail cannot abort before crontab -.
-  CT_OLD="$(crontab -l 2>/dev/null || true)"
-  CT_OLD="$(printf '%s\n' "$CT_OLD" | grep -v -E 'agents-symlink-guard|claude-memory-guard|ai-terminal-tools-update-on-boot' || true)"
-  { printf '%s\n' "$CT_OLD"
-    printf '@daily %s\n@reboot %s\n@daily %s\n@daily %s\n@reboot %s\n@reboot %s\n' \
-      "$GUARD_DIR/check-links.sh" "$GUARD_DIR/check-links.sh" \
-      "$GUARD_DIR/merge-strays.sh" \
-      "$MEM_GUARD_DIR/check-memory.sh" "$MEM_GUARD_DIR/check-memory.sh" \
-      "$UPD_DIR/boot-check.sh"
-  } | grep -v '^$' | crontab -
-  log "installed symlink-guard (@daily + @reboot) + stray-merge (@daily) + memory-guard (@daily + @reboot) + tool updater (@reboot)"
+  SCHED="$AGENTS_HOME/hooks/scheduler.sh"
+  [ -f "$SCHED" ] || die "hooks/scheduler.sh missing — copy ~/.agents fully"
+  chmod +x "$SCHED"
+  bash "$SCHED" install || die "scheduler install failed — see the line above"
 fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------
@@ -890,51 +895,9 @@ if [ -d "$HOME/.config/omarchy/plugins" ] && [ -f "$PLUGIN_SRC/manifest.json" ];
     omarchy-plugin-validate "$PLUGIN_DST" || die "firstintegral.1config failed omarchy-plugin-validate"
   fi
   log "copied $PLUGIN_DST"
-  python3 - "$HOME/.config/omarchy/shell.json" <<'PY'
-import sys
-from pathlib import Path
-path = Path(sys.argv[1])
-if not path.is_file():
-    print("  no shell.json — plugin copied, bar not edited")
-    raise SystemExit(0)
-text = path.read_text()
-if '"id": "firstintegral.1config"' in text:
-    print("  bar already has firstintegral.1config")
-    raise SystemExit(0)
-lines = text.splitlines(keepends=True)
-anchor = None
-for i, line in enumerate(lines):
-    if '"id": "brwsk.vigil"' in line:
-        anchor = i
-        break
-insert_at = None
-if anchor is not None:
-    for j in range(anchor, len(lines)):
-        if lines[j].strip() == "},":
-            insert_at = j + 1
-            break
-if insert_at is None:
-    for i, line in enumerate(lines):
-        if '"right"' in line and "[" in line:
-            insert_at = i + 1
-            break
-if insert_at is None:
-    print("  shell.json has no bar.layout.right — plugin copied, bar not edited")
-    raise SystemExit(0)
-nxt = ""
-k = insert_at
-while k < len(lines) and lines[k].strip() == "":
-    k += 1
-if k < len(lines):
-    nxt = lines[k].strip()
-if nxt.startswith("]"):
-    entry = '        {\n          "id": "firstintegral.1config"\n        }\n'
-else:
-    entry = '        {\n          "id": "firstintegral.1config"\n        },\n'
-lines.insert(insert_at, entry)
-path.write_text("".join(lines))
-print(f"  inserted firstintegral.1config at line {insert_at + 1}")
-PY
+  # The bar edit is a text insert into a file the shell reads at every start.
+  # hooks/bar-widget.py writes it only when the file parses before and after.
+  python3 "$AGENTS_HOME/hooks/bar-widget.py" "$HOME/.config/omarchy/shell.json" "$BACKUP_DIR"
   if command -v omarchy-shell >/dev/null 2>&1; then
     if omarchy-shell shell rescanPlugins >/dev/null 2>&1; then
       log "shell rescanned plugins"
@@ -971,7 +934,17 @@ else
   die "$VERIFY missing — ecosystem cannot be verified"
 fi
 
-echo "== done. backups (if anything was replaced): $BACKUP_DIR =="
+# A run that replaced nothing leaves no backup directory behind, and the empty
+# ones earlier runs left go too. rmdir only removes an empty directory.
+rmdir "$BACKUP_DIR" 2>/dev/null || true
+for _old in "$AGENTS_HOME"/backups/setup-*; do
+  [ -d "$_old" ] && rmdir "$_old" 2>/dev/null || true
+done
+if [ -d "$BACKUP_DIR" ]; then
+  echo "== done. replaced files were backed up to: $BACKUP_DIR =="
+else
+  echo "== done. nothing was replaced (no backup directory) =="
+fi
 echo "Rule: after ANY edit under $AGENTS_HOME → re-run this setup.sh (syncs installs + verify)."
 # verify.sh already dropped the ecosystem row. This pass also drops a setup
 # row left by an earlier fast-forward whose install has now succeeded.

@@ -18,7 +18,7 @@ This file is the human report. The machine spec is [`SETUP.md`](SETUP.md). Runti
 | **Ubuntu** (Debian) | Supported | `sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full` |
 | Other systemd Linux | Best-effort | python3, flock, git, cron, gnupg, gnome-keyring |
 
-Same `setup.sh` on both. No Omarchy-only step in the install path. The Omarchy desktop skill is **gitignored** (machine-local under `skills/`) and never required for the brain to run.
+Same `setup.sh` on both. No Omarchy-only step in the install path. The guards and the tool updater run from systemd user units; `cron`/`cronie` in the package line is the fallback for a machine with no user manager, and `setup.sh` leaves exactly one of the two installed. The Omarchy desktop skill is **gitignored** (machine-local under `skills/`) and never required for the brain to run.
 
 ## Fresh machine
 
@@ -30,7 +30,8 @@ git clone https://github.com/FirstIntegral/1config.git ~/.agents
 # 2. Distro packages if the preflight complains
 #    Ubuntu:  sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full
 #    Omarchy: omarchy pkg add python util-linux cronie git gnupg gnome-keyring texlive-meta
-#    then:    sudo systemctl enable --now cron     # Ubuntu
+#    cron is only the fallback scheduler. Enable it if this machine has no systemd user manager:
+#             sudo systemctl enable --now cron     # Ubuntu
 #             sudo systemctl enable --now cronie   # Omarchy/Arch
 
 # 3. Wire the brain (idempotent; launches the 8-page welcome walkthrough on first interactive install)
@@ -76,7 +77,7 @@ git pull origin main
 bash ~/.agents/setup.sh
 ```
 
-`setup.sh` is idempotent: re-copies hooks, refreshes cron jobs, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. 1config does not edit your `.profile` and does not symlink into `~/.local/bin`.
+`setup.sh` is idempotent: re-copies hooks, refreshes the scheduled guards, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. 1config does not edit your `.profile` and does not symlink into `~/.local/bin`.
 
 ## Opinionated defaults — read before you fork
 
@@ -134,6 +135,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `permissions.json` | One policy, fanned out to Claude, Grok, and OpenCode. Cursor Code autonomy is per-invocation (`--force`/`--sandbox`). `bash_without_prompt` is true. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. |
 | `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite, `welcome.js` walkthrough. |
+| `systemd/` | User units for the guards and the tool updater. `hooks/scheduler.sh` installs them, or cron lines where no user manager runs. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |

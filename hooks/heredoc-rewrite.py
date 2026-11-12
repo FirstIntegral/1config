@@ -2,18 +2,23 @@
 # heredoc-rewrite.py — logic half of the PreToolUse heredoc-rewrite hook.
 #
 # Reads the Claude Code hook payload from stdin. If the Bash command contains
-# exactly one QUOTED heredoc and it belongs to the safe rewrite class
+# exactly one QUOTED heredoc and it belongs to the rewrite class
 # (python3 - / python - / cat >> X / cat > X), the body is written to a
 # scratchpad file under ~/.cache/agents-heredoc/ and the command is rewritten
-# to run that file; the hook then answers decision=allow for the rewritten
-# form. Every other command produces no output, i.e. no decision — the normal
-# permission flow (prompt) applies.
+# to run that file. The hook returns the rewritten command as
+# hookSpecificOutput.updatedInput and makes NO permission decision. Every other
+# command produces no output, so the normal permission flow applies.
 #
-# Why rewrite instead of allow-verbatim: the allow decision bypasses the
-# permission system for the command that actually runs, so the rewritten
-# command is deliberately kept inside the allowlist-shaped class (a plain
-# `python3 <file>` invocation). Only the body the AI already wrote is
-# executed — the same trust level as the original heredoc.
+# Why no decision: Claude Code evaluates its permission rules against the input
+# a hook returns. The rewritten command has no heredoc, so the parse verdict
+# that no allow rule could silence is gone, and `python3 <file>` is what the
+# allowlist already covers. Whatever stood before or after the heredoc is
+# still judged by those rules, segment by segment. An "allow" here would have
+# approved that surrounding text too, which is not this hook's to give.
+#
+# Output shape (Claude Code hooks reference, PreToolUse decision control):
+#   {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {...}}}
+# updatedInput replaces the whole tool input, so every field is carried over.
 import json
 import pathlib
 import re
@@ -23,10 +28,13 @@ import uuid
 
 CACHE = pathlib.Path.home() / ".cache" / "agents-heredoc"
 
+# io.py TARGET BODY MODE — MODE is "a" (cat >>) or "w" (cat >).
 IO_PY = (
-    "import pathlib, sys\n"
-    "pathlib.Path(sys.argv[1]).write_text("
-    "pathlib.Path(sys.argv[2]).read_text(), sys.argv[3])\n"
+    "import sys\n"
+    "with open(sys.argv[2], encoding='utf-8') as src:\n"
+    "    data = src.read()\n"
+    "with open(sys.argv[1], sys.argv[3], encoding='utf-8') as dst:\n"
+    "    dst.write(data)\n"
 )
 
 
@@ -50,7 +58,8 @@ def main() -> None:
         idx = cmd.find("\n" + delim, body_start)
         if idx == -1 or cmd[idx + 1 + len(delim):] != "":
             return  # unterminated or unusual close — leave to normal flow
-    body = cmd[body_start:idx]
+    # A heredoc hands the command every body line with its newline, the last one too.
+    body = cmd[body_start:idx] + "\n"
     suffix = cmd[idx + 1 + len(delim):]
     if len(body) > 200_000:
         return
@@ -88,11 +97,13 @@ def main() -> None:
             f"{'a' if kind == 'append' else 'w'}{suffix}"
         )
     _cleanup()
+    updated = dict(tin)
+    updated["command"] = new
     print(json.dumps({
-        "decision": "allow",
-        "reason": "heredoc rewritten to scratchpad file "
-                  "(parse-verdict class — no allow rule can match it)",
-        "tool_input": {"command": new},
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "updatedInput": updated,
+        }
     }))
 
 
