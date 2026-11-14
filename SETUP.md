@@ -404,7 +404,7 @@ Before other work, the AI must (must match canonical `AGENTS.md` — that file w
    - For each of those, if `updatedAt` is after the compact's last `Fetched YYYY-MM-DD` line, read comments and reviews newer than that date. No such line: read comments and reviews from the last 14 days. A close or a comment by someone other than the logged-in user is a reply. Our own comment is not a reply.
    - Put state changes under **Since last time**. Put replies under **Replies**. Do not invent a comment the fetch did not return.
    - Do not comment, react, post, push, or fast-forward during this fetch. Do not mark notifications read.
-8. Speak the status card defined in canonical `AGENTS.md` (`### Status card`). **How things are** is one sentence. **Left to do** is at most 5 lines, then `N more in session_compact.md` when the list is longer. **Replies** is at most 3 lines, then `N more replies in session_compact.md`. **Since last time** is the fetch. Do not read the rest of the compact aloud. Then wait. Do not invent state that is not in those files or in the fetch.
+8. Speak the status card defined in canonical `AGENTS.md` (`### Status card`). **How things are** is one sentence. **Left to do** is every line under that heading, in order. **Replies** is at most 3 lines, then `N more replies in session_compact.md`. **Since last time** is the fetch. Do not read the rest of the compact aloud. Then wait. Do not invent state that is not in those files or in the fetch.
 9. Treat `<path>` as the project root for the rest of the session unless the user points elsewhere.
 
 Same for all four tools.

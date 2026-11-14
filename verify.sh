@@ -2101,15 +2101,15 @@ if grep -qF '### Status card' "$CANON" \
    && grep -qF '### Status card' "$SETUP" \
    && grep -qF 'Do not read the rest of the compact aloud.' "$CANON" \
    && grep -qF 'Do not read the rest of the compact aloud.' "$SETUP" \
-   && grep -qF 'N more in session_compact.md' "$CANON" \
-   && grep -qF 'N more in session_compact.md' "$SETUP" \
-   && grep -qF 'at most 5' "$CANON" \
-   && grep -qF 'at most 5' "$SETUP" \
+   && grep -qF 'Speak every line under `## Left to do`' "$CANON" \
+   && grep -qF '**Left to do** is every line under that heading, in order.' "$SETUP" \
+   && ! grep -qF 'Speak at most 5 lines' "$CANON" \
+   && ! grep -qF 'at most 5 lines' "$SETUP" \
    && grep -qF '## How things are' "$TEMPLATE/session_compact.md" \
    && grep -qF '## Left to do' "$TEMPLATE/session_compact.md" \
    && grep -qF '## How things are' "$SETUP" \
    && grep -qF '## Left to do' "$SETUP" \
-   && grep -qF 'status_card=how-left-replies' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -qF 'status_card=how-left-full-replies' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -qF '## Open issues / blockers' "$TEMPLATE/session_compact.md" \
    && ! grep -qF 'brief status (current state' "$CANON" \
    && ! grep -qF 'brief status (current state' "$SETUP"; then

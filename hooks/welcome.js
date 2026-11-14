@@ -207,7 +207,7 @@ const PAGES = [
     accentColor: ANSI.amber,
     sentences: [
       'create_project <name> scaffolds ~/Projects/<name> from project-template/ (verified by hooks/rule-oracles.sh) and never runs git init or creates a remote.',
-      'continue_project <path> checks residue flags, pulls notes, reads the session files, fetches GitHub issues, pull requests, and maintainer replies, then speaks How things are, Left to do (at most five), Replies, and Since last time.',
+      'continue_project <path> checks residue flags, pulls notes, reads the session files, fetches GitHub issues, pull requests, and maintainer replies, then speaks How things are, every Left to do line, Replies (at most three), and Since last time.',
       'checkpoint_project rewrites the status card at the top of session_compact.md, backfills docs/DECISIONS.md, runs hooks/checkpoint.sh, then speaks that same card.',
       'checkpoint.sh fetches the push remote, takes commits this checkout lacks with git merge (fast-forward when it can), then commits and pushes. Exit codes are 0, 3, and 10 through 24. A merge conflict exits 24 and pushes nothing. Failed pushes never rebase or force-push.',
       'global_brain_update targets ~/.agents/ itself and requires running setup.sh and sync.sh in the same turn, plus regenerating setup-infographic.svg if architecture flows changed and evaluating whether hooks/welcome.js should mention the change.',

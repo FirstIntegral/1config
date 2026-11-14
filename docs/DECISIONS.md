@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-14 — speak every Left to do line
+
+**Policy:** status_card=how-left-full-replies
+
+**Decision:** `continue_project` and `checkpoint_project` speak every line under `## Left to do`, in that order. Item 1 stays the next action. Each line stays at most 20 words. **How things are** stays one sentence. **Replies** stays at most 3 lines, then `N more replies in session_compact.md`. **Since last time** stays at most 3 lines. The rest of `session_compact.md` stays unread. The file list is not shortened.
+
+**Why:** On 2026-11-14 a continue of omalauncher spoke four lines and then `6 more in session_compact.md`. The owner had to open the file to see the rest of their own open work. The 2026-10-23 cap stopped a continue from reciting the whole compact. The 2026-10-31 rejection of a higher cap was about maintainer replies, which now have their own heading.
+
+**Rejected:** Raising the Replies cap. Raising the Since last time cap. Reading Models used, the handoff, or the GitHub log aloud. Cutting the file list down to what was spoken.
+
 ## 2026-11-12 — The updater drops a GitHub token that gets a 401; revoking one gh token ended them all
 
 **Decision:** `updater/update-apps.sh` asks GitHub about each token candidate once (`GET /rate_limit`). A 401 skips that source and names it in the log. Any other answer, or no answer, keeps the token. `update-apps.sh --token-source` prints the source that would be used and the sources GitHub refused, with no lock, no log line, and no upgrade.
@@ -192,7 +202,7 @@ Limits: a credential that can administer the repository can remove the ruleset. 
 
 ## 2026-10-31 — continue speaks maintainer replies
 
-**Policy:** status_card=how-left-replies
+**Policy:** status_card superseded-by 2026-11-14 — speak every Left to do line
 
 **Decision:** `continue_project` reads comments and reviews, not only open or closed. Scope is issues and pull requests the logged-in `gh` user authored, any state, plus every issue or pull request named in that project's `AGENTS.md`, `CONTRIB-LOG.md`, or `session_compact.md`. A comment or close by someone else, newer than the compact's `Fetched YYYY-MM-DD` line, is a reply. No such line means the last 14 days. The status card speaks those under **Replies**, at most 3 lines, then `N more replies in session_compact.md`. A `## Replies` line without `heard` is spoken too. **Since last time** stays the other GitHub news, at most 3 lines. Checkpoint keeps `## Replies`, adds lines from that session's fetch, and appends `heard` only when the user said that number is heard. Continue does not write the file. The fetch does not comment, react, post, push, fast-forward, or mark notifications read.
 
