@@ -105,8 +105,7 @@ fi
 [ -d "$AGENTS_HOME/project-template" ] || log "WARNING: $AGENTS_HOME/project-template missing — create_project scaffolding will have no source"
 # The files the config steps rewrite. A dry run copies them and works on the copy.
 CONFIG_FILES=".grok/config.toml .claude/settings.json .config/opencode/opencode.jsonc .cursor/rules/1config.mdc \
-.claude/rules/1config-local.md .grok/rules/1config-local.md .cursor/rules/1config-local.mdc .config/opencode/1config-local.md \
-.config/Claude/claude_desktop_config.json"
+.claude/rules/1config-local.md .grok/rules/1config-local.md .cursor/rules/1config-local.mdc .config/opencode/1config-local.md"
 if ! live; then
   PREVIEW="$(mktemp -d)"
   trap 'rm -rf "$PREVIEW"' EXIT
@@ -692,30 +691,6 @@ if [ -f "$LOCAL_RULES" ]; then
     || die "hooks/local-rules.py apply failed"
 else
   log "WARNING: hooks/local-rules.py missing — a local.json caveman level is not applied"
-fi
-
-# --- 5g brain directory: Claude Code additionalDirectories + Desktop grants ---
-# Desktop remote chat does not load ~/.claude/CLAUDE.md. It uploads files from
-# folders already granted on that chat. This step adds the brain directory.
-# It does not create the Desktop file and does not invent a chat id.
-echo "[5g] brain directory → claude code and desktop grants"
-BRAIN_ACCESS="$AGENTS_HOME/hooks/claude-brain-access.py"
-if [ -f "$BRAIN_ACCESS" ]; then
-  live && chmod +x "$BRAIN_ACCESS"
-  CLAUDE_SETTINGS="$TARGET_HOME/.claude/settings.json"
-  DESKTOP_CFG="$TARGET_HOME/.config/Claude/claude_desktop_config.json"
-  [ -f "$CLAUDE_SETTINGS" ] && cp -p "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-brain.json"
-  [ -f "$DESKTOP_CFG" ] && cp -p "$DESKTOP_CFG" "$BACKUP_DIR/claude-desktop-config.json"
-  python3 "$BRAIN_ACCESS" apply --home "$TARGET_HOME" --brain "$AGENTS_HOME" \
-    || die "hooks/claude-brain-access.py apply failed"
-  if [ -f "$BACKUP_DIR/claude-settings-brain.json" ] && cmp -s "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-brain.json"; then
-    rm -f "$BACKUP_DIR/claude-settings-brain.json"
-  fi
-  if [ -f "$BACKUP_DIR/claude-desktop-config.json" ] && cmp -s "$DESKTOP_CFG" "$BACKUP_DIR/claude-desktop-config.json"; then
-    rm -f "$BACKUP_DIR/claude-desktop-config.json"
-  fi
-else
-  log "WARNING: hooks/claude-brain-access.py missing — the brain directory is not granted"
 fi
 
 # --- dry run ends here ---------------------------------------------------------

@@ -177,8 +177,7 @@ if [ "$RESTORE" = 1 ]; then
   restore_one "$HOME/.config/opencode/opencode.jsonc" opencode-perms.jsonc
 else
   say "left as they are (re-run with --restore-configs to put back the oldest saved copies):"
-  say "  ~/.claude/settings.json            permissions.allow / ask / deny, defaultMode, additionalDirectories"
-  say "  ~/.config/Claude/claude_desktop_config.json  trusted folders and existing remote grants, when that file exists"
+  say "  ~/.claude/settings.json            permissions.allow / ask / deny and defaultMode"
   say "  ~/.grok/config.toml                [permission], [ui] permission_mode, [memory], [compat.claude]"
   say "  ~/.config/opencode/opencode.jsonc  permission.bash / edit / external_directory"
   say "  while they stay, these tools keep running Bash without a prompt if setup.sh turned that on."

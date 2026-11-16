@@ -1,15 +1,5 @@
 # Brain decisions
 
-## 2026-11-16 — Claude Desktop gets the brain directory, not a second rules file
-
-**Policy:** claude_desktop_brain=grant-existing
-
-**Decision:** `setup.sh` step `5g` runs `hooks/claude-brain-access.py`. It adds the realpath of `~/.agents` to Claude Code `permissions.additionalDirectories`. When `~/.config/Claude/claude_desktop_config.json` exists, it adds that path to `preferences.localAgentModeTrustedFolders` and to every existing remote chat and session folder grant. It does not create the Desktop file, does not invent a chat id, and does not grant `~/.claude`. A missing Desktop config is a skip.
-
-**Why:** On 2026-11-16 Claude Desktop chat did not load `~/.claude/CLAUDE.md`. A chat whose only grant was the thesis folder could not see `continue_project`. Adding `~/.agents` to that chat's grant let it read `SETUP.md` and `docs/DECISIONS.md` and speak a status card. The same chat skipped `AGENTS.md` and called it a protected path. Trusted folders do not mount the directory onto a new chat. Desktop rewrote the config the same evening and dropped the trusted-folder list, so setup has to put the grant back.
-
-**Rejected:** Symlinking Desktop's Cowork `memory/CLAUDE.md` onto `AGENTS.md` (the app writes that cache). Copying the rules into the account profile. A second rules filename that avoids the protected name. Installing QEMU so the Cowork VM can start. Inventing a grant for a chat that does not exist yet.
-
 ## 2026-11-14 — speak every Left to do line
 
 **Policy:** status_card=how-left-full-replies

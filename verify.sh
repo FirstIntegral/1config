@@ -2519,42 +2519,6 @@ if grep -q '2.1.219' "$CANON" "$SETUP"; then
 else
   ok "stale Claude 2.1.219 claim is gone"
 fi
-
-# Desktop remote chat does not load the symlink. setup.sh step 5g grants the
-# brain directory to Claude Code and, when the Desktop file exists, to every
-# grant that file already has. --repo runs the fixture only. The live files
-# are machine state: a missing Desktop config is a pass, a present one that
-# omits the brain is a fail.
-echo "[claude brain access]"
-_ba="$HOOKS/claude-brain-access.py"
-if [ -f "$_ba" ] && python3 "$_ba" self-test >"$VTMP/brain-access.out" 2>"$VTMP/brain-access.err"; then
-  ok "claude brain-access fixture (both grant shapes, idempotent, missing desktop file is a skip)"
-else
-  bad "claude brain-access fixture failed: $(tail -n 2 "$VTMP/brain-access.err" 2>/dev/null | tr '\n' ' ')"
-fi
-if machine; then
-  if [ ! -f "$HOME/.claude/settings.json" ]; then
-    note "no claude settings.json — skip brain-directory check"
-  else
-    _ba_rc=0
-    _ba_out="$(python3 "$_ba" check --home "$HOME" --brain "$AGENTS_HOME" 2>&1)" || _ba_rc=$?
-    if [ "$_ba_rc" -eq 0 ]; then
-      ok "claude brain directory grant ($_ba_out)"
-    elif [ "$_ba_rc" -eq 2 ]; then
-      note "$_ba_out"
-    else
-      bad "claude brain directory grant — $_ba_out (run setup.sh)"
-    fi
-  fi
-fi
-if grep -q 'claude-brain-access.py' "$AGENTS_HOME/setup.sh" \
-   && grep -q 'additionalDirectories' "$SETUP" \
-   && grep -q 'additionalDirectories' "$CANON" \
-   && grep -q 'claude-brain-access.py' "$SETUP"; then
-  ok "claude brain-directory grant is wired in setup.sh and documented"
-else
-  bad "claude brain-directory grant missing from setup.sh, AGENTS.md, or SETUP.md"
-fi
 LOADER="$HOOKS/load-project-agents.sh"
 hook_case() {
   local label="$1" cwd="$2" expect="$3"
