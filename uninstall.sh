@@ -71,6 +71,12 @@ if [ -f "$AGENTS_HOME/hooks/local-rules.py" ] \
     python3 "$AGENTS_HOME/hooks/local-rules.py" apply --local-json "$AGENTS_HOME/.no-local-json"
 fi
 
+if [ -f "$HOME/.config/Claude/claude_desktop_config.json" ] \
+   && python3 "$AGENTS_HOME/hooks/claude-brain-access.py" mcp-ours --home "$HOME" >/dev/null 2>&1; then
+  act "the 1config rules tool in ~/.config/Claude/claude_desktop_config.json" \
+    python3 "$AGENTS_HOME/hooks/claude-brain-access.py" unapply-mcp --home "$HOME"
+fi
+
 echo "[claude]"
 for dst in "$HOME"/.claude/skills/*; do
   [ -L "$dst" ] || continue

@@ -701,7 +701,7 @@ fi
 echo "[5g] brain directory → claude code and desktop grants"
 BRAIN_ACCESS="$AGENTS_HOME/hooks/claude-brain-access.py"
 if [ -f "$BRAIN_ACCESS" ]; then
-  live && chmod +x "$BRAIN_ACCESS"
+  live && chmod +x "$BRAIN_ACCESS" "$AGENTS_HOME/hooks/claude-desktop-rules-mcp.py"
   CLAUDE_SETTINGS="$TARGET_HOME/.claude/settings.json"
   DESKTOP_CFG="$TARGET_HOME/.config/Claude/claude_desktop_config.json"
   [ -f "$CLAUDE_SETTINGS" ] && cp -p "$CLAUDE_SETTINGS" "$BACKUP_DIR/claude-settings-brain.json"

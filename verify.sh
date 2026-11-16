@@ -2527,10 +2527,16 @@ fi
 # omits the brain is a fail.
 echo "[claude brain access]"
 _ba="$HOOKS/claude-brain-access.py"
+_ba_mcp="$HOOKS/claude-desktop-rules-mcp.py"
 if [ -f "$_ba" ] && python3 "$_ba" self-test >"$VTMP/brain-access.out" 2>"$VTMP/brain-access.err"; then
   ok "claude brain-access fixture (both grant shapes, idempotent, missing desktop file is a skip)"
 else
   bad "claude brain-access fixture failed: $(tail -n 2 "$VTMP/brain-access.err" 2>/dev/null | tr '\n' ' ')"
+fi
+if [ -f "$_ba_mcp" ] && python3 "$_ba_mcp" self-test >"$VTMP/brain-mcp.out" 2>"$VTMP/brain-mcp.err"; then
+  ok "claude desktop rules MCP fixture (initialize, list, call)"
+else
+  bad "claude desktop rules MCP fixture failed: $(tail -n 2 "$VTMP/brain-mcp.err" 2>/dev/null | tr '\n' ' ')"
 fi
 if machine; then
   if [ ! -f "$HOME/.claude/settings.json" ]; then
@@ -2550,10 +2556,13 @@ fi
 if grep -q 'claude-brain-access.py' "$AGENTS_HOME/setup.sh" \
    && grep -q 'additionalDirectories' "$SETUP" \
    && grep -q 'additionalDirectories' "$CANON" \
-   && grep -q 'claude-brain-access.py' "$SETUP"; then
-  ok "claude brain-directory grant is wired in setup.sh and documented"
+   && grep -q 'claude-brain-access.py' "$SETUP" \
+   && grep -q 'read_1config_rules' "$CANON" \
+   && grep -q 'read_1config_rules' "$SETUP" \
+   && grep -q 'read_1config_rules' "$AGENTS_HOME/setup-infographic.svg"; then
+  ok "claude brain-directory grant and Desktop rules tool are wired and documented"
 else
-  bad "claude brain-directory grant missing from setup.sh, AGENTS.md, or SETUP.md"
+  bad "claude brain-directory grant or Desktop rules tool missing from setup.sh, AGENTS.md, SETUP.md, or the figure"
 fi
 LOADER="$HOOKS/load-project-agents.sh"
 hook_case() {

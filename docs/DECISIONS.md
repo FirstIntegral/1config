@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-16 — Desktop chat reads the rules through a local MCP tool
+
+**Policy:** claude_desktop_chat=local-mcp-tool
+
+**Decision:** When `~/.config/Claude/claude_desktop_config.json` exists, `setup.sh` step `5g` sets `mcpServers.1config` to the Python running setup and `hooks/claude-desktop-rules-mcp.py`. The tool `read_1config_rules` returns `~/.agents/AGENTS.md`. The tool description names the triggers. Setup does not write the account field Settings → Instructions for Claude.
+
+**Why:** Desktop remote chat is the claude.ai page. It does not load `~/.claude/CLAUDE.md`. On 2026-11-16 a granted chat skipped `AGENTS.md` and called it a protected path. The app's write path treats that filename as sensitive. Reads are not blocked. The account instructions field is the only text the remote prompt injects by itself, and writing it uploads the rules to the account. A stdio MCP server is announced on the remote-tools bridge, so the model can fetch the rules locally and the account profile stays untouched.
+
+**Rejected:** Putting `CLAUDE.md` inside `~/.agents` (that hides `AGENTS.md` from Claude Code). Symlinking Desktop's Cowork memory file onto `AGENTS.md`. A second copy of the rules under another filename. `PUT /api/account_profile` with `cowork_global_instructions`.
+
 ## 2026-11-16 — Claude Desktop gets the brain directory, not a second rules file
 
 **Policy:** claude_desktop_brain=grant-existing
