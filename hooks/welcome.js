@@ -175,7 +175,7 @@ const PAGES = [
       { key: 'Sites (~/Projects/sites/*)', val: 'AGENTS.md is gitignored so agent rules stay private; docs/DECISIONS.md is committed' },
       { key: 'Forks (fork-parents.txt)', val: 'Notes go in .git/info/exclude (never upstream .gitignore); checkpoint exits 14 before push' },
       { key: 'Kept out of 1config', val: 'No SOUL.md/USER.md/IDENTITY.md, no agent-readable daily diary, no mail/calendar heartbeat' },
-      { key: 'Claude Desktop chat', val: 'Does not load ~/.claude/CLAUDE.md. setup.sh grants ~/.agents and registers MCP tool read_1config_rules. Call that tool before a 1config trigger.' },
+      { key: 'Claude Desktop chat', val: 'Does not load ~/.claude/CLAUDE.md. setup.sh grants ~/.agents on Code additionalDirectories and on existing Desktop folder grants. A new chat does not gain that grant by itself.' },
     ],
   },
   {

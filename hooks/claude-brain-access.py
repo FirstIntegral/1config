@@ -33,8 +33,6 @@ import tempfile
 
 DESKTOP_REL = pathlib.Path(".config/Claude/claude_desktop_config.json")
 SETTINGS_REL = pathlib.Path(".claude/settings.json")
-MCP_NAME = "1config"
-MCP_SCRIPT = pathlib.Path(__file__).resolve().parent / "claude-desktop-rules-mcp.py"
 
 
 def same(path, brain):
@@ -113,49 +111,7 @@ def mutate_desktop(cfg, brain):
 
     walk("remoteChatFolderGrants", prefs.get("remoteChatFolderGrants"))
     walk("remoteSessionFolderGrants", prefs.get("remoteSessionFolderGrants"))
-    if ensure_rules_tool(cfg):
-        changed = True
     return changed, unknown
-
-
-def rules_tool_entry():
-    return {"command": sys.executable, "args": [str(MCP_SCRIPT)]}
-
-
-def ensure_rules_tool(cfg):
-    """Register the local rules tool. Leave every other MCP server alone."""
-    servers = cfg.get("mcpServers", {})
-    if "mcpServers" in cfg and not isinstance(servers, dict):
-        raise SystemExit("mcpServers is not an object")
-    if not isinstance(servers, dict):
-        servers = {}
-    want = rules_tool_entry()
-    if servers.get(MCP_NAME) == want:
-        cfg["mcpServers"] = servers
-        return False
-    servers[MCP_NAME] = want
-    cfg["mcpServers"] = servers
-    return True
-
-
-def rules_tool_problem(cfg):
-    servers = cfg.get("mcpServers")
-    if not isinstance(servers, dict):
-        return "desktop mcpServers.1config is missing"
-    entry = servers.get(MCP_NAME)
-    if not isinstance(entry, dict):
-        return "desktop mcpServers.1config is missing"
-    args = entry.get("args")
-    command = entry.get("command")
-    script = str(MCP_SCRIPT)
-    if (
-        not isinstance(command, str)
-        or not isinstance(args, list)
-        or args != [script]
-        or os.path.realpath(command) != os.path.realpath(sys.executable)
-    ):
-        return "desktop mcpServers.1config does not point at the rules tool"
-    return None
 
 
 def desktop_problems(cfg, brain):
@@ -182,9 +138,6 @@ def desktop_problems(cfg, brain):
 
     walk("remoteChatFolderGrants", prefs.get("remoteChatFolderGrants"))
     walk("remoteSessionFolderGrants", prefs.get("remoteSessionFolderGrants"))
-    tool = rules_tool_problem(cfg)
-    if tool:
-        problems.append(tool)
     return problems
 
 
@@ -213,9 +166,9 @@ def apply_home(home, brain):
         print(f"  skip     unknown grant shape {item}")
     if dchanged:
         dump_json(desktop, raw)
-        print("  merged   Desktop grants and the 1config rules tool")
+        print("  merged   Desktop trusted folders and existing grants")
     else:
-        print("  ok       Desktop grants and the rules tool")
+        print("  ok       Desktop grants already list the brain")
 
 
 def check_home(home, brain):
@@ -244,42 +197,8 @@ def check_home(home, brain):
     if problems:
         print(problems[0])
         return 1
-    print("ok settings; desktop grants and rules tool")
+    print("ok settings; desktop grants")
     return 0
-
-
-def mcp_is_ours(home):
-    desktop = pathlib.Path(home) / DESKTOP_REL
-    if not desktop.is_file():
-        return False
-    raw = load_json(desktop)
-    if not isinstance(raw, dict):
-        return False
-    return rules_tool_problem(raw) is None
-
-
-def unapply_mcp(home):
-    desktop = pathlib.Path(home) / DESKTOP_REL
-    if not desktop.is_file():
-        print("  skip     no Claude Desktop config")
-        return
-    raw = load_json(desktop)
-    if not isinstance(raw, dict):
-        raise SystemExit(f"{desktop} is not a JSON object")
-    servers = raw.get("mcpServers")
-    if not isinstance(servers, dict) or MCP_NAME not in servers:
-        print("  ok       no 1config rules tool")
-        return
-    if rules_tool_problem(raw):
-        print("  skip     mcpServers.1config is not ours")
-        return
-    del servers[MCP_NAME]
-    if servers:
-        raw["mcpServers"] = servers
-    else:
-        raw.pop("mcpServers", None)
-    dump_json(desktop, raw)
-    print("  removed  mcpServers.1config")
 
 
 def self_test():
@@ -303,7 +222,6 @@ def self_test():
         }
         desktop = {
             "coworkUserFilesPath": "/tmp/claude-user-files",
-            "mcpServers": {"other": {"command": "echo", "args": ["hi"]}},
             "preferences": {
                 "localAgentModeTrustedFolders": [other],
                 "remoteChatFolderGrants": {
@@ -337,10 +255,6 @@ def self_test():
         got_d = load_json(home / DESKTOP_REL)
         if got_d["coworkUserFilesPath"] != "/tmp/claude-user-files":
             fail("desktop top-level key dropped")
-        if got_d["mcpServers"].get("other") != {"command": "echo", "args": ["hi"]}:
-            fail("another MCP server was rewritten")
-        if got_d["mcpServers"].get("1config") != rules_tool_entry():
-            fail("the 1config rules tool was not registered")
         prefs = got_d["preferences"]
         if prefs["remoteSessionFolderGrants"]["session-unknown"] != "leave-me":
             fail("unknown grant shape was rewritten")
@@ -356,12 +270,6 @@ def self_test():
         dump_json(home / DESKTOP_REL, got_d)
         if check_home(home, brain_path(brain)) != 1:
             fail("check passed after a grant lost the brain")
-        unapply_mcp(home)
-        after = load_json(home / DESKTOP_REL)
-        if "1config" in (after.get("mcpServers") or {}):
-            fail("unapply left the rules tool in place")
-        if after.get("mcpServers", {}).get("other") != {"command": "echo", "args": ["hi"]}:
-            fail("unapply removed another MCP server")
 
         bare = root / "bare"
         dump_json(bare / SETTINGS_REL, {"permissions": {"defaultMode": "default"}})
@@ -396,17 +304,12 @@ def self_test():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("apply", "check", "self-test", "mcp-ours", "unapply-mcp"))
+    parser.add_argument("command", choices=("apply", "check", "self-test"))
     parser.add_argument("--home", default=str(pathlib.Path.home()))
     parser.add_argument("--brain", default=str(pathlib.Path.home() / ".agents"))
     args = parser.parse_args()
     if args.command == "self-test":
         self_test()
-        return
-    if args.command == "mcp-ours":
-        raise SystemExit(0 if mcp_is_ours(args.home) else 1)
-    if args.command == "unapply-mcp":
-        unapply_mcp(args.home)
         return
     brain = brain_path(args.brain)
     if args.command == "apply":

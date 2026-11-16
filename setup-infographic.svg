@@ -24,7 +24,7 @@
   <!-- ===== title ===== -->
   <text x="800" y="56" text-anchor="middle" font-size="30" font-weight="bold" fill="url(#acc)" letter-spacing="5">UNIFIED AI TERMINAL SETUP</text>
   <rect x="520" y="70" width="560" height="3" rx="1.5" fill="url(#acc)"/>
-  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">4 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-11-16 — README + SETUP.md; figure same-turn when the brain changes</text>
+  <text x="800" y="96" text-anchor="middle" font-size="14" fill="#8b949e">4 AI tools · 1 canonical rules file · Omarchy + Ubuntu · updated 2026-11-12 — README + SETUP.md; figure same-turn when the brain changes</text>
 
   <!-- ===== converging symlink arrows ===== -->
   <line x1="218" y1="268" x2="700" y2="330" stroke="#39d3e0" stroke-width="2" marker-end="url(#arr)"/>
@@ -52,7 +52,7 @@
   <text x="458" y="186" font-size="13" fill="#79c0ff">~/.claude/CLAUDE.md (global symlink)</text>
   <text x="458" y="210" font-size="12" fill="#3fb950">native AGENTS.md · hook fallback ✓</text>
   <text x="458" y="230" font-size="12" fill="#8b949e">auto-memory <tspan fill="#d29922">DISABLED</tspan> · stubs only</text>
-  <text x="458" y="250" font-size="12" fill="#8b949e">heredoc hook · Desktop read_1config_rules</text>
+  <text x="458" y="250" font-size="12" fill="#8b949e">heredoc-rewrite PreToolUse hook</text>
 
   <!-- ===== OPENCODE ===== -->
   <rect x="824" y="130" width="340" height="138" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
