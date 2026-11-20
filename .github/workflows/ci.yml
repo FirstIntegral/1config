@@ -1,8 +1,10 @@
 # CI for 1config: what a clone carries, on every pull request and every push to main.
 #
 # Syntax, ShellCheck at error severity, Python byte-compile, `verify.sh --repo`
-# (fixtures, self-tests, doc parity), and the skill fixtures. Machine state is
-# not checked here; that is `verify.sh` with no argument, on a real install.
+# (fixtures, self-tests, doc parity), and the skill fixtures. A second job
+# installs the repo for real as a person who is not its owner
+# (`hooks/stranger-install-test.sh`), which is where `verify.sh` with no
+# argument runs against machine state.
 #
 # The token is read-only and the job uses no secret, so a pull request from a
 # fork runs the same steps. An action is pinned to a commit, not to a tag.
@@ -82,3 +84,21 @@ jobs:
           bash skills/verification-before-completion/collect-evidence-test.sh
           node --test skills/security-audit/validate-coverage-ledger.test.cjs \
             skills/security-audit/validate-findings.test.cjs
+
+  # A real install as a person who is not the owner, on a runner that is thrown
+  # away afterwards: fork, preflight stops, fork-init, setup.sh to PASS, uninstall.
+  # No TeX here on purpose: the install has to work without it.
+  stranger:
+    name: install as a stranger
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install as a stranger
+        env:
+          STRANGER_TEST_DISPOSABLE: "1"
+        run: bash hooks/stranger-install-test.sh "$GITHUB_WORKSPACE"

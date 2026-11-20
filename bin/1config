@@ -16,7 +16,8 @@ usage() {
   cat <<'EOF'
 usage: 1config <command> [args]
 
-  setup [--dry-run]         install or refresh this machine (setup.sh)
+  setup [--dry-run|--preflight]   install or refresh this machine (setup.sh)
+  fork-init [--yes] [--notes URL]   point a fork at its new owner (hooks/fork-init.sh)
   verify [--repo]           check the install; --repo checks only what a clone carries
   sync -m "subject"         install, verify, signed commit, push the brain (sync.sh)
   pull                      take origin/main: fast-forward only, signed commits only
@@ -56,6 +57,7 @@ cmd="${1:-help}"
 [ $# -gt 0 ] && shift
 case "$cmd" in
   setup)      exec bash "$AGENTS_HOME/setup.sh" "$@" ;;
+  fork-init)  exec bash "$AGENTS_HOME/hooks/fork-init.sh" "$@" ;;
   verify)     exec bash "$AGENTS_HOME/verify.sh" "$@" ;;
   sync)       exec bash "$AGENTS_HOME/sync.sh" "$@" ;;
   pull)       exec bash "$AGENTS_HOME/hooks/brain-sync.sh" "$@" ;;

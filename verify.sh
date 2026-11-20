@@ -228,7 +228,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh link-rules.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -3712,6 +3712,108 @@ else
   bad "uninstall.sh --yes --restore-configs left autonomy on, or did not put a saved file back (exit $_rc)"
 fi
 
+# Preflight and fork-init on a scratch fork: a checkout whose origin is somebody
+# else's URL and whose four owner files still name the upstream owner.
+_fk="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_fk/brain/hooks" "$_fk/brain/bin"
+cp "$HOOKS/preflight.sh" "$HOOKS/fork-init.sh" "$HOOKS/brain-remote.sh" "$HOOKS/git-url.sh" "$HOOKS/gpg-signing-key.sh" "$_fk/brain/hooks/"
+cp "$AGENTS_HOME/bin/1config" "$_fk/brain/bin/"
+printf '%s\n' '# Accepted origin URLs for this brain.' 'https://git.example.test/Upstream/brain.git' > "$_fk/brain/BRAIN_REMOTE"
+printf '%s\n' '# Signers this brain accepts.' 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' > "$_fk/brain/BRAIN_SIGNERS"
+printf '%s\n' 'git@git.example.test:Upstream/machine-notes.git' > "$_fk/brain/NOTES_REMOTE"
+printf '%s\n' '# Forks we contribute back to.' 'Upstream/tool Parent/tool' > "$_fk/brain/fork-parents.txt"
+printf '%s\n' '[user]' '	name = fork owner' '	email = owner@fixture.invalid' '	signingkey = '"$_k1" \
+  '[init]' '	defaultBranch = main' '[commit]' '	gpgsign = true' > "$_fk/gitconfig-signed"
+_fk_plain() { env -u GPG_SIGNING_KEY HOME="$_fk/home" GIT_CONFIG_GLOBAL="$VTMP/gitconfig" GIT_CONFIG_NOSYSTEM=1 GNUPGHOME="$_gh" "$@"; }
+_fk_signed() { env -u GPG_SIGNING_KEY HOME="$_fk/home" GIT_CONFIG_GLOBAL="$_fk/gitconfig-signed" GIT_CONFIG_NOSYSTEM=1 GNUPGHOME="$_gh" "$@"; }
+mkdir -p "$_fk/home"
+_fk_plain git -C "$_fk/brain" init -q -b main
+_fk_plain git -C "$_fk/brain" add -A
+_fk_plain git -C "$_fk/brain" commit -q -m "upstream history"
+_fk_plain git -C "$_fk/brain" remote add origin https://git.example.test/Someone/Brain.git
+if [ -n "$_k1" ]; then
+  _rc=0; _fk_plain bash "$_fk/brain/hooks/preflight.sh" >"$_fk/pf1.out" 2>&1 || _rc=$?
+  if [ "$_rc" -eq 1 ] && grep -q 'commit.gpgsign is not true' "$_fk/pf1.out" \
+     && grep -q 'git has no signing key' "$_fk/pf1.out" \
+     && grep -q 'BRAIN_REMOTE does not list it' "$_fk/pf1.out" && grep -q '1config fork-init' "$_fk/pf1.out" \
+     && ! grep -q 'signature this machine cannot check' "$_fk/pf1.out" \
+     && grep -q 'Nothing on this machine was changed' "$_fk/pf1.out" \
+     && [ -z "$(find "$_fk/home" -mindepth 1 | head -n 1)" ] && [ -z "$(git -C "$_fk/brain" status --porcelain)" ]; then
+    ok "preflight on an untouched fork names signing and fork-init, exits 1, and writes nothing"
+  else
+    bad "preflight missed a gap on an untouched fork, or wrote something (exit $_rc)"
+  fi
+  _rc=0; _fk_plain bash "$_fk/brain/bin/1config" fork-init --yes >"$_fk/fi0.out" 2>&1 || _rc=$?
+  if [ "$_rc" -eq 1 ] && grep -q 'no signing key' "$_fk/fi0.out" && [ -z "$(git -C "$_fk/brain" status --porcelain)" ]; then
+    ok "fork-init without a signing key stops and changes nothing (exit 1)"
+  else
+    bad "fork-init ran without a signing key (exit $_rc)"
+  fi
+  _fk_head="$(git -C "$_fk/brain" rev-parse HEAD)"
+  _rc=0; _fk_signed bash "$_fk/brain/bin/1config" fork-init >"$_fk/fi1.out" 2>&1 || _rc=$?
+  if [ "$_rc" -eq 0 ] && grep -q '^== plan only' "$_fk/fi1.out" && grep -q '^--- BRAIN_SIGNERS' "$_fk/fi1.out" \
+     && [ "$(git -C "$_fk/brain" rev-parse HEAD)" = "$_fk_head" ] && [ -z "$(git -C "$_fk/brain" status --porcelain)" ]; then
+    ok "fork-init without --yes prints the four diffs and changes nothing"
+  else
+    bad "fork-init changed the fork without --yes, or printed no plan (exit $_rc)"
+  fi
+  _rc=0; _fk_signed bash "$_fk/brain/bin/1config" fork-init --yes --notes git@git.example.test:Someone/notes.git >"$_fk/fi2.out" 2>&1 || _rc=$?
+  if [ "$_rc" -eq 0 ] \
+     && grep -qx 'https://git.example.test/Someone/Brain.git' "$_fk/brain/BRAIN_REMOTE" \
+     && grep -qx 'git@git.example.test:Someone/Brain.git' "$_fk/brain/BRAIN_REMOTE" \
+     && ! grep -q 'Upstream' "$_fk/brain/BRAIN_REMOTE" "$_fk/brain/NOTES_REMOTE" "$_fk/brain/fork-parents.txt" \
+     && [ "$(grep -v '^#' "$_fk/brain/BRAIN_SIGNERS")" = "$_k1" ] \
+     && grep -q '^# Signers this brain accepts' "$_fk/brain/BRAIN_SIGNERS" \
+     && [ "$(grep -v '^#' "$_fk/brain/NOTES_REMOTE")" = "git@git.example.test:Someone/notes.git" ] \
+     && [ "$(_fk_signed git -C "$_fk/brain" log -1 --format='%G? %GP')" = "G $_k1" ] \
+     && [ "$(git -C "$_fk/brain" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt " ] \
+     && [ -z "$(git -C "$_fk/brain" status --porcelain)" ]; then
+    ok "fork-init --yes rewrites the four owner files from origin and the signing key, in one signed commit"
+  else
+    bad "fork-init --yes left an upstream line, or its commit is wrong (exit $_rc)"
+  fi
+  _rc=0; _fk_signed bash "$_fk/brain/hooks/preflight.sh" >"$_fk/pf2.out" 2>&1 || _rc=$?
+  _rc2=0; _fk_signed bash "$_fk/brain/bin/1config" fork-init >"$_fk/fi3.out" 2>&1 || _rc2=$?
+  if [ "$_rc" -eq 0 ] && grep -q 'ok       preflight' "$_fk/pf2.out" \
+     && [ "$_rc2" -eq 0 ] && grep -q 'Nothing to do' "$_fk/fi3.out"; then
+    ok "after fork-init the preflight passes and a second fork-init is a no-op"
+  else
+    bad "preflight still fails after fork-init (exit $_rc), or fork-init is not idempotent (exit $_rc2)"
+  fi
+  # A newest commit this machine cannot check is the "cloned someone else's repo" case.
+  printf 'x\n' > "$_fk/brain/later.txt"
+  _fk_plain git -C "$_fk/brain" add later.txt
+  _fk_plain git -C "$_fk/brain" commit -q -m "unsigned on top"
+  _rc=0; _fk_signed bash "$_fk/brain/hooks/preflight.sh" >"$_fk/pf3.out" 2>&1 || _rc=$?
+  if [ "$_rc" -eq 1 ] && grep -q 'signature this machine cannot check' "$_fk/pf3.out"; then
+    ok "preflight stops on a HEAD whose signature cannot be checked (exit 1)"
+  else
+    bad "preflight accepted an unsigned HEAD (exit $_rc)"
+  fi
+else
+  bad "preflight and fork-init fixtures need gpg: no fixture key was made"
+fi
+# setup.sh --preflight is the same check and installs nothing.
+_pfh="$(mktemp -d -p "$VTMP")"
+_rc=0
+env -u XDG_CONFIG_HOME -u AGENTS_UPDATE_LOCK_HELD -u GPG_SIGNING_KEY HOME="$_pfh" AGENTS_HOME="$AGENTS_HOME" \
+  GIT_CONFIG_GLOBAL="$VTMP/gitconfig" GIT_CONFIG_NOSYSTEM=1 GNUPGHOME="$_pfh/no-keyring" \
+  bash "$AGENTS_HOME/setup.sh" --preflight >"$VTMP/pf-setup.out" 2>&1 || _rc=$?
+if [ "$_rc" -eq 1 ] && grep -q '^\[0b\] preflight' "$VTMP/pf-setup.out" \
+   && grep -q 'Nothing on this machine was changed' "$VTMP/pf-setup.out" \
+   && ! grep -q '^\[1\] symlinks' "$VTMP/pf-setup.out" \
+   && [ -z "$(find "$_pfh" -mindepth 1 | head -n 1)" ]; then
+  ok "setup.sh --preflight reports an unready machine, runs no install step, and writes nothing"
+else
+  bad "setup.sh --preflight ran an install step, wrote a file, or passed an unready machine (exit $_rc)"
+fi
+if grep -q 'hooks/preflight.sh' "$AGENTS_HOME/setup.sh" \
+   && awk '/hooks\/preflight.sh" \|\| _pf_rc/ { pf = NR } /^mkdir -p "\$BACKUP_DIR"/ { mk = NR } END { exit !(pf && mk && pf < mk) }' "$AGENTS_HOME/setup.sh"; then
+  ok "setup.sh runs the preflight before its first write"
+else
+  bad "setup.sh does not run hooks/preflight.sh before it starts writing"
+fi
+
 # --- CI workflow, security policy ---------------------------------------------
 echo "[ci, security policy]"
 _wf="$AGENTS_HOME/.github/workflows/ci.yml"
@@ -3737,7 +3839,7 @@ code = [l for l in lines if not l.lstrip().startswith("#")]
 text = "\n".join(code) + "\n"
 why = []
 for needle in ("pull_request:", 'verify.sh" --repo', "shellcheck --severity=error",
-               "py_compile", "persist-credentials: false"):
+               "py_compile", "persist-credentials: false", "stranger-install-test.sh"):
     if needle not in text:
         why.append(f"missing `{needle}`")
 if "pull_request_target" in text:
@@ -3761,7 +3863,7 @@ sys.exit(1 if why else 0)
 PY
 )" || _wf_rc=$?
 if [ "$_wf_rc" -eq 0 ]; then
-  ok "ci.yml keeps verify.sh --repo, ShellCheck, and py_compile; read-only token, no secret, actions pinned to a commit"
+  ok "ci.yml keeps verify.sh --repo, ShellCheck, py_compile, and the stranger install; read-only token, no secret, actions pinned to a commit"
 else
   bad "ci.yml: $_wf_why"
 fi

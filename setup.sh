@@ -8,6 +8,8 @@
 #
 #   bash ~/.agents/setup.sh --dry-run   change nothing: diff the tool configs this run would
 #                                       write, and list what else it would install
+#   bash ~/.agents/setup.sh --preflight change nothing: say whether this machine is ready
+#                                       (signing, origin, HEAD) and what to fix if not
 #
 # Env: SKIP_CRON=1              skip the scheduler step (testing)
 #      AGENTS_SCHEDULER=cron    force cron; =timers forces systemd user units (default: auto)
@@ -24,10 +26,12 @@ UPD_DIR="$HOME/cron-jobs/ai-terminal-tools-update-on-boot"
 UPD_SRC="$AGENTS_HOME/updater"
 SKIP_CRON="${SKIP_CRON:-0}"
 DRY=0
+PREFLIGHT_ONLY=0
 case "${1:-}" in
   --dry-run) DRY=1 ;;
+  --preflight) PREFLIGHT_ONLY=1 ;;
   '') ;;
-  -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+  -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
   *) echo "setup.sh: unknown argument: $1" >&2; exit 2 ;;
 esac
 # Where the tool configs are written. A dry run points this at a scratch copy.
@@ -102,6 +106,23 @@ if [ "$need_die" -eq 1 ]; then
 fi
 
 [ -f "$CANON" ] || die "canonical $CANON not found — copy ~/.agents first"
+
+# --- 0b preflight: everything verify.sh will ask for, before anything is written ---
+# The last step of this script is verify.sh. Without commit signing, a listed
+# origin, and a HEAD this machine can check, it fails there, after the tool
+# configs, the rules links, and the schedule are already replaced. Ask first.
+echo "[0b] preflight"
+_pf_rc=0
+bash "$AGENTS_HOME/hooks/preflight.sh" || _pf_rc=$?
+if [ "$PREFLIGHT_ONLY" = 1 ]; then
+  exit "$_pf_rc"
+fi
+if [ "$_pf_rc" -ne 0 ]; then
+  if live; then
+    die "setup stopped before it changed anything. Fix the lines above, then re-run: bash $AGENTS_HOME/setup.sh"
+  fi
+  log "note     a real run would stop here. The dry run carries on to show the rest."
+fi
 [ -d "$AGENTS_HOME/project-template" ] || log "WARNING: $AGENTS_HOME/project-template missing — create_project scaffolding will have no source"
 # The files the config steps rewrite. A dry run copies them and works on the copy.
 CONFIG_FILES=".grok/config.toml .claude/settings.json .config/opencode/opencode.jsonc .cursor/rules/1config.mdc \

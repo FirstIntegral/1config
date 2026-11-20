@@ -22,38 +22,54 @@ Same `setup.sh` on both. No Omarchy-only step in the install path. The guards an
 
 ## Fresh machine
 
+**Fork first.** This repo is one person's setup, published so you can take it. A direct clone of it does not install: four tracked files say who owns a checkout (`BRAIN_REMOTE`, `BRAIN_SIGNERS`, `NOTES_REMOTE`, `fork-parents.txt`), and until they name you, your own projects are never pushed and the upstream owner's key can ship code to your machine at login. `1config fork-init` rewrites the four for you. `setup.sh` checks all of this before it writes anything, and tells you which step is missing.
+
 ```bash
-# 1. GitHub auth, then clone into ~/.agents  (HTTPS or SSH)
-git clone https://github.com/FirstIntegral/1config.git ~/.agents
-# git clone git@github.com:FirstIntegral/1config.git ~/.agents
+# 1. Fork https://github.com/FirstIntegral/1config on GitHub, then clone YOUR fork into ~/.agents
+git clone git@github.com:<you>/1config.git ~/.agents
+# git clone https://github.com/<you>/1config.git ~/.agents
 
 # 2. Distro packages if the preflight complains
 #    Ubuntu:  sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full
 #    Omarchy: omarchy pkg add python util-linux cronie git gnupg gnome-keyring texlive-meta
+#    TeX is only for writepaper_project; the install works without it.
 #    cron is only the fallback scheduler. Enable it if this machine has no systemd user manager:
 #             sudo systemctl enable --now cron     # Ubuntu
 #             sudo systemctl enable --now cronie   # Omarchy/Arch
 
-# 3. Wire the brain (idempotent; launches the 8-page welcome walkthrough on first interactive install)
+# 3. Git identity and commit signing, once per machine. Every commit here is signed.
+git config --global user.name  "…"
+git config --global user.email "…"
+git config --global user.signingkey <YOUR-KEY-ID>   # this machine's key; gpg --full-generate-key makes one
+git config --global commit.gpgsign true
+
+# 4. Once per fork, on the first machine only: point the fork at you
+bash ~/.agents/bin/1config fork-init                # the plan: four diffs, changes nothing
+bash ~/.agents/bin/1config fork-init --yes          # writes them, one signed commit, no push
+#    add  --notes git@github.com:<you>/machine-notes.git  if you keep a private notes repo; without it notes are off
+
+# 5. Wire the brain (idempotent; launches the 8-page welcome walkthrough on first interactive install)
+bash ~/.agents/setup.sh --preflight # optional: is this machine ready? changes nothing
 bash ~/.agents/setup.sh --dry-run   # optional: print every tool-config diff and the plan, change nothing
 bash ~/.agents/setup.sh
 
-# 4. Machine-local, once
-git config --global user.name  "…"
-git config --global user.email "…"
-git config --global user.signingkey <YOUR-KEY-ID>   # this machine's key, not another box's
-git config --global commit.gpgsign true
-bash ~/.agents/hooks/gpg-store-passphrase.sh        # dedicated gnome-keyring collection
+# 6. Publish your fork's first commit, and the rest of the machine-local setup
 gh auth login                                       # so sync.sh can fetch/push
+bash ~/.agents/sync.sh -m "First install"           # verify, signed commit, push to your fork
+bash ~/.agents/hooks/gpg-store-passphrase.sh        # only when your key has a passphrase: dedicated gnome-keyring collection
 
-# 5. Optional: resume-from-suspend updater (needs root once)
+# 7. Optional: resume-from-suspend updater (needs root once)
 sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh \
   /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh
 ```
 
+A second machine of yours skips step 4: clone your fork, do steps 2 and 3 with that machine's key, add that key's fingerprint to `BRAIN_SIGNERS` from a machine that is already listed, then run `setup.sh`.
+
+`setup.sh` stops at its preflight, before any write, when signing is not set up, when origin is not in `BRAIN_REMOTE`, or when the newest commit has a signature this machine cannot check. Each line names the command that fixes it.
+
 Install the four CLIs (grok, claude, opencode, cursor-agent) however you usually do. `setup.sh` does **not** download them; the boot updater only upgrades grok, claude, and opencode bins that already exist outside mise.
 
-`verify.sh` ending `== PASS (warnings=0) ==` means the brain is installed. A signing warn on the boot dashboard is normal until step 4.
+`verify.sh` ending `== PASS (warnings=0) ==` means the brain is installed. A key with a passphrase shows a signing warn on the boot dashboard until the store script in step 6 has run.
 
 ### Omarchy machines: also clone the desktop config pack
 
@@ -115,7 +131,7 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 | Lean 4 | Default on new `writepaper_project` scaffolds | First paper copies `docs/paper/lean/`. Existing papers not backfilled. `setup.sh` does not install elan. | `bash ~/.agents/hooks/install-elan.sh` |
 | Android SDK | `$HOME/Android/Sdk` when a project needs one | One root, the path Studio already uses. Not inside a repo. A missing tree is normal. | If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms. |
 | Paper author block | `git config user.name` and `user.email` | No personal name in the shared rules or the paper template. | Set those two git configs. Empty means stop and ask. |
-| Remote check | URLs in `BRAIN_REMOTE` | `sync.sh`, `verify.sh`, and boot sync refuse any other origin. | Forks: edit `BRAIN_REMOTE`, `BRAIN_SIGNERS`, `NOTES_REMOTE`, and `fork-parents.txt`. The scripts stay. |
+| Remote check | URLs in `BRAIN_REMOTE` | `sync.sh`, `verify.sh`, and boot sync refuse any other origin. | Forks: `1config fork-init` rewrites `BRAIN_REMOTE`, `BRAIN_SIGNERS`, `NOTES_REMOTE`, and `fork-parents.txt` from your origin and your signing key. The scripts stay. |
 | Incoming commits | Signed by a key in `BRAIN_SIGNERS`, or this machine's signing key | Login installs what it pulls. A push credential alone must not become code. A commit made on github.com waits for a manual pull. | Add a fingerprint to `BRAIN_SIGNERS` (GitHub's web-flow key too, if you accept that trade). |
 | Secret scan | On before every brain commit and every checkpoint | Token shapes and private keys stop the commit. `gitleaks` joins in when installed. | Mark a fixture line `gitleaks:allow`. |
 
@@ -168,8 +184,8 @@ Run `bash ~/.agents/setup.sh --dry-run` first: it prints all of this for your ma
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. `setup.sh --dry-run` previews. `verify.sh --repo` checks only what a clone carries. |
 | `uninstall.sh` | Removes what `setup.sh` installed. A plan by default; `--yes` acts. |
 | `bin/1config` | One entrypoint for the scripts. Linked into `~/.local/bin`. |
-| `.github/workflows/ci.yml` | CI on every pull request and push to `main`: `verify.sh --repo`, ShellCheck at error severity, the skill fixtures. Read-only token, pinned action. |
-| `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite, `welcome.js` walkthrough. |
+| `.github/workflows/ci.yml` | CI on every pull request and push to `main`: `verify.sh --repo`, ShellCheck at error severity, the skill fixtures, and a real install as a person who is not the owner (`hooks/stranger-install-test.sh`). Read-only token, pinned action. |
+| `hooks/` | GPG unlock, checkpoint, notes-sync, guards, heredoc rewrite, `welcome.js` walkthrough, the setup preflight, `fork-init`, and the stranger-install test CI runs. |
 | `systemd/` | User units for the guards and the tool updater. `hooks/scheduler.sh` installs them, or cron lines where no user manager runs. |
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |

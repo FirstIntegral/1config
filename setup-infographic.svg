@@ -103,8 +103,8 @@
   <!-- ===== SETUP ===== -->
   <rect x="130" y="338" width="360" height="226" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
   <text x="152" y="368" font-size="15" font-weight="bold" fill="#e6edf3">FRESH MACHINE</text>
-  <text x="152" y="392" font-size="13" fill="#3fb950">git clone → bash setup.sh (either distro)</text>
-  <text x="152" y="412" font-size="12" fill="#79c0ff">--dry-run shows the diff · uninstall.sh</text>
+  <text x="152" y="392" font-size="13" fill="#3fb950">fork → fork-init → setup.sh (either distro)</text>
+  <text x="152" y="412" font-size="12" fill="#79c0ff">--preflight · --dry-run diff · uninstall.sh</text>
   <text x="152" y="432" font-size="12" fill="#8b949e">idempotent · backs up replaced files</text>
   <text x="152" y="452" font-size="12" fill="#8b949e">symlinks · grok cfg · mem wipe · hooks</text>
   <text x="152" y="472" font-size="12" fill="#8b949e">guards + updater + timers · gpg hooks</text>

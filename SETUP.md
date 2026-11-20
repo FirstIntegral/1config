@@ -584,7 +584,8 @@ This is the Omarchy surface of 1config. Claude, Grok, and OpenCode do not each g
 ## 8. Manual recreation (or just `bash ~/.agents/setup.sh`)
 
 0. Distro packages if missing (setup.sh `[0]` prints the line). Ubuntu: `sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full`. Omarchy: `omarchy pkg add python util-linux cronie git gnupg gnome-keyring texlive-meta`. Enable the cron daemon (`cron` on Ubuntu, `cronie` on Omarchy/Arch).
-1. Clone or copy `~/.agents/` (this repo). Same tree on Omarchy and Ubuntu.
+1. Clone your fork to `~/.agents/`. Same tree on Omarchy and Ubuntu. Set `user.name`, `user.email`, `user.signingkey`, and `commit.gpgsign true`. On a new fork, run `bash ~/.agents/bin/1config fork-init --yes` once (§8d).
+1a. Preflight (§8d): `setup.sh` step `0b` runs `hooks/preflight.sh` and stops before any write when the machine is not ready.
 2. Symlinks (§3).
 3. Grok config keys (§4) + delete `~/.grok/memory/` if present (after archive).
 4. Claude memory wipe-to-stub for every `~/.claude/projects/*/memory/` (§4).
@@ -626,6 +627,20 @@ Left in place and named at the end: the permission lists and modes in the three 
 ### 8c. The `1config` command
 
 `bin/1config <command>` runs the script that already holds the behaviour: `setup`, `verify`, `sync`, `pull` (`hooks/brain-sync.sh`), `checkpoint`, `notes`, `scan` (`hooks/secret-scan.sh`), `scheduler`, `dashboard`, `welcome`, `uninstall`. `status` prints the checkout, the scheduler, and the last boot slip. An unknown command exits 2. `setup.sh` links it to `~/.local/bin/1config`; that is a link to this checkout and not a tool binary. Agents keep calling the scripts by path, as `AGENTS.md` writes them.
+
+### 8d. Preflight and fork-init
+
+```sh
+bash ~/.agents/setup.sh --preflight                 # is this machine ready? changes nothing
+bash ~/.agents/bin/1config fork-init                # the plan: four diffs, changes nothing
+bash ~/.agents/bin/1config fork-init --yes [--notes URL]
+```
+
+`setup.sh` step `0b` runs `hooks/preflight.sh` before its first write. It asks what `verify.sh` asks at the end: Python 3.11 or newer, a git checkout that is its own root and on `main`, every origin fetch and push URL listed in `BRAIN_REMOTE`, `user.name` and `user.email`, a `user.signingkey` whose secret key is in the keyring, `commit.gpgsign` true, and a `%G?` of `G` or `U` on HEAD. Each gap prints `NOT READY`, the reason, and the command that fixes it. A real run then stops with exit 1 and has changed nothing. `--dry-run` prints the gaps and carries on. `--preflight` exits 0 or 1 after the check. On a machine with no gpg home the script does not call gpg, because gpg would create that directory. The HEAD check is skipped while origin is unlisted: on a fork that has not run `fork-init`, HEAD is the upstream owner's commit, and the origin line already names the fix.
+
+`hooks/fork-init.sh` rewrites the four owner files from what the checkout already knows. `BRAIN_REMOTE` gets every origin URL as configured, plus the `https://` and `git@` forms of the same host and path. `BRAIN_SIGNERS` gets the primary fingerprint of `user.signingkey` and nothing else, so the upstream owner's key is no longer a signer. `NOTES_REMOTE` gets the `--notes` URL, or no URL, which is notes off. `fork-parents.txt` keeps its comments and loses its entries. The leading comment lines of each file stay. Without `--yes` it prints the diffs and exits 0. With `--yes` it writes the changed files and makes one signed commit that holds only them. It does not push. It stops with exit 1 when there is no origin, no signing key, `commit.gpgsign` is not true, or something is already staged. A checkout whose origin and key are already listed is a no-op, so the owner's own machine is safe to run it on.
+
+`hooks/stranger-install-test.sh` is the proof that a person who is not the owner can install. It refuses to run without `STRANGER_TEST_DISPOSABLE=1`, because it is a real install into `$HOME`. CI runs it in its own job on a fresh runner. It seeds rules files, a deny rule, and a Claude memory, builds a fork with one unsigned upstream commit and an origin under the reserved `.test` name, and then requires ten things: two preflight stops that leave the home byte-identical, a `fork-init` plan and commit, `setup.sh` ending in `== PASS (warnings=0) ==`, every seeded file saved under `backups/`, no owner veto from `checkpoint.sh` on a repo under the new owner, and `uninstall.sh --yes --restore-configs` giving the files back with no autonomy mode left.
 
 ### After any edit under `~/.agents/` (HARD RULE)
 

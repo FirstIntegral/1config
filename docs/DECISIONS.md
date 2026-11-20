@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-20 — Other people install from a fork, and setup checks before it writes
+
+**Policy:** install_path=fork-first-preflight
+
+**Decision:** The install path for a person who is not the owner is a fork. `README.md` says fork first. `hooks/fork-init.sh` (`1config fork-init`) rewrites `BRAIN_REMOTE`, `BRAIN_SIGNERS`, `NOTES_REMOTE`, and `fork-parents.txt` from the checkout's origin and git's signing key, in one signed commit. `setup.sh` runs `hooks/preflight.sh` as step `0b`, before its first write, and stops when signing, origin, or HEAD would fail `verify.sh`. `hooks/stranger-install-test.sh` does the whole install as a stranger on a throwaway machine, and CI runs it on every push.
+
+**Why:** A review on 2026-11-20 walked the README as a stranger. `setup.sh` ran before signing was set up, replaced the tool configs, the rules links, and the schedule, and then failed in its last step. A direct clone kept `FirstIntegral` as the owner, so the person's own projects got checkpoint exit 14 and never pushed, the private notes clone failed at every login, and the upstream key stayed a signer for commits that install at login. Nothing tested any of this, because every fixture ran as the owner.
+
+**Rejected:** A follow mode, where a direct clone tracks upstream and installs the owner's signed commits at login. It makes one person's key remote code execution on other people's machines, and it needs "whose projects are ours" split from "where the brain comes from". Shipping the owner's public key in the repo so a direct clone verifies: `fork-init` makes the first commit the new owner's, so the key is not needed, and the file would publish the key's email address. Loosening `verify.sh` so an unsigned setup passes: signing is a hard rule here, so the check moved to the front instead. Deriving `BRAIN_REMOTE` from origin at run time: it is the allowlist, so it has to be a committed choice.
+
 ## 2026-11-20 — No notes URL means notes are off, and verify runs without TeX
 
 **Policy:** notes_remote_empty=off

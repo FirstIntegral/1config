@@ -145,7 +145,7 @@ const PAGES = [
       '1config is a single canonical brain at ~/.agents/ that unifies Claude Code, Grok, OpenCode, and Cursor Code under one rules file, one permission policy, and one setup script.',
       'Running setup.sh symlinks ~/.agents/AGENTS.md into every tool\'s expected global path (plus generates ~/.cursor/rules/1config.mdc with alwaysApply: true) and fans out permissions.json into their respective configs.',
       'Tool parity is a hard rule: a feature that works in one tool and not the others is treated as a bug, and verify.sh checks all four tools on every run.',
-      'Look before you install: setup.sh --dry-run prints the diff of every tool config and changes nothing. uninstall.sh prints a removal plan and removes only with --yes. The 1config command in ~/.local/bin runs the same scripts (1config status, 1config verify, 1config sync).',
+      'Look before you install: setup.sh stops at a preflight, before any write, when signing or the fork is not ready, and --dry-run prints the diff of every tool config and changes nothing. A new fork runs 1config fork-init once to name its owner. uninstall.sh prints a removal plan and removes only with --yes. The 1config command in ~/.local/bin runs the same scripts (1config status, 1config verify, 1config sync).',
       'Skills split into three homes: 13 tracked process skills in ~/.agents/skills/ (five from obra/superpowers, security-audit from Cloudflare, writing-for-agents, grilling, and tdd from mattpocock, migration from JuliusBrussee, research-paper-writing, research-loop for OpenResearch experiments, and explain-thing for 80% STE briefs, linked into Claude via setup.sh 1b), gitignored machine-local skills (omarchy, vigil, diagnose-crash), and design skills in ~/Projects/skills/. Grilling loads only when the user says grill. research-paper-writing loads only inside writepaper_project, for prose and claims.',
     ],
     snippetTitle: 'Canonical fan-out (~/.agents/)',
@@ -153,7 +153,7 @@ const PAGES = [
       { key: 'AGENTS.md', val: '~/.claude/CLAUDE.md, ~/.grok/AGENTS.md, ~/.config/opencode/AGENTS.md, ~/.cursor/AGENTS.md' },
       { key: 'permissions.json', val: 'Claude settings.json, Grok config.toml, OpenCode opencode.jsonc (external_directory=allow)' },
       { key: 'sync.sh', val: 'Fetch and signer gate, setup.sh + verify.sh, secret scan, GPG-signed commit, push to origin in BRAIN_REMOTE' },
-      { key: '1config <cmd>', val: 'setup --dry-run, verify, sync, status, uninstall. One entrypoint for the same scripts' },
+      { key: '1config <cmd>', val: 'fork-init, setup --preflight, setup --dry-run, verify, sync, status, uninstall' },
     ],
   },
   {
