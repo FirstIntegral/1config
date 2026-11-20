@@ -430,6 +430,11 @@ check_notes_clone() {
     row ok "machine notes" "cloned"
     return 0
   fi
+  # No URL in NOTES_REMOTE: the owner of this checkout has no notes repo. Not a warn.
+  if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -qx 'notes: off'; then
+    row skip "machine notes" "off (NOTES_REMOTE has no URL)"
+    return 0
+  fi
   hint="$(printf '%s\n' "$out" | tail -1)"
   hint="${hint#"${hint%%[![:space:]]*}"}"
   if [ "${#hint}" -gt 70 ]; then

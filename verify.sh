@@ -241,7 +241,16 @@ if grep -q 'Digit refuse' "$AGENTS_HOME/AGENTS.md" && grep -q 'Digit refuse' "$S
 else
   bad "digit-refuse missing from AGENTS.md or SETUP.md"
 fi
-if [ -x "$HOOKS/digit-refuse-test.sh" ] && bash "$HOOKS/digit-refuse-test.sh" >"$VTMP/digit-refuse-test.out" 2>&1; then
+# The fixtures build real PDFs. setup.sh treats TeX as optional, so a machine
+# without it skips them here. CI installs TeX, so a skip there is a failure:
+# otherwise a broken runner image would turn the whole gate off unseen.
+if ! command -v pdflatex >/dev/null 2>&1 || ! command -v pdftotext >/dev/null 2>&1; then
+  if [ -n "${CI:-}" ]; then
+    bad "digit-refuse fixtures cannot run in CI: pdflatex or pdftotext is missing"
+  else
+    info "digit-refuse fixtures skipped: pdflatex or pdftotext is not installed (writepaper_project needs both)"
+  fi
+elif [ -x "$HOOKS/digit-refuse-test.sh" ] && bash "$HOOKS/digit-refuse-test.sh" >"$VTMP/digit-refuse-test.out" 2>&1; then
   ok "digit-refuse fixtures"
 else
   bad "digit-refuse fixtures failed: $(tail -n 3 "$VTMP/digit-refuse-test.out" 2>/dev/null | tr '\n' ' ')"
@@ -1162,6 +1171,24 @@ if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: skipped" ] \
 else
   bad "failed auto-clone (exit $_rc, out $_out)"
 fi
+# NOTES_REMOTE with no URL line: notes are off. setup says so and exits 0, makes
+# no clone, and a push skips without sending the person to `setup` in a circle.
+_offhome="$(mktemp -d -p "$VTMP")"
+_offrf="$(mktemp -p "$VTMP")"
+printf '%s\n' '# no private notes repo on this fork' '' > "$_offrf"
+mkdir -p "$_offhome/Projects/proj"
+git -C "$_offhome/Projects/proj" init -q
+_rc=0
+_out="$(NOTES_SYNC_HOME="$_offhome" NOTES_REMOTE_FILE="$_offrf" bash "$HOOKS/notes-sync.sh" setup 2>"$VTMP/notes-off.err")" || _rc=$?
+_rc2=0
+_out2="$(NOTES_SYNC_HOME="$_offhome" NOTES_REMOTE_FILE="$_offrf" bash "$HOOKS/notes-sync.sh" push "$_offhome/Projects/proj" 2>"$VTMP/notes-off2.err")" || _rc2=$?
+if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: off" ] && [ "$_rc2" -eq 0 ] && [ "$_out2" = "notes: skipped" ] \
+   && [ ! -e "$_offhome/.local/share/machine-notes" ] \
+   && ! grep -q 'enable with' "$VTMP/notes-off2.err" && grep -q 'notes: off' "$VTMP/notes-off2.err"; then
+  ok "NOTES_REMOTE with no URL turns notes off: setup exits 0, nothing is cloned, a push skips"
+else
+  bad "notes-off (setup exit $_rc out '$_out'; push exit $_rc2 out '$_out2')"
+fi
 _realhome="$(getent passwd "$(id -un)" | awk -F: '{print $6; exit}')"
 _rc=0
 NOTES_SYNC_HOME="$_realhome" bash "$HOOKS/notes-sync.sh" setup >/dev/null 2>"$VTMP/notes-home-real.err" || _rc=$?
@@ -1177,7 +1204,7 @@ if [ -n "$_notes_pin" ]; then
     bad "auto-clone fixtures moved the real machine-notes clone"
   fi
 fi
-rm -rf "$_nsu" "$_nrf" "$_nbare2" "$_nclp" "$_nclp2" "$_npp" "$_nsempty" "$_autohome" "$_autohome2" "$_autobare"
+rm -rf "$_nsu" "$_nrf" "$_nbare2" "$_nclp" "$_nclp2" "$_npp" "$_nsempty" "$_autohome" "$_autohome2" "$_autobare" "$_offhome" "$_offrf"
 rm -f "$VTMP/notes-setup.out" "$VTMP/notes-setup.err" "$VTMP/notes-setup2.out" "$VTMP/notes-setup-miss.err" "$VTMP/notes-skip.out" "$VTMP/notes-skip.err"
 rm -rf "$_ns" "$_nbare" "$_np" "$_np2" "$_np3"
 rm -f "$VTMP/notes-warn.txt" "$VTMP/notes-div.out" "$VTMP/notes-div.err" "$VTMP/notes-dry.out" "$VTMP/notes-live.out"

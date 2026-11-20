@@ -1278,7 +1278,17 @@ def _boot_vital(home: Path, root: Path) -> dict:
     return _vital("boot", "guards", "Boot dashboard", "warn", "drifted")
 
 
-def _notes_vital(home: Path) -> dict:
+def _notes_remote_set(root: Path) -> bool:
+    # Same rule as hooks/notes-sync.sh: the first line that is not blank and
+    # not a comment is the URL. No such line means notes are off.
+    try:
+        lines = (root / "NOTES_REMOTE").read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    return any(line.strip() and not line.lstrip().startswith("#") for line in lines)
+
+
+def _notes_vital(home: Path, root: Path) -> dict:
     # setup.sh and the boot dashboard clone this. A missing clone stays a warn
     # until one of those succeeds. The detail is what the Fix button shows.
     clone = home / ".local" / "share" / "machine-notes" / ".git"
@@ -1288,6 +1298,9 @@ def _notes_vital(home: Path) -> dict:
         cloned = False
     if cloned:
         return _vital("notes", "machine", "Machine notes", "ok", "cloned")
+    if not _notes_remote_set(root):
+        # A checkout with no notes repo configured. Off is a choice, not a fault.
+        return _vital("notes", "machine", "Machine notes", "ok", "off")
     return _vital("notes", "machine", "Machine notes", "warn", "not cloned")
 
 
@@ -1506,7 +1519,7 @@ def brain_status(home: Path, which=None, git=None) -> dict:
             None,
         ),
         _boot_vital(home, root),
-        _notes_vital(home),
+        _notes_vital(home, root),
         _vital("tools", "machine", "Agent tools", tool_state, tool_detail),
         _vital("tex", "machine", "TeX", tex_state, tex_detail),
         _vital("lean", "machine", "Lean", lean_state, lean_detail),
@@ -1927,7 +1940,7 @@ def self_test() -> None:
         "memory": ("fail", "not installed"),
         "symlinks": ("fail", "not installed"),
         "boot": ("fail", "missing"),
-        "notes": ("warn", "not cloned"),
+        "notes": ("ok", "off"),
         "tools": ("fail", "0/4"),
         "tex": ("fail", "missing"),
         "lean": ("fail", "missing"),
@@ -1939,6 +1952,14 @@ def self_test() -> None:
     assert [group["id"] for group in brain["groups"]] == ["checkout", "rules", "guards", "machine"], brain["groups"]
     assert "global brain" in brain["oneLine"], brain
     assert _ahead_behind("1\t1") == ("fail", "diverged")
+    with tempfile.TemporaryDirectory() as notes_tmp:
+        notes_root = Path(notes_tmp)
+        (notes_root / "NOTES_REMOTE").write_text("# no notes repo\n\n", encoding="utf-8")
+        off = _notes_vital(notes_root / "home", notes_root)
+        assert (off["state"], off["detail"]) == ("ok", "off"), off
+        (notes_root / "NOTES_REMOTE").write_text("# notes\ngit@example.test:me/notes.git\n", encoding="utf-8")
+        missing = _notes_vital(notes_root / "home", notes_root)
+        assert (missing["state"], missing["detail"]) == ("warn", "not cloned"), missing
     assert _ahead_behind("0\t2") == ("warn", "ahead 2")
     assert _ahead_behind("3\t0") == ("warn", "behind 3")
     assert _ahead_behind("0\t0") == ("ok", "level")

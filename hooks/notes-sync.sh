@@ -136,9 +136,23 @@ skip_no_clone() {
   skip_line
 }
 
+# First line of NOTES_REMOTE that is not blank and not a comment. Nothing printed
+# means notes are off: a fork that has no private notes repo leaves the file
+# with comments only. NOTES_REMOTE_FILE is for verify.sh only.
+notes_remote_url() {
+  local file line
+  file="${NOTES_REMOTE_FILE:-$(cd "$(dirname "$0")/.." && pwd -P)/NOTES_REMOTE}"
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in ''|'#'*) continue ;; esac
+    printf '%s\n' "$line"
+    return 0
+  done < "$file"
+}
+
 cmd_setup() {
-  local brain home real target parent remote_file remote err tail_line
-  brain="$(cd "$(dirname "$0")/.." && pwd -P)"
+  local home real target parent remote err tail_line
   home="$(passwd_home)"
   [ -n "$home" ] || die "no passwd home"
   real="$home/.local/share/machine-notes"
@@ -164,19 +178,12 @@ cmd_setup() {
     echo "notes: ready"
     return 0
   fi
-  remote_file="${NOTES_REMOTE_FILE:-$brain/NOTES_REMOTE}"
-  remote=""
-  if [ -f "$remote_file" ]; then
-    while IFS= read -r line || [ -n "$line" ]; do
-      line="${line%$'\r'}"
-      case "$line" in ''|'#'*) continue ;; esac
-      remote="$line"
-      break
-    done < "$remote_file"
-  fi
+  remote="$(notes_remote_url)"
   if [ -z "$remote" ]; then
-    echo "notes: $remote_file missing or empty — put the notes repo URL there (pattern: git@github.com:owner/machine-notes.git)" >&2
-    exit 1
+    # Off is a state a person chose, not a fault: no warn, no retry at login.
+    echo "notes: off"
+    echo "notes: NOTES_REMOTE has no URL, so machine notes are off — to turn them on, put a private repo URL there (pattern: git@github.com:owner/machine-notes.git)" >&2
+    return 0
   fi
   mkdir -p "$(dirname "$target")"
   err="$(mktemp)"
@@ -204,6 +211,11 @@ ensure_notes_clone() {
   [ -e "$path/.git" ] && return 0
   if [ -n "${NOTES_SYNC_TEST_ROOT:-}" ]; then
     skip_no_clone "$path"
+  fi
+  # Off: skip without the "enable with setup" hint, which would send the person in a circle.
+  if [ -z "$(notes_remote_url)" ]; then
+    echo "notes: off (NOTES_REMOTE has no URL)" >&2
+    skip_line
   fi
   if ! cmd_setup >/dev/null; then
     skip_no_clone "$path"

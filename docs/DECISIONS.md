@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-20 — No notes URL means notes are off, and verify runs without TeX
+
+**Policy:** notes_remote_empty=off
+
+**Decision:** A `NOTES_REMOTE` file with no URL line turns machine notes off. `notes-sync.sh setup` prints `notes: off` and exits 0. `push`, `pull`, and `backfill` print `notes: skipped`. The boot dashboard shows a gray skip row, and the vitals tile reads `off` as an ok state. `verify.sh` skips the digit-refuse fixtures with an INFO line when `pdflatex` or `pdftotext` is absent. In CI the same gap is a FAIL.
+
+**Why:** A person who forks this repo has no private notes repo on day one. Before this, an empty file was an error, the clone was retried at every login, and the dashboard warned every time. `setup.sh` calls TeX optional and lists it as MISSING without stopping, while the last step of the same script failed on it, after everything else was already installed.
+
+**Rejected:** Making TeX a hard prerequisite. Most of the repo works without it, and the texlive-full package is several gigabytes. Skipping the fixtures in CI too: a runner image that lost TeX would then turn the whole gate off with a green run. A separate `notes_enabled` key in `local.json`: `NOTES_REMOTE` already says where notes go, so an empty one already says nowhere.
+
 ## 2026-11-20 — A replaced rules file keeps its tool in the backup name, and a new config is marked absent
 
 **Policy:** restore_configs=absent-marker-and-named-rules

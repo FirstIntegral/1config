@@ -905,7 +905,9 @@ fi
 if [ -x "$NS_SRC" ] && bash -n "$NS_SRC" 2>/dev/null; then
   _ns_rc=0
   _ns_out="$(env -u NOTES_SYNC_HOME -u NOTES_SYNC_TEST_ROOT -u NOTES_REMOTE_FILE bash "$NS_SRC" setup 2>&1)" || _ns_rc=$?
-  if [ "$_ns_rc" -eq 0 ]; then
+  if [ "$_ns_rc" -eq 0 ] && printf '%s\n' "$_ns_out" | grep -qx 'notes: off'; then
+    log "off     machine-notes (NOTES_REMOTE has no URL)"
+  elif [ "$_ns_rc" -eq 0 ]; then
     log "ready   machine-notes"
   else
     log "note    machine-notes clone failed — next setup or login retries"
