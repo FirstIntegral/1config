@@ -104,7 +104,7 @@ These are **this repo's** choices. Other people often want the opposite. They ar
 | Default | Value here | Why | Flip |
 |---------|------------|-----|------|
 | **`bash_without_prompt`** | **`true`** | Opinionated. A fresh clone gets full Bash autonomy. Generic `git push` does not prompt. Red lines still wait for a yes. | Copy `local.json.example` to gitignored `local.json` (`false`), then `bash ~/.agents/setup.sh`. |
-| **`edit_without_prompt`** | `true` | File writes should not stop a session. | Same file, `"edit_without_prompt": false`. |
+| **`edit_without_prompt`** | `true` | File writes should not stop a session. | Same file, `"edit_without_prompt": false`. While Bash autonomy is on, that reaches OpenCode only: Claude and Grok autonomy already covers edits. Turn both off to get edit prompts in all three. Write `true` or `false` without quotes; `setup.sh` stops on a quoted value. |
 | GPG commit signing | Required, never `--no-gpg-sign` | Attribution is cryptographic. | Don't. If you must unsigned history, this is the wrong brain. |
 | No AI co-author lines | Hard rule | Commits/PRs attributed to the user only. | Don't. |
 | Caveman mode | **Always on (full)** | Terse prose. The direction of this repo. | `stop caveman` for one session. Durable opt-out: `local.json` key `caveman` set to `off`. |
@@ -150,7 +150,7 @@ Canonical permission file: [`permissions.json`](permissions.json). Comments in t
 | `BRAIN_SIGNERS` | Signer allowlist for incoming commits: one key fingerprint per line. |
 | `NOTES_REMOTE` | URL of the private machine-notes repo. |
 | `fork-parents.txt` | Forks we contribute back to: `ourOwner/repo parentOwner/repo`. May be empty. |
-| `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. |
+| `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. Every key in it changes what `setup.sh` writes; `verify.sh` runs that as a test. |
 | `permissions.json` | One policy, fanned out to Claude, Grok, and OpenCode. Cursor Code autonomy is per-invocation (`--force`/`--sandbox`). `bash_without_prompt` is true. |
 | `setup.sh` / `verify.sh` / `sync.sh` | Install, check, signed push. `setup.sh --dry-run` previews. `verify.sh --repo` checks only what a clone carries. |
 | `uninstall.sh` | Removes what `setup.sh` installed. A plan by default; `--yes` acts. |

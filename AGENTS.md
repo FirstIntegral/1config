@@ -105,7 +105,7 @@ Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` f
 
 ### `defaults.edit_without_prompt` + `defaults.bash_without_prompt`
 
-Same canonical file, `defaults` block. `edit_without_prompt` is **true**. `bash_without_prompt` is **true**. The opinionated default is on. A gitignored `local.json` may turn the Bash flag off. `setup.sh` fans the effective value out in steps 5b/5c/5d; `verify.sh` checks the live tools against that merge. See `README.md`.
+Same canonical file, `defaults` block. `edit_without_prompt` is **true**. `bash_without_prompt` is **true**. The opinionated default is on. A gitignored `local.json` may turn either flag off. A value is `true` or `false` without quotes; `setup.sh` stops on anything else. `setup.sh` fans the effective value out in steps 5b/5c/5d; `verify.sh` checks the live tools against that merge. See `README.md`.
 
 | Flag | Claude Code | Grok | OpenCode |
 |------|-------------|------|----------|

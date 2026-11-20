@@ -2248,6 +2248,50 @@ if grep -q 'local-rules.py' "$AGENTS_HOME/setup.sh" && grep -qF '1config-local' 
 else
   bad "local.json caveman fan-out missing from setup.sh, AGENTS.md, or SETUP.md"
 fi
+# The autonomy flags have one reader. A value in quotes is refused, because
+# Python reads the string "false" as true and would turn autonomy on.
+_ep="$HOOKS/effective-perms.py"
+_epd="$(mktemp -d -p "$VTMP")"
+_ep_flag() { python3 "$_ep" --perms "$AGENTS_HOME/permissions.json" --local "$_epd/local.json" 2>/dev/null \
+  | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["defaults"][sys.argv[1]]).lower())' "$1"; }
+printf '{"bash_without_prompt": false, "edit_without_prompt": false}\n' > "$_epd/local.json"
+_ep_b="$(_ep_flag bash_without_prompt)"; _ep_e="$(_ep_flag edit_without_prompt)"
+rm -f "$_epd/local.json"
+_ep_d="$(_ep_flag bash_without_prompt)"
+if [ "$_ep_b" = false ] && [ "$_ep_e" = false ] && [ "$_ep_d" = true ]; then
+  ok "local.json turns either autonomy flag off; no local.json keeps the committed default"
+else
+  bad "local.json overlay wrong (bash=$_ep_b edit=$_ep_e default=$_ep_d)"
+fi
+_ep_ok=1
+for _bad in '{"bash_without_prompt": "false"}' '{"edit_without_prompt": 0}' '["bash_without_prompt"]' '{not json'; do
+  printf '%s\n' "$_bad" > "$_epd/local.json"
+  _rc=0; python3 "$_ep" --perms "$AGENTS_HOME/permissions.json" --local "$_epd/local.json" >"$_epd/out" 2>"$_epd/err" || _rc=$?
+  { [ "$_rc" -eq 2 ] && [ ! -s "$_epd/out" ] && [ -s "$_epd/err" ]; } || _ep_ok=0
+done
+[ "$_ep_ok" = 1 ] && ok "a quoted or non-boolean autonomy flag is refused (exit 2), not read as true" \
+                  || bad "effective-perms.py accepted a value that is not a JSON boolean"
+# A promise test: every key in local.json.example must change what setup would
+# write. A key that three documents name and no script reads fails here.
+_lp_dry() {
+  env -u XDG_CONFIG_HOME -u AGENTS_UPDATE_LOCK_HELD HOME="$_epd/home" AGENTS_HOME="$AGENTS_HOME" \
+    AGENTS_LOCAL_JSON="$1" SETUP_DRY_DIFF_LINES=100000 bash "$AGENTS_HOME/setup.sh" --dry-run 2>/dev/null \
+    | sed -n '/^== dry run: tool configs ==/,/^== dry run: the remaining/p'
+}
+mkdir -p "$_epd/home"
+_lp_base="$(_lp_dry "$_epd/absent.json")"
+_lp_keys="$(python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1]))))' "$AGENTS_HOME/local.json.example" 2>/dev/null || true)"
+[ -n "$_lp_keys" ] || bad "local.json.example has no keys, or is not JSON"
+for _k in $_lp_keys; do
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); json.dump({sys.argv[2]: d[sys.argv[2]]}, open(sys.argv[3], "w"))' \
+    "$AGENTS_HOME/local.json.example" "$_k" "$_epd/one.json"
+  _lp_with="$(_lp_dry "$_epd/one.json")"
+  if [ -n "$_lp_base" ] && [ "$_lp_base" != "$_lp_with" ]; then
+    ok "local.json key $_k changes what setup writes"
+  else
+    bad "local.json key $_k changes nothing: a promise with no reader"
+  fi
+done
 if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["defaults"]["bash_without_prompt"] is True else 1)' "$AGENTS_HOME/permissions.json"; then
   ok "committed bash_without_prompt default is true"
 else
@@ -2295,7 +2339,7 @@ elif [ ! -f "$PERMS_SRC" ]; then
   bad "canonical $PERMS_SRC missing"
 else
   parity_out="$(PERMS_SRC="$PERMS_SRC" python3 - <<'PY'
-import json, os, pathlib, re, tomllib
+import json, os, pathlib, re, subprocess, sys, tomllib
 
 def load_jsonc(path):
     raw = path.read_text()
@@ -2351,12 +2395,12 @@ def load_jsonc(path):
         out.append(c); i += 1
     return json.loads("".join(out))
 
-canon = json.loads(pathlib.Path(os.environ["PERMS_SRC"]).read_text())
-_local = pathlib.Path(os.environ["PERMS_SRC"]).with_name("local.json")
-if _local.is_file():
-    _over = json.loads(_local.read_text())
-    if "bash_without_prompt" in _over:
-        canon.setdefault("defaults", {})["bash_without_prompt"] = bool(_over["bash_without_prompt"])
+# The same reader setup.sh uses, so the two cannot disagree about local.json.
+_perms = pathlib.Path(os.environ["PERMS_SRC"])
+canon = json.loads(subprocess.run(
+    [sys.executable, str(_perms.with_name("hooks") / "effective-perms.py"),
+     "--perms", str(_perms), "--local", str(_perms.with_name("local.json"))],
+    check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout)
 src = canon.get("permissions", {})
 defaults = canon.get("defaults", {})
 edit_on = bool(defaults.get("edit_without_prompt"))

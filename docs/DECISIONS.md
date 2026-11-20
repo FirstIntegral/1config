@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-20 — local.json has one reader, and a flag is a real true or false
+
+**Policy:** local_json_flags=strict-boolean-one-reader
+
+**Decision:** `hooks/effective-perms.py` is the only reader of the two autonomy flags in `local.json`. `setup.sh` step `5a` and the permission check in `verify.sh` both call it. It reads `bash_without_prompt` and `edit_without_prompt`. A value that is not a JSON `true` or `false` is exit 2, and `setup.sh` stops. `local.json.example` lists `edit_without_prompt`. `verify.sh` takes each key in that example, runs `setup.sh --dry-run` with only that key, and fails when the tool configs come out the same.
+
+**Why:** A review on 2026-11-20 found two faults. `README.md` promised that `edit_without_prompt` could be turned off in `local.json`, and no script read it. `setup.sh` passed the value through Python `bool()`, so `"false"` in quotes turned Bash autonomy on for a person who had asked for it off. The overlay was written out twice, once in `setup.sh` and once in `verify.sh`, and both copies had the same two faults.
+
+**Rejected:** Accepting `"false"`, `"off"`, and `0` as false. A forgiving reader hides a typo in the one setting that removes prompts. Deleting the `edit_without_prompt` promise from `README.md`: the flag already exists in `permissions.json`, so one machine should be able to flip it. Moving the overlay into `hooks/local-rules.py`: that script owns generated rule files, not permissions.
+
 ## 2026-11-14 — speak every Left to do line
 
 **Policy:** status_card=how-left-full-replies
