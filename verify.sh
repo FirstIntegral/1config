@@ -228,7 +228,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -3617,6 +3617,72 @@ if [ "$_rc" -eq 0 ] \
   ok "uninstall.sh --yes removes what is ours and leaves a real file, a foreign skill, a foreign hook, and the logs"
 else
   bad "uninstall.sh --yes removed too much or too little (exit $_rc)"
+fi
+
+# Rules links: three of the four paths end in AGENTS.md, so each saved copy must
+# carry its tool in the name. A copy that cannot be made leaves the file alone.
+_lh="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_lh/home/.grok" "$_lh/home/.config/opencode" "$_lh/home/.claude" "$_lh/home/.cursor"
+printf 'grok rules\n' > "$_lh/home/.grok/AGENTS.md"
+printf 'opencode rules\n' > "$_lh/home/.config/opencode/AGENTS.md"
+printf 'claude rules\n' > "$_lh/home/.claude/CLAUDE.md"
+_rc=0; HOME="$_lh/home" bash "$HOOKS/link-rules.sh" "$CANON" "$_lh/saved/setup-20260101-000000" >"$_lh/out" 2>&1 || _rc=$?
+if [ "$_rc" -eq 0 ] \
+   && [ "$(cat "$_lh/saved/setup-20260101-000000/rules-grok-AGENTS.md" 2>/dev/null)" = "grok rules" ] \
+   && [ "$(cat "$_lh/saved/setup-20260101-000000/rules-config-opencode-AGENTS.md" 2>/dev/null)" = "opencode rules" ] \
+   && [ "$(cat "$_lh/saved/setup-20260101-000000/rules-claude-CLAUDE.md" 2>/dev/null)" = "claude rules" ] \
+   && [ "$(find "$_lh/saved" -type f | wc -l)" -eq 3 ] \
+   && [ "$(readlink -f "$_lh/home/.grok/AGENTS.md")" = "$(readlink -f "$CANON")" ] \
+   && [ "$(readlink -f "$_lh/home/.cursor/AGENTS.md")" = "$(readlink -f "$CANON")" ]; then
+  ok "link-rules.sh saves each replaced rules file under its own name, then links all four"
+else
+  bad "link-rules.sh lost or overwrote a rules file it replaced (exit $_rc)"
+fi
+_lh2="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_lh2/home/.grok" "$_lh2/blocked"
+printf 'grok rules\n' > "$_lh2/home/.grok/AGENTS.md"
+: > "$_lh2/blocked/setup-x"
+_rc=0; HOME="$_lh2/home" bash "$HOOKS/link-rules.sh" "$CANON" "$_lh2/blocked/setup-x" >/dev/null 2>&1 || _rc=$?
+if [ "$_rc" -eq 1 ] && [ ! -L "$_lh2/home/.grok/AGENTS.md" ] && [ "$(cat "$_lh2/home/.grok/AGENTS.md")" = "grok rules" ]; then
+  ok "link-rules.sh leaves a rules file in place when its backup cannot be written (exit 1)"
+else
+  bad "link-rules.sh replaced a rules file it could not back up (exit $_rc)"
+fi
+# --restore-configs on a machine that had no tool config before 1config: the
+# config goes away again (saved first), an older real copy is put back, and the
+# person's own rules file returns once the link is gone.
+_rh="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_rh/home/.claude" "$_rh/home/.grok" "$_rh/saved/setup-20260101-000000" "$_rh/saved/setup-20260202-000000"
+printf '{"permissions": {"defaultMode": "bypassPermissions"}}\n' > "$_rh/home/.claude/settings.json"
+printf 'permission_mode = "always-approve"\n' > "$_rh/home/.grok/config.toml"
+ln -s "$CANON" "$_rh/home/.claude/CLAUDE.md"
+: > "$_rh/saved/setup-20260101-000000/claude-settings.json.absent"
+printf '{"written": "by setup step 5"}\n' > "$_rh/saved/setup-20260101-000000/claude-settings-perms.json"
+printf 'mine = true\n' > "$_rh/saved/setup-20260101-000000/config.toml"
+printf 'newer = true\n' > "$_rh/saved/setup-20260202-000000/config.toml"
+printf 'my claude rules\n' > "$_rh/saved/setup-20260101-000000/rules-claude-CLAUDE.md"
+_rs() {
+  env -u XDG_CONFIG_HOME -u GIT_CONFIG_GLOBAL -u AGENTS_SCHEDULER HOME="$_rh/home" AGENTS_HOME="$AGENTS_HOME" \
+    STUB_DIR="$_ust" UNINSTALL_BACKUP_DIR="$_rh/keep" UNINSTALL_SAVED_DIR="$_rh/saved" \
+    PATH="$_sc/bin:/usr/bin:/bin" bash "$AGENTS_HOME/uninstall.sh" "$@"
+}
+_rs --restore-configs >"$_rh/plan.out" 2>&1 || true
+if grep -q 'would remove  .*/.claude/settings.json  (it did not exist before 1config' "$_rh/plan.out" \
+   && grep -q 'would restore  .*/.grok/config.toml  from  .*setup-20260101-000000/config.toml' "$_rh/plan.out" \
+   && grep -q 'would restore  .*/.claude/CLAUDE.md  from  ' "$_rh/plan.out" \
+   && [ -f "$_rh/home/.claude/settings.json" ] && [ -L "$_rh/home/.claude/CLAUDE.md" ] && [ ! -e "$_rh/keep" ]; then
+  ok "uninstall.sh --restore-configs without --yes names each restore and changes nothing"
+else
+  bad "uninstall.sh --restore-configs plan is wrong, or it changed something without --yes"
+fi
+_rc=0; _rs --yes --restore-configs >"$_rh/do.out" 2>&1 || _rc=$?
+if [ "$_rc" -eq 0 ] && [ ! -e "$_rh/home/.claude/settings.json" ] \
+   && grep -q bypassPermissions "$_rh"/keep/uninstall-*-restore/settings.json \
+   && [ "$(cat "$_rh/home/.grok/config.toml")" = "mine = true" ] \
+   && [ ! -L "$_rh/home/.claude/CLAUDE.md" ] && [ "$(cat "$_rh/home/.claude/CLAUDE.md")" = "my claude rules" ]; then
+  ok "uninstall.sh --yes --restore-configs removes a config 1config created, restores the oldest copy, and returns a replaced rules file"
+else
+  bad "uninstall.sh --yes --restore-configs left autonomy on, or did not put a saved file back (exit $_rc)"
 fi
 
 # --- CI workflow, security policy ---------------------------------------------

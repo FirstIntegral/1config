@@ -95,7 +95,7 @@ bash ~/.agents/uninstall.sh --yes    # remove it
 
 `setup.sh` links `bin/1config` into `~/.local/bin`. Each command is a thin call to a script in this repo, and the agents keep calling those scripts by path.
 
-`uninstall.sh` removes the rules links, the generated rules, the two Claude hooks, the schedule, the installed script copies, the autostart entry, the `1config` link, and git's `gpg.program`. Each one goes only while it is still what `setup.sh` put there. The permission lists and modes in the three tool configs stay, so a tool keeps running Bash without a prompt until you add `--restore-configs`, which puts back the oldest copies `setup.sh` saved. This checkout, the notes clone, and the keyring stay.
+`uninstall.sh` removes the rules links, the generated rules, the two Claude hooks, the schedule, the installed script copies, the autostart entry, the `1config` link, and git's `gpg.program`. Each one goes only while it is still what `setup.sh` put there. The permission lists and modes in the three tool configs stay, so a tool keeps running Bash without a prompt until you add `--restore-configs`, which puts back the oldest copies `setup.sh` saved. A tool config that did not exist before the first `setup.sh` is removed again (saved first), so a fresh machine does not keep the autonomy mode. A rules file of your own that `setup.sh` replaced with a link is put back. This checkout, the notes clone, and the keyring stay.
 
 ## Opinionated defaults — read before you fork
 

@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-20 — A replaced rules file keeps its tool in the backup name, and a new config is marked absent
+
+**Policy:** restore_configs=absent-marker-and-named-rules
+
+**Decision:** Step 1 of `setup.sh` is now `hooks/link-rules.sh`. A real file at a rules path is saved as `rules-<tool path>-<name>` before the link replaces it, and a failed copy leaves the file alone and stops setup. When a tool config does not exist at the start of a run, `setup.sh` writes `<name>.absent` into that run's backup directory. `uninstall.sh --restore-configs` reads the marker and removes the config, after saving the current copy. It also puts a saved rules file back once the link is gone.
+
+**Why:** Three of the four rules paths end in `AGENTS.md`, and all three were saved under that one name, so two of three copies were lost. On a machine that had no tool config before the install there was no copy to restore, so `--restore-configs` printed "no saved copy" and left `bypassPermissions` on. The way out that `README.md` promises did not exist for the person most likely to want it: someone who tried the repo on a clean machine.
+
+**Rejected:** Editing only the mode keys out of each config on uninstall. That needs a TOML and a JSONC writer inside `uninstall.sh`, and it leaves the permission lists behind. Restoring to "whatever the tool's default is" by deleting the config with no saved copy. Restoring a legacy `AGENTS.md` backup: its tool cannot be known.
+
 ## 2026-11-20 — local.json has one reader, and a flag is a real true or false
 
 **Policy:** local_json_flags=strict-boolean-one-reader

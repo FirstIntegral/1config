@@ -15,7 +15,8 @@
 # Left in place, and named at the end, because a tool or a person may have
 # changed them since: the permission lists and modes in the three tool configs
 # (--restore-configs puts back the oldest copy setup.sh saved, after saving the
-# current one), the Grok memory and compat switches, the Omarchy bar plugin,
+# current one; a config that did not exist before 1config is removed, and a
+# rules file that setup.sh replaced with a link is put back), the Grok memory and compat switches, the Omarchy bar plugin,
 # logs and flags under ~/cron-jobs, the machine-notes clone, the keyring, and
 # this checkout with its backups.
 #
@@ -27,6 +28,8 @@ export AGENTS_HOME
 CANON="$AGENTS_HOME/AGENTS.md"
 # Where a config is copied before this script changes it. The override is for verify.sh only.
 KEEP_ROOT="${UNINSTALL_BACKUP_DIR:-$AGENTS_HOME/backups}"
+# Where setup.sh saved the copies --restore-configs reads. The override is for verify.sh only.
+SAVED_ROOT="${UNINSTALL_SAVED_DIR:-$AGENTS_HOME/backups}"
 DO=0
 RESTORE=0
 for arg in "$@"; do
@@ -34,7 +37,7 @@ for arg in "$@"; do
     --yes)             DO=1 ;;
     --dry-run)         DO=0 ;;
     --restore-configs) RESTORE=1 ;;
-    -h|--help)         sed -n '2,24p' "$0"; exit 0 ;;
+    -h|--help)         sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "uninstall.sh: unknown argument: $arg" >&2; exit 2 ;;
   esac
 done
@@ -148,30 +151,69 @@ fi
 # setup.sh saves a file under one name per step that touches it. Within a run
 # the names are tried in the order the steps ran, so the first hit in the
 # oldest directory is the earliest copy there is.
+# A directory that holds "<first name>.absent" says the file did not exist when
+# that run of setup.sh started. That beats any copy the same run saved later,
+# which is already a file setup.sh wrote.
 oldest() {
   local d name
-  for d in "$AGENTS_HOME"/backups/setup-*; do
+  for d in "$SAVED_ROOT"/setup-*; do
+    [ -d "$d" ] || continue
+    [ -f "$d/$1.absent" ] && { printf 'ABSENT\n'; return 0; }
     for name in "$@"; do
       [ -f "$d/$name" ] && { printf '%s\n' "$d/$name"; return 0; }
     done
   done
   return 1
 }
+KEEP=""
+keep_dir() {
+  [ -n "$KEEP" ] || KEEP="$KEEP_ROOT/uninstall-$(date +%Y%m%d-%H%M%S)-restore"
+  mkdir -p "$KEEP"
+}
 restore_one() {
-  local live="$1" src keep
+  local live="$1" src
   shift
   src="$(oldest "$@")" || { say "no saved copy of $live — left as it is"; return 0; }
+  if [ "$src" = ABSENT ]; then
+    [ -e "$live" ] || { say "ok       $live (absent, as it was before 1config)"; return 0; }
+    if [ "$DO" != 1 ]; then
+      say "would remove  $live  (it did not exist before 1config; the current copy is saved first)"
+      return 0
+    fi
+    keep_dir
+    cp -p "$live" "$KEEP/$(basename "$live")" && rm -f "$live" \
+      && say "removed  $live  (it did not exist before 1config; current copy saved in $KEEP)"
+    return 0
+  fi
   if [ "$DO" != 1 ]; then
     say "would restore  $live  from  $src"
     return 0
   fi
-  keep="$KEEP_ROOT/uninstall-$(date +%Y%m%d-%H%M%S)"
-  mkdir -p "$keep"
-  [ -f "$live" ] && cp -p "$live" "$keep/$(basename "$live")"
-  cp -p "$src" "$live" && say "restored $live  from  $src  (current copy saved in $keep)"
+  keep_dir
+  [ -f "$live" ] && cp -p "$live" "$KEEP/$(basename "$live")"
+  cp -p "$src" "$live" && say "restored $live  from  $src  (current copy saved in $KEEP)"
+}
+# A rules file that setup.sh replaced with a link comes back once the link is gone.
+# The saved name is the one hooks/link-rules.sh writes. Older runs saved the bare
+# basename; only CLAUDE.md is tried under it, because three paths share AGENTS.md.
+restore_rules() {
+  local link="$1" rel src legacy=""
+  rel="${link#"$HOME"/}"; rel="${rel#.}"
+  [ "$(basename "$link")" = CLAUDE.md ] && legacy=CLAUDE.md
+  # shellcheck disable=SC2086
+  src="$(oldest "rules-$(printf '%s' "$rel" | tr '/' '-')" $legacy)" || return 0
+  [ "$src" = ABSENT ] && return 0
+  if [ -L "$link" ] && [ "$(readlink -f "$link")" = "$CANON" ] && [ "$DO" != 1 ]; then
+    say "would restore  $link  from  $src"
+  elif [ ! -e "$link" ] && [ ! -L "$link" ] && [ "$DO" = 1 ]; then
+    cp -p "$src" "$link" && say "restored $link  from  $src"
+  fi
 }
 echo "[tool configs]"
 if [ "$RESTORE" = 1 ]; then
+  for link in "$HOME/.grok/AGENTS.md" "$HOME/.config/opencode/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.cursor/AGENTS.md"; do
+    restore_rules "$link"
+  done
   restore_one "$HOME/.claude/settings.json" claude-settings.json claude-settings-perms.json claude-settings-heredoc.json
   restore_one "$HOME/.grok/config.toml" config.toml grok-config-perms.toml
   restore_one "$HOME/.config/opencode/opencode.jsonc" opencode-perms.jsonc

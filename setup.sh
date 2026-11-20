@@ -126,28 +126,22 @@ elif [ "${AGENTS_UPDATE_LOCK_HELD:-0}" != 1 ]; then
 fi
 export AGENTS_UPDATE_LOCK_HELD=1
 mkdir -p "$BACKUP_DIR"
+# A tool config that does not exist yet is recorded as absent. Without that,
+# uninstall.sh --restore-configs has no saved copy to put back on a fresh
+# machine, and the tool keeps the autonomy mode this run is about to write.
+if live; then
+  for _pair in ".claude/settings.json:claude-settings.json" ".grok/config.toml:config.toml" \
+               ".config/opencode/opencode.jsonc:opencode-perms.jsonc"; do
+    [ -e "$HOME/${_pair%%:*}" ] || : > "$BACKUP_DIR/${_pair#*:}.absent"
+  done
+fi
 
 # --- 1 symlinks ------------------------------------------------------------
 echo "[1] symlinks → $CANON"
-link_one() {
-  local link="$1"
-  mkdir -p "$(dirname "$link")"
-  if [ -L "$link" ] && [ "$(readlink -f "$link")" = "$CANON" ]; then
-    log "ok       $link (already linked)"
-  else
-    if [ -e "$link" ] && [ ! -L "$link" ]; then
-      cp -p "$link" "$BACKUP_DIR/"
-      log "backed up existing $link"
-    fi
-    ln -sfn "$CANON" "$link"
-    log "linked   $link"
-  fi
-}
+# hooks/link-rules.sh does the work, so verify.sh can run it on a scratch home.
 if live; then
-  link_one "$HOME/.grok/AGENTS.md"
-  link_one "$HOME/.config/opencode/AGENTS.md"
-  link_one "$HOME/.claude/CLAUDE.md"
-  link_one "$HOME/.cursor/AGENTS.md"
+  bash "$AGENTS_HOME/hooks/link-rules.sh" "$CANON" "$BACKUP_DIR" \
+    || die "a rules file could not be backed up — nothing was linked over it; see the line above"
 fi
 
 # --- 1c Cursor user rule (alwaysApply mirror of canonical) ------------------
