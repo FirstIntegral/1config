@@ -53,8 +53,24 @@ fail() {
   exit 1
 }
 ok()   { echo "  ok    $*"; }
-# A listing of everything under $HOME except the checkout and gpg's own home.
-snapshot() { (cd "$HOME" && find . -mindepth 1 -not -path './.agents*' -not -path './.gnupg*' -printf '%p %s %l\n' | LC_ALL=C sort); }
+# A listing of everything under $HOME except the checkout, gpg's own home, and
+# the directories a GitHub runner keeps writing to while a job runs (its work
+# tree, its own install, and its logs all live under the runner's home).
+snapshot() {
+  (cd "$HOME" && find . -mindepth 1 \
+     -not -path './.agents*' -not -path './.gnupg*' \
+     -not -path './work*' -not -path './runners*' -not -path './actions-runner*' \
+     -printf '%p %s %l\n' | LC_ALL=C sort)
+}
+# same_home BEFORE  — fail, and show what moved, when the home is no longer BEFORE.
+same_home() {
+  local now
+  now="$(snapshot)"
+  [ "$now" = "$1" ] && return 0
+  echo "  --- what changed under $HOME (< before, > after)" >&2
+  diff <(printf '%s\n' "$1") <(printf '%s\n' "$now") | grep '^[<>]' | head -n 20 >&2
+  return 1
+}
 
 say "a person with their own setup"
 mkdir -p "$HOME/.claude/projects/-home-me-work/memory" "$HOME/.grok" "$HOME/.config/opencode"
@@ -89,7 +105,7 @@ bash "$A/setup.sh" >"$LAST" 2>&1 || rc=$?
 grep -q 'commit.gpgsign is not true' "$LAST" || fail "setup.sh did not name commit.gpgsign"
 grep -q 'git has no signing key' "$LAST" || fail "setup.sh did not name the signing key"
 grep -q 'stopped before it changed anything' "$LAST" || fail "setup.sh did not say it changed nothing"
-[ "$(snapshot)" = "$before" ] || fail "setup.sh changed the home before it stopped"
+same_home "$before" || fail "setup.sh changed the home before it stopped"
 ok "exit $rc, names both fixes, home untouched"
 
 say "git identity and a signing key"
@@ -110,7 +126,7 @@ bash "$A/setup.sh" >"$LAST" 2>&1 || rc=$?
 [ "$rc" -ne 0 ] || fail "setup.sh exited 0 on a fork that was not initialised"
 grep -q 'BRAIN_REMOTE does not list it' "$LAST" || fail "setup.sh did not say origin is unlisted"
 grep -q '1config fork-init' "$LAST" || fail "setup.sh did not name fork-init"
-[ "$(snapshot)" = "$before" ] || fail "setup.sh changed the home before it stopped"
+same_home "$before" || fail "setup.sh changed the home before it stopped"
 ok "exit $rc, names fork-init, home untouched"
 
 say "fork-init: a plan first, then one signed commit"
