@@ -89,12 +89,20 @@ From then on the boot dashboard keeps it in sync automatically: `~/Projects/omar
 Works on Omarchy **and** Ubuntu. Same commands:
 
 ```bash
-cd ~/.agents
-git pull origin main
+bash ~/.agents/bin/1config pull    # fast-forward only, and only over commits signed by a listed key
 bash ~/.agents/setup.sh
 ```
 
-A commit made on github.com (a merged pull request, an edit in the browser) is not pulled at login: the signature gate holds it, the dashboard names it, and the three commands above take it after you have read it.
+`1config pull` is the pull the login runs (`hooks/brain-sync.sh`). A bare `git pull` skips the signature gate, so it is not the everyday command.
+
+A commit made on github.com (a merged pull request, an edit in the browser) is not pulled at login or by `1config pull`: the signature gate holds it and the dashboard names it. After you have read it, take it by hand:
+
+```bash
+git -C ~/.agents fetch origin main
+git -C ~/.agents log -p main..origin/main    # read what is coming
+git -C ~/.agents merge --ff-only origin/main
+bash ~/.agents/setup.sh
+```
 
 `setup.sh` is idempotent: re-copies hooks, refreshes the scheduled guards, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. 1config does not edit your `.profile` and does not link a tool binary into `~/.local/bin`. The one link it makes there is its own `1config` command.
 

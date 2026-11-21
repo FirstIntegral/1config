@@ -43,11 +43,15 @@ if [ -f "$SIGNERS" ]; then
     [ -n "$line" ] && allowed+=("$(upper "$line")")
   done < "$SIGNERS"
 fi
+# "This machine's own key" is a key it holds the secret half of. The lookup goes
+# through the secret keyring: user.signingkey may be an email or a short id, and
+# any public key that was ever imported can carry the same email.
 own_key="$(bash "$ROOT/hooks/gpg-signing-key.sh" 2>/dev/null || true)"
 if [ -n "$own_key" ]; then
-  own_fpr="$(gpg --batch --list-keys --with-colons "$own_key" 2>/dev/null \
-    | awk -F: '$1 == "pub" { p = 1; next } p && $1 == "fpr" { print $10; exit }')"
-  [ -n "$own_fpr" ] && allowed+=("$(upper "$own_fpr")")
+  while IFS= read -r own_fpr; do
+    [ -n "$own_fpr" ] && allowed+=("$(upper "$own_fpr")")
+  done < <(gpg --batch --list-secret-keys --with-colons "$own_key" 2>/dev/null \
+    | awk -F: '$1 == "sec" { p = 1; next } p && $1 == "fpr" { print $10; p = 0 }')
 fi
 
 web=()

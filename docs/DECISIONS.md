@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — The pull works on commit ids, a diverged brain is gated, and "own key" means a secret key
+
+**Policy:** brain_pull_refs=full-names-resolved-once
+
+**Decision:** `hooks/brain-sync.sh` and `sync.sh` fetch with `--no-tags`, resolve `refs/heads/main` and `refs/remotes/origin/main` to commit ids once, and use those ids for the count, the gate, and the merge. A diverged checkout runs the gate from the fork point: `brain-sync.sh` exits 5 or 6 when the commits on origin are web-flow or unsigned, and `sync.sh` prints a merge command only when they pass. `hooks/verify-incoming.sh` finds this machine's own key in the secret keyring. `hooks/gpg-git.sh` returns gpg's exit code. The dots gate in `boot-dashboard/dashboard.sh` is one function; a fetch that fails stops the pack sync. `dashboard.sh` exits 2 on an argument it does not know. `README.md` and `AGENTS.md` name `1config pull` for an existing machine.
+
+**Why:** With a tag named `main` on the remote, `git rev-parse main` read the tag, the login pull printed "up to date", and an unsigned commit sat on the branch unseen. The gate checked two ids and the merge then took a ref name, which a second fetch could move in between. A diverged brain got "merge by hand: git merge origin/main" with no word on whether those commits were signed. The own-key lookup took the first public key that matched `user.signingkey`; with an email there, an imported look-alike key was accepted as this machine's own. `rc=$?` after `fi` is always 0, so `gpg-git.sh` reported a failed `--verify` as success. When the dashboard's fetch of the dots pack failed, the pack's own sync fetched again and applied what it got with no gate. `AGENTS.md` told people to run `git pull`, which skips the gate. `hooks/trust-test.sh` reproduced each one first. A fixture that passed an unknown flag made the real dashboard run and rewrite the close slip, which is why unknown arguments now stop.
+
+**Rejected:** A lock around gate and merge: merging the checked id needs none. Refusing to run when a tag named `main` exists: the tag is harmless once names are full. Gating a stale origin ref when the dots fetch fails: stopping is simpler, and offline there is nothing new to apply.
+
 ## 2026-11-21 — Config edits are parsed before they are written, and the preflight asks first
 
 **Policy:** grok_config_edit=parse-before-write

@@ -21,10 +21,10 @@ run() {
   gpg --batch --yes --pinentry-mode loopback "$@" <"$tmp"
 }
 
-if run "$@"; then
-  exit 0
-fi
-rc=$?
+# `rc=$?` after `if ...; fi` is always 0, so the code is taken on the call itself.
+rc=0
+run "$@" || rc=$?
+[ "$rc" -eq 0 ] && exit 0
 
 # git also calls this to check a signature (`--verify`). A bad or unknown
 # signature is an answer, not a locked key: the unlock hook cannot change it,

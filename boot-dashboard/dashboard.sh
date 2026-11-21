@@ -484,6 +484,41 @@ check_setup_after_ff() {
   return 1
 }
 
+# dots_gate DIR — fetch the pack's origin/main and check what it brings against
+# the signer list. The reason is left in DOTS_GATE_WHY.
+#   0  nothing new, or every new commit is signed by a listed key
+#   1  the fetch failed. The caller must not run the pack's sync: that script
+#      would fetch by itself, and what it got would be applied unchecked
+#   5  the new commits were made on github.com (web-flow)
+#   6  a new commit is unsigned or signed by an unlisted key, or the gate is missing
+DOTS_GATE_WHY=""
+dots_gate() {
+  local dots="$1" gate="$AGENTS_HOME/hooks/verify-incoming.sh" base tip rc=0
+  DOTS_GATE_WHY=""
+  git -C "$dots" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  if [ ! -f "$gate" ]; then
+    DOTS_GATE_WHY="hooks/verify-incoming.sh is missing"
+    return 6
+  fi
+  if ! GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10" timeout 45 \
+       git -C "$dots" fetch -q --no-tags origin "+refs/heads/main:refs/remotes/origin/main" 2>/dev/null; then
+    DOTS_GATE_WHY="fetch failed"
+    return 1
+  fi
+  base="$(git -C "$dots" rev-parse -q --verify refs/heads/main 2>/dev/null || true)"
+  tip="$(git -C "$dots" rev-parse -q --verify refs/remotes/origin/main 2>/dev/null || true)"
+  if [ -z "$base" ] || [ -z "$tip" ] || [ "$base" = "$tip" ]; then
+    return 0
+  fi
+  # A diverged pack is the sync script's own exit 5. Only a fast-forward is taken.
+  git -C "$dots" merge-base --is-ancestor "$base" "$tip" 2>/dev/null || return 0
+  DOTS_GATE_WHY="$(bash "$gate" "$dots" "$base" "$tip" 2>&1)" || rc=$?
+  case "$rc" in
+    0|5) return "$rc" ;;
+    *) return 6 ;;
+  esac
+}
+
 check_dots_sync() {
   # Omarchy config pack (github:FirstIntegral/omarchy-dots) — fetch, ff-only pull,
   # drift-check ~/.config, auto-apply on drift. Skips cleanly on non-Omarchy boxes
@@ -500,32 +535,22 @@ check_dots_sync() {
     return 1
   fi
   # sync.sh applies the pack to ~/.config the moment it is pulled, so the pull
-  # waits on the same signature gate as the brain. Fetch here, verify, then let
-  # sync.sh work from the ref this function fetched (no second fetch to race).
-  local gate="$AGENTS_HOME/hooks/verify-incoming.sh" skip_fetch=0 base tip why grc
-  if [ -x "$gate" ] && git -C "$dots" rev-parse --git-dir >/dev/null 2>&1; then
-    if GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10" timeout 45 \
-         git -C "$dots" fetch -q origin "+refs/heads/main:refs/remotes/origin/main" 2>/dev/null; then
-      skip_fetch=1
-      base="$(git -C "$dots" rev-parse -q --verify refs/heads/main 2>/dev/null)"
-      tip="$(git -C "$dots" rev-parse -q --verify refs/remotes/origin/main 2>/dev/null)"
-      if [ -n "$base" ] && [ -n "$tip" ] && [ "$base" != "$tip" ] \
-         && git -C "$dots" merge-base --is-ancestor "$base" "$tip" 2>/dev/null; then
-        why="$(bash "$gate" "$dots" "$base" "$tip" 2>&1)"
-        grc=$?
-        if [ "$grc" -eq 5 ]; then
-          row warn "omarchy dots" "not pulled — $why"
-          note "review, then: git -C ~/Projects/omarchy-dots merge --ff-only origin/main && bash ~/Projects/omarchy-dots/sync.sh"
-          return 1
-        elif [ "$grc" -ne 0 ]; then
-          row fail "omarchy dots" "NOT pulled — $why"
-          return 1
-        fi
-      fi
-    fi
-  fi
+  # waits on the same signature gate as the brain. dots_gate fetches and checks;
+  # sync.sh then works from the ref it fetched and does not fetch again.
+  local grc=0
+  dots_gate "$dots" || grc=$?
+  case "$grc" in
+    0) ;;
+    1) row warn "omarchy dots" "fetch failed — offline or key not loaded"
+       return 1 ;;
+    5) row warn "omarchy dots" "not pulled — $DOTS_GATE_WHY"
+       note "review, then: git -C ~/Projects/omarchy-dots merge --ff-only origin/main && bash ~/Projects/omarchy-dots/sync.sh"
+       return 1 ;;
+    *) row fail "omarchy dots" "NOT pulled — $DOTS_GATE_WHY"
+       return 1 ;;
+  esac
   local out rc last
-  out="$(DOTS_SYNC_SKIP_FETCH="$skip_fetch" bash "$script" 2>&1)"
+  out="$(DOTS_SYNC_SKIP_FETCH=1 bash "$script" 2>&1)"
   rc=$?
   last="$(echo "$out" | grep -E '^dots-sync:' | tail -1 | sed 's/^dots-sync: //')"
   [ -n "$last" ] || last="$(echo "$out" | tail -1)"
@@ -719,4 +744,18 @@ if [ "${1:-}" = "--setup-gate-selftest" ]; then
   setup_gate_selftest
   exit $?
 fi
-main "$@"
+# --dots-gate DIR is for hooks/trust-test.sh: the gate alone, on a scratch pack.
+if [ "${1:-}" = "--dots-gate" ]; then
+  [ $# -eq 2 ] && [ -d "$2" ] || { echo "usage: dashboard.sh --dots-gate DIR" >&2; exit 2; }
+  _dg_rc=0
+  dots_gate "$2" || _dg_rc=$?
+  [ -z "$DOTS_GATE_WHY" ] || echo "$DOTS_GATE_WHY"
+  exit "$_dg_rc"
+fi
+# An option this script does not know must not fall through to a real run:
+# a real run syncs the brain and the pack and rewrites the close slip.
+if [ $# -gt 0 ]; then
+  echo "dashboard.sh: unknown argument: $1" >&2
+  exit 2
+fi
+main

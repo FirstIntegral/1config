@@ -251,7 +251,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh guards-test.sh config-test.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh guards-test.sh config-test.sh trust-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -1851,6 +1851,7 @@ if [ -x "$HOOKS/verify-incoming.sh" ] && [ -x "$HOOKS/brain-sync.sh" ] && [ -n "
 else
   bad "signature gate fixtures did not run (gpg, verify-incoming.sh, or brain-sync.sh missing)"
 fi
+run_fixtures "$HOOKS/trust-test.sh"
 if [ -f "$AGENTS_HOME/BRAIN_SIGNERS" ] \
    && grep -qE '^[0-9A-Fa-f]{40}[[:space:]]*$' "$AGENTS_HOME/BRAIN_SIGNERS"; then
   ok "BRAIN_SIGNERS lists at least one fingerprint"

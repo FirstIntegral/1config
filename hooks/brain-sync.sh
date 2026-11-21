@@ -18,10 +18,10 @@
 #   2   local is ahead (unpushed commits) — nothing pulled
 #   3   local is behind but the tree has uncommitted edits — nothing pulled
 #   4   divergence / not a repo / wrong branch / URL not in BRAIN_REMOTE — human needed
-#   5   behind, and the incoming commits were made on github.com (web-flow
-#       signature) — nothing pulled; review, then pull by hand
-#   6   behind, and an incoming commit is unsigned or signed by an unlisted
-#       key — nothing pulled
+#   5   behind or diverged, and the incoming commits were made on github.com
+#       (web-flow signature) — nothing pulled; review, then pull by hand
+#   6   behind or diverged, and an incoming commit is unsigned or signed by an
+#       unlisted key — nothing pulled
 set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
@@ -52,14 +52,19 @@ done
 # BatchMode: never prompt for a passphrase at boot (ssh-agent must already hold the key).
 export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o BatchMode=yes -o ConnectTimeout=10}"
 
-if ! timeout "$FETCH_TIMEOUT" git -C "$AGENTS_HOME" fetch -q origin \
+# --no-tags: this pull is about one branch. A tag that came along would only be
+# another name the next command could resolve by mistake.
+if ! timeout "$FETCH_TIMEOUT" git -C "$AGENTS_HOME" fetch -q --no-tags origin \
      "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
   echo "brain-sync: fetch failed (offline or key not available)" >&2
   exit 1
 fi
 
-local_sha="$(git -C "$AGENTS_HOME" rev-parse "$BRANCH")"
-remote_sha="$(git -C "$AGENTS_HOME" rev-parse "refs/remotes/origin/$BRANCH")"
+# Full ref names, resolved once. A short name such as `main` is a tag first when
+# a tag of that name exists. Every later step uses these two ids, so what the
+# gate checked is what the merge takes.
+local_sha="$(git -C "$AGENTS_HOME" rev-parse --verify "refs/heads/$BRANCH")"
+remote_sha="$(git -C "$AGENTS_HOME" rev-parse --verify "refs/remotes/origin/$BRANCH")"
 
 behind="$(git -C "$AGENTS_HOME" rev-list --count "$local_sha..$remote_sha")"
 ahead="$(git -C "$AGENTS_HOME" rev-list --count "$remote_sha..$local_sha")"
@@ -75,6 +80,17 @@ if [ "$behind" -eq 0 ]; then
 fi
 
 if [ "$ahead" -gt 0 ]; then
+  # A person is about to merge these by hand. Say first whether they are signed.
+  fork_sha="$(git -C "$AGENTS_HOME" merge-base "$local_sha" "$remote_sha" 2>/dev/null || true)"
+  gate_rc=0
+  gate_out="$(bash "$_script_dir/verify-incoming.sh" "$AGENTS_HOME" "${fork_sha:-$local_sha}" "$remote_sha" 2>&1)" || gate_rc=$?
+  if [ "$gate_rc" -eq 5 ]; then
+    echo "diverged ($behind behind, $ahead ahead), not pulled — $gate_out"
+    exit 5
+  elif [ "$gate_rc" -ne 0 ]; then
+    echo "diverged ($behind behind, $ahead ahead), NOT pulled — $gate_out" >&2
+    exit 6
+  fi
   echo "diverged from origin/$BRANCH ($behind behind, $ahead ahead) — needs a manual merge" >&2
   exit 4
 fi
@@ -97,7 +113,7 @@ elif [ "$gate_rc" -ne 0 ]; then
   exit 6
 fi
 
-if ! git -C "$AGENTS_HOME" merge --ff-only "refs/remotes/origin/$BRANCH" >/dev/null; then
+if ! git -C "$AGENTS_HOME" merge --ff-only "$remote_sha" >/dev/null; then
   echo "brain-sync: non-fast-forward divergence — needs a manual merge" >&2
   exit 4
 fi

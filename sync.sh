@@ -91,28 +91,40 @@ fi
 echo "[sync 1/5] origin"
 if [ "$dry_run" = 1 ]; then
   echo "  fetch    skipped under --dry-run (local refs only)"
-elif ! git fetch -q origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
+elif ! git fetch -q --no-tags origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"; then
   echo "sync.sh: fetch failed — not committing against stale remote state" >&2
   exit 1
 elif git rev-parse -q --verify "refs/remotes/origin/$BRANCH" >/dev/null 2>&1; then
-  behind="$(git rev-list --count "$BRANCH..origin/$BRANCH")"
-  ahead="$(git rev-list --count "origin/$BRANCH..$BRANCH")"
+  # Full ref names, resolved once: a tag named like the branch is read first
+  # under a short name. The gate and the merge below use these two ids.
+  local_sha="$(git rev-parse --verify "refs/heads/$BRANCH")"
+  remote_sha="$(git rev-parse --verify "refs/remotes/origin/$BRANCH")"
+  behind="$(git rev-list --count "$local_sha..$remote_sha")"
+  ahead="$(git rev-list --count "$remote_sha..$local_sha")"
   if [ "$behind" -gt 0 ] && [ "$ahead" -gt 0 ]; then
+    fork_sha="$(git merge-base "$local_sha" "$remote_sha" 2>/dev/null || true)"
+    gate_rc=0
+    gate_out="$(bash "$_script_dir/hooks/verify-incoming.sh" "$AGENTS_HOME" "${fork_sha:-$local_sha}" "$remote_sha" 2>&1)" || gate_rc=$?
     echo "sync.sh: diverged from origin/$BRANCH ($behind behind, $ahead ahead) — not committing." >&2
-    echo "  merge by hand, then re-run: git -C $AGENTS_HOME merge origin/$BRANCH" >&2
+    if [ "$gate_rc" -ne 0 ]; then
+      echo "  the commits on origin are not signed by a listed key: $gate_out" >&2
+      echo "  read them before you take any of them: git -C $AGENTS_HOME log -p $local_sha..$remote_sha" >&2
+    else
+      echo "  merge by hand, then re-run: git -C $AGENTS_HOME merge $remote_sha" >&2
+    fi
     exit 1
   fi
   if [ "$behind" -gt 0 ]; then
     gate_rc=0
-    gate_out="$(bash "$_script_dir/hooks/verify-incoming.sh" "$AGENTS_HOME" "$BRANCH" "origin/$BRANCH" 2>&1)" || gate_rc=$?
+    gate_out="$(bash "$_script_dir/hooks/verify-incoming.sh" "$AGENTS_HOME" "$local_sha" "$remote_sha" 2>&1)" || gate_rc=$?
     if [ "$gate_rc" -ne 0 ]; then
       echo "sync.sh: origin/$BRANCH is $behind commit(s) ahead and not signed by a listed key — not taken." >&2
       echo "  $gate_out" >&2
-      echo "  review, then: git -C $AGENTS_HOME merge --ff-only origin/$BRANCH" >&2
+      echo "  review, then: git -C $AGENTS_HOME merge --ff-only $remote_sha" >&2
       exit 1
     fi
     # A fast-forward leaves edits to other files in place and refuses an overlap.
-    if ! ff_out="$(git merge --ff-only "origin/$BRANCH" 2>&1)"; then
+    if ! ff_out="$(git merge --ff-only "$remote_sha" 2>&1)"; then
       echo "sync.sh: origin/$BRANCH is $behind commit(s) ahead and overlaps local edits — not committing." >&2
       printf '%s\n' "$ff_out" | sed 's/^/  /' >&2
       echo "  set the edits aside or resolve by hand, then re-run." >&2
