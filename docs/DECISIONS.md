@@ -1,5 +1,36 @@
 # Brain decisions
 
+## 2026-11-21 — Owner answers for the hardening pass
+
+**Decision:** The review of 2026-11-20 left questions that only the owner could answer. The owner answered them on 2026-11-21. Each one lands with its own commit; this entry is the record, so a later review does not ask again.
+
+1. A stray rules file is never merged into `AGENTS.md` by a model. The stray is kept and a flag is raised for a person.
+2. The deny rules match exact text. `SECURITY.md` says so. No list of spellings is added.
+3. With Bash autonomy off, the allowlist still runs `python3`, `find`, `sed`, and `awk` without a prompt. That stays, and `SECURITY.md` says so.
+4. The notes pull gets the same signature gate as the brain pull.
+5. Under `~/Projects/sites/*`, `checkpoint.sh` refuses when `AGENTS.md` or `CLAUDE.md` would be committed.
+6. `checkpoint.sh` stops and commits nothing on a detached HEAD, or during a merge or a rebase.
+7. Where `checkpoint.sh` and the exit table in `AGENTS.md` disagree, the script changes. Only exit 2 is added to the table.
+8. `digit-refuse` checks a number from 1900 to 2099 like any other number, with a way to allow a real year.
+9. `fork-init` rewrites the repo name in a fork's `AGENTS.md`.
+10. Nothing moves to a file that only the owner's machine loads. The owner's taste is 1config. `AGENTS.md` may shrink to rules and triggers, with the bodies in files an agent reads when the trigger fires.
+11. The signers' public key may ship in the repo. Its email is the one already on every public commit.
+
+**Why:** Each of these was a place where the code and a document disagreed, or where a fix needed a choice between two behaviours. A reader cannot settle those from the code.
+
+**Rejected:** A list of deny-rule spellings: it is never complete, and it reads as a wall. Prompting for `python3` with autonomy off: the person who turns autonomy off would get a prompt on most turns. A personal overlay for the lines that are taste: the repo is the owner's setup, published as it is. Item 11 reverses one line of "2026-11-20 — Other people install from a fork, and setup checks before it writes", which rejected a key file because of the email.
+
+## 2026-11-21 — 1config stays a product, and the three documents keep their own purposes
+
+**Policy:** project_kind=product
+**Policy:** doc_sources=three-documents-may-overlap
+
+**Decision:** Two gates of the plan of 2026-11-12 are closed by the owner. That plan is kept outside the repo. Gate G5 asked whether 1config is a personal tool or a product. It is a product that other people install from a fork. "2026-09-27 — Public adoption: license, git author, red lines, local overlay, one remote" stays in force. `hooks/welcome.js` and `setup-infographic.svg` stay, and so do their same-turn rules. Gate G2 asked whether `SETUP.md` may stop restating rules. It may not. `README.md`, `SETUP.md`, and `AGENTS.md` each keep their purpose and may say the same thing. The `verify.sh` checks that hold a copied sentence in step stay.
+
+**Why:** The walkthrough and the figure are how a new person learns what was installed. A reader of `SETUP.md` should not have to open `AGENTS.md` to follow a step. Recorded here so the next review does not reopen either gate.
+
+**Rejected:** Deleting the walkthrough and the figure as upkeep cost. One home per fact with pointers between the documents. A generator for the shared sentences: one more program to keep true.
+
 ## 2026-11-20 — Other people install from a fork, and setup checks before it writes
 
 **Policy:** install_path=fork-first-preflight
