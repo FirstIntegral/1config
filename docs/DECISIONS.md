@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — A piped check reads all of its input
+
+**Policy:** piped_checks=has-reads-all
+
+**Decision:** In `verify.sh` and the `hooks/*-test.sh` files, `writer | grep -q PATTERN` is `writer | has PATTERN`. `has` takes its whole input with `cat` and then runs `grep -q` on a here-string. `verify.sh` checks the helper against a 600 KB input whose match is on line 1. `checkpoint.sh` asks "is any file in conflict" with `[ -n "$(git diff ...)" ]` and no pipe.
+
+**Why:** `grep -q` stops at the first match. A writer that is still writing then dies of SIGPIPE, and under `pipefail` the pipeline is false although the text was found. Negated, `! writer | grep -q X` is true although X is there, which is a check that passes when it should fail. Measured on this machine: 30 of 30 runs of `seq 1 300000 | grep -qx 1` end with the writer at exit 141. One new check failed for this reason on 2026-11-21, and 44 more sites had the same shape. The inputs at those sites are small today; a check must not depend on that.
+
+**Rejected:** `grep PATTERN >/dev/null`: GNU grep may stop at the first match when its output is `/dev/null`, so it is the same trap on some versions. Turning `pipefail` off around each check: the writer's own failure would then be hidden.
+
 ## 2026-11-21 — The signers' public keys ship in the repo, and the gate imports them first
 
 **Policy:** signers_public_keys=shipped-in-repo

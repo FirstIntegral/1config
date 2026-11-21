@@ -25,6 +25,17 @@ printf '%s\n' '[user]' '	name = verify' '	email = verify@local' \
 export GIT_CONFIG_GLOBAL="$T/gitconfig" GIT_CONFIG_NOSYSTEM=1 GIT_URL_SSH_CONFIG=/dev/null
 unset GIT_DIR GIT_WORK_TREE NOTES_SYNC_HOME NOTES_REMOTE_FILE NOTES_SYNC_TEST_GATE
 
+# has PATTERN... — "does the piped text match", for use after a pipe. It reads
+# all of its input before it searches. grep -q stops at the first match, the
+# writer then dies of SIGPIPE, and under pipefail the pipeline is false although
+# the text was found (and `! writer | grep -q X` is then true although X is
+# there). Some greps stop early with output to /dev/null as well, so the input
+# is taken whole first and grep reads it from a here-string.
+has() {
+  local _has_text
+  _has_text="$(cat)"
+  grep -q "$@" <<<"$_has_text"
+}
 fails=0
 pass() { echo "ok $*"; }
 fail() { echo "FAIL $*"; fails=$((fails + 1)); }
@@ -124,8 +135,8 @@ run push "$n2" "$p2"
 run push "$n1" "$p1"
 if [ "$first_rc" -eq 1 ] && [ "$RC" -eq 0 ] \
    && grep -q 'from-one' "$p1/session_compact.md" && grep -q 'from-two' "$p1/session_compact.md" \
-   && git -C "$bare" show "main:$KEYDIR/session_compact.md" | grep -q 'from-one' \
-   && git -C "$bare" show "main:$KEYDIR/session_compact.md" | grep -q 'from-two'; then
+   && git -C "$bare" show "main:$KEYDIR/session_compact.md" | has 'from-one' \
+   && git -C "$bare" show "main:$KEYDIR/session_compact.md" | has 'from-two'; then
   pass "an unpushed notes commit and a push from the other machine are merged, not stuck"
 else
   fail "an unpushed notes commit left the notes clone stuck (exit $RC, out $OUT: $(tail -n 1 "$T/err"))"

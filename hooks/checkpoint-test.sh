@@ -27,6 +27,17 @@ unset GIT_DIR GIT_WORK_TREE
 OURS='git@github.com:fixture-owner/app.git'
 THEIRS='https://github.com/fixture-parent/app.git'
 
+# has PATTERN... — "does the piped text match", for use after a pipe. It reads
+# all of its input before it searches. grep -q stops at the first match, the
+# writer then dies of SIGPIPE, and under pipefail the pipeline is false although
+# the text was found (and `! writer | grep -q X` is then true although X is
+# there). Some greps stop early with output to /dev/null as well, so the input
+# is taken whole first and grep reads it from a here-string.
+has() {
+  local _has_text
+  _has_text="$(cat)"
+  grep -q "$@" <<<"$_has_text"
+}
 fails=0
 pass() { echo "ok $*"; }
 fail() { echo "FAIL $*"; fails=$((fails + 1)); }
@@ -138,9 +149,9 @@ echo notes > "$wt/AGENTS.md"
 mkdir -p "$wt/docs" && echo adr > "$wt/docs/DECISIONS.md"
 run_cp "$wt" -m wt
 names="$(git -C "$wt" show --name-only --format= HEAD 2>/dev/null)"
-if [ "$RC" -eq 0 ] && printf '%s\n' "$names" | grep -qx a.txt \
-   && ! printf '%s\n' "$names" | grep -qx AGENTS.md \
-   && ! printf '%s\n' "$names" | grep -qx docs/DECISIONS.md \
+if [ "$RC" -eq 0 ] && printf '%s\n' "$names" | has -x a.txt \
+   && ! printf '%s\n' "$names" | has -x AGENTS.md \
+   && ! printf '%s\n' "$names" | has -x docs/DECISIONS.md \
    && grep -qx '/AGENTS.md' "$main/.git/info/exclude" 2>/dev/null \
    && [ -z "$(git -C "$forkbare" log --all --format=%H -- AGENTS.md docs/DECISIONS.md)" ]; then
   pass "a linked worktree of a foreign fork keeps our notes out of the push"
@@ -321,7 +332,7 @@ git -C "$w" remote add origin "$T/no-such-remote.git"
 echo two > "$w/b.txt"
 RC=0
 OUT="$(bash "$fake/hooks/checkpoint.sh" "$w" -m offline 2>&1)" || RC=$?
-if [ "$RC" -eq 13 ] && printf '%s\n' "$OUT" | grep -q 'notes sync failed (exit 7)'; then
+if [ "$RC" -eq 13 ] && printf '%s\n' "$OUT" | has 'notes sync failed (exit 7)'; then
   pass "an unreachable remote stays exit 13 when the notes sync also fails"
 else
   fail "a notes failure replaced the project's exit (exit $RC, wanted 13)"

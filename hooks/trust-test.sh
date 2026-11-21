@@ -21,6 +21,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# has PATTERN... — "does the piped text match", for use after a pipe. It reads
+# all of its input before it searches. grep -q stops at the first match, the
+# writer then dies of SIGPIPE, and under pipefail the pipeline is false although
+# the text was found (and `! writer | grep -q X` is then true although X is
+# there). Some greps stop early with output to /dev/null as well, so the input
+# is taken whole first and grep reads it from a here-string.
+has() {
+  local _has_text
+  _has_text="$(cat)"
+  grep -q "$@" <<<"$_has_text"
+}
 fails=0
 pass() { echo "ok $*"; }
 fail() { echo "FAIL $*"; fails=$((fails + 1)); }
@@ -101,7 +112,7 @@ else
   fail "login pull: a remote tag named main hid an unsigned commit (exit $RC: $OUT)"
 fi
 sync1 "$r"
-if [ "$RC" -eq 1 ] && printf '%s\n' "$OUT" | grep -q 'not signed by a listed key' && [ "$(head_of "$r")" = "$before" ]; then
+if [ "$RC" -eq 1 ] && printf '%s\n' "$OUT" | has 'not signed by a listed key' && [ "$(head_of "$r")" = "$before" ]; then
   pass "sync.sh: a remote tag named main does not hide an unsigned commit"
 else
   fail "sync.sh: a remote tag named main hid an unsigned commit (exit $RC)"
@@ -126,14 +137,14 @@ commit "$r/seed" - "unsigned push"
 git -C "$r/seed" push -q origin main
 before="$(head_of "$r")"
 bsync "$r"
-if [ "$RC" -eq 6 ] && [ "$(head_of "$r")" = "$before" ] && printf '%s\n' "$OUT" | grep -q 'unsigned'; then
+if [ "$RC" -eq 6 ] && [ "$(head_of "$r")" = "$before" ] && printf '%s\n' "$OUT" | has 'unsigned'; then
   pass "login pull: diverged with an unsigned commit on origin is a refusal (exit 6), not 'merge by hand'"
 else
   fail "login pull: diverged with an unsigned commit on origin was not refused (exit $RC: $OUT)"
 fi
 sync1 "$r"
-if [ "$RC" -eq 1 ] && printf '%s\n' "$OUT" | grep -q 'not signed by a listed key' \
-   && ! printf '%s\n' "$OUT" | grep -q 'merge by hand, then re-run'; then
+if [ "$RC" -eq 1 ] && printf '%s\n' "$OUT" | has 'not signed by a listed key' \
+   && ! printf '%s\n' "$OUT" | has 'merge by hand, then re-run'; then
   pass "sync.sh: diverged with an unsigned commit on origin prints no merge command"
 else
   fail "sync.sh: diverged with an unsigned commit on origin still says merge by hand (exit $RC)"
@@ -241,7 +252,7 @@ git -C "$r/seed" push -q origin main
 printf '%s\n' 'https://example.invalid/someone/else.git' > "$r/brain/BRAIN_REMOTE"
 before="$(head_of "$r")"
 bsync "$r"
-if [ "$RC" -eq 4 ] && [ "$(head_of "$r")" = "$before" ] && printf '%s\n' "$OUT" | grep -q 'not in BRAIN_REMOTE'; then
+if [ "$RC" -eq 4 ] && [ "$(head_of "$r")" = "$before" ] && printf '%s\n' "$OUT" | has 'not in BRAIN_REMOTE'; then
   pass "login pull: an origin that BRAIN_REMOTE does not list is refused before any fetch (exit 4)"
 else
   fail "login pull: pulled from an origin that BRAIN_REMOTE does not list (exit $RC: $OUT)"

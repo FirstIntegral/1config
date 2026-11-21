@@ -21,6 +21,17 @@ fail=0
 nfails=0
 warns=0
 
+# has PATTERN... — "does the piped text match", for use after a pipe. It reads
+# all of its input before it searches. grep -q stops at the first match, the
+# writer then dies of SIGPIPE, and under pipefail the pipeline is false although
+# the text was found (and `! writer | grep -q X` is then true although X is
+# there). Some greps stop early with output to /dev/null as well, so the input
+# is taken whole first and grep reads it from a here-string.
+has() {
+  local _has_text
+  _has_text="$(cat)"
+  grep -q "$@" <<<"$_has_text"
+}
 ok()   { echo "  OK    $*"; }
 bad()  { echo "  FAIL  $*"; fail=1; nfails=$((nfails + 1)); }
 note() { echo "  WARN  $*"; warns=$((warns + 1)); }
@@ -108,6 +119,12 @@ machine || echo "scope: repo (machine state is not checked)"
 
 # --- core files ------------------------------------------------------------
 echo "[core]"
+# 600 KB with the match on line 1: grep -q would stop there and the writer would die.
+if seq 1 100000 | has -x 1 && ! { seq 1 100000 | has -x absent; }; then
+  ok "has reads its whole input: a long writer does not die of SIGPIPE under pipefail"
+else
+  bad "has failed on a long input: every piped check in this file is unreliable"
+fi
 [ -f "$CANON" ]  && ok "canonical $CANON" || bad "missing canonical $CANON"
 [ -f "$SETUP" ]  && ok "SETUP.md" || bad "missing SETUP.md"
 [ -x "$AGENTS_HOME/setup.sh" ] && ok "setup.sh executable" || bad "setup.sh missing or not executable"
@@ -636,7 +653,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_cpwork" -m boom >"$VTMP/cp-boom.out" 2>&1 || _rc=$?
   if [ "$_rc" -eq 24 ] && [ "$(git -C "$_cpwork" rev-parse HEAD)" = "$_local" ] \
      && ! grep -q '<<<<<<' "$_cpwork/a.txt" \
-     && ! git -C "$_cpremote/remote.git" log --format='%s' | grep -qx Lside; then
+     && ! git -C "$_cpremote/remote.git" log --format='%s' | has -x Lside; then
     ok "merge conflict aborts and does not push (exit 24)"
   else
     bad "conflict was forced or left markers (exit $_rc)"
@@ -693,8 +710,8 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _names="$(git -C "$_fxwork" show --name-only --format= HEAD)"
   _bare_n="$(git -C "$_fxbare/remote.git" rev-list --count HEAD 2>/dev/null || echo 0)"
   if [ "$_rc" -eq 0 ] && [ "$_bare_n" -eq 2 ] \
-     && printf '%s\n' "$_names" | grep -qx tracked.txt \
-     && ! printf '%s\n' "$_names" | grep -qx AGENTS.md \
+     && printf '%s\n' "$_names" | has -x tracked.txt \
+     && ! printf '%s\n' "$_names" | has -x AGENTS.md \
      && grep -qx '/AGENTS.md' "$_fxwork/.git/info/exclude" \
      && grep -qx '/docs/DECISIONS.md' "$_fxwork/.git/info/exclude" \
      && grep -qx '/notes.allow' "$_fxwork/.git/info/exclude" \
@@ -719,8 +736,8 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _out_n="$(git -C "$_outbare/remote.git" rev-list --count HEAD 2>/dev/null || echo 0)"
   _out_names="$(git -C "$_outwork" show --name-only --format= HEAD)"
   if [ "$_rc" -eq 14 ] && [ "$_out_n" -eq 0 ] \
-     && printf '%s\n' "$_out_names" | grep -qx code.txt \
-     && ! printf '%s\n' "$_out_names" | grep -qx AGENTS.md; then
+     && printf '%s\n' "$_out_names" | has -x code.txt \
+     && ! printf '%s\n' "$_out_names" | has -x AGENTS.md; then
     ok "outside push owner exits 14 and keeps our notes out"
   else
     bad "outside push owner (exit $_rc, bare $_out_n)"
@@ -757,8 +774,8 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_ourwork" -m ours >/dev/null 2>&1 || _rc=$?
   _our_names="$(git -C "$_ourwork" show --name-only --format= HEAD)"
   if [ "$_rc" -eq 0 ] \
-     && printf '%s\n' "$_our_names" | grep -qx AGENTS.md \
-     && printf '%s\n' "$_our_names" | grep -qx docs/DECISIONS.md; then
+     && printf '%s\n' "$_our_names" | has -x AGENTS.md \
+     && printf '%s\n' "$_our_names" | has -x docs/DECISIONS.md; then
     ok "a repo we own still commits AGENTS.md and docs/DECISIONS.md"
   else
     bad "owned repo hid AGENTS.md (exit $_rc)"
@@ -809,7 +826,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _rc=0; HOME="$_sitehome" bash "$HOOKS/checkpoint.sh" "$_site" -m site >/dev/null 2>&1 || _rc=$?
   _site_names="$(git -C "$_site" show --name-only --format= HEAD 2>/dev/null || true)"
   if [ "$_rc" -eq 0 ] \
-     && printf '%s\n' "$_site_names" | grep -qx docs/DECISIONS.md \
+     && printf '%s\n' "$_site_names" | has -x docs/DECISIONS.md \
      && { [ ! -f "$_site/.git/info/exclude" ] || ! grep -q '/docs/DECISIONS.md' "$_site/.git/info/exclude"; }; then
     ok "sites checkout does not take the foreign exclude block"
   else
@@ -885,7 +902,7 @@ if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pushed" ] \
    && [ "$(git -C "$_ns" log -1 --format='%b')" = "$(printf 'session_compact.md\n')" ] \
    && [ "$(cat "$_ns/github.com/fixture-owner/notes-fixture/session_compact.md")" = "alpha-compact" ] \
    && [ ! -e "$_ns/github.com/fixture-owner/notes-fixture/session_transcript.md" ] \
-   && ! git -C "$_ns" log -1 --format='%b' | grep -q 'alpha-compact'; then
+   && ! git -C "$_ns" log -1 --format='%b' | has 'alpha-compact'; then
   ok "notes push copies bytes and does not quote them"
 else
   bad "notes push (exit $_rc, out $_out)"
@@ -919,7 +936,7 @@ echo SECRETKEY > "$_np/.env"
 _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-warn.txt")" || _rc=$?
 if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: pushed" ] \
-   && ! git -C "$_ns" ls-files | grep -q '/.env$' \
+   && ! git -C "$_ns" ls-files | has '/.env$' \
    && grep -q 'denied .env' "$VTMP/notes-warn.txt" \
    && grep -q 'tracked a.txt' "$VTMP/notes-warn.txt"; then
   ok "notes.allow denies .env and skips a tracked path"
@@ -988,7 +1005,7 @@ if [ "$_rc" -eq 0 ] && [ "$_out" = "notes: merged" ] \
    && grep -q 'local-side' "$_merged" && grep -q 'remote-side' "$_merged" \
    && cmp -s "$_merged" "$_notesf" \
    && [ "$(git -C "$_ns" log -1 --format='%s')" = "notes: github.com/fixture-owner/notes-fixture" ] \
-   && ! git -C "$_ns" log -1 --format='%B' | grep -q 'local-side'; then
+   && ! git -C "$_ns" log -1 --format='%B' | has 'local-side'; then
   ok "notes merge keeps both compact copies"
 else
   bad "notes merge (exit $_rc, out $_out)"
@@ -1005,7 +1022,7 @@ printf 'new-transcript\n' > "$_np/session_transcript.md"
 _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-tr.txt")" || _rc=$?
 if [ "$_rc" -eq 0 ] && grep -q 'blocked session_transcript.md' "$VTMP/notes-tr.txt" \
-   && ! git -C "$_ns" ls-files | grep -q 'session_transcript.md' \
+   && ! git -C "$_ns" ls-files | has 'session_transcript.md' \
    && [ "$(cat "$_np/session_transcript.md")" = "new-transcript" ]; then
   ok "notes push does not collect session_transcript.md"
 else
@@ -1017,7 +1034,7 @@ printf 'brief\n' > "$_np/explain/brief.md"
 _rc=0
 _out="$(NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/notes-sync.sh" push "$_np" 2>"$VTMP/notes-ex.txt")" || _rc=$?
 if [ "$_rc" -eq 0 ] && grep -q 'blocked explain/brief.md' "$VTMP/notes-ex.txt" \
-   && ! git -C "$_ns" ls-files | grep -q 'explain/brief.md' \
+   && ! git -C "$_ns" ls-files | has 'explain/brief.md' \
    && [ "$(cat "$_np/explain/brief.md")" = "brief" ]; then
   ok "notes push does not collect explain/"
 else
@@ -1727,14 +1744,14 @@ _wf="$HOOKS/github-web-flow.asc"
 _wf_fpr="968479A1AFF927E37D1A566BB5690EEEBB952194"
 # A scratch home: reading a key file must not create ~/.gnupg on a machine that has none.
 mkdir -p -m 700 "$VTMP/gnupg-show"
-if [ -f "$_wf" ] && GNUPGHOME="$VTMP/gnupg-show" gpg --batch --show-keys --with-colons "$_wf" 2>/dev/null | grep -q "$_wf_fpr"; then
+if [ -f "$_wf" ] && GNUPGHOME="$VTMP/gnupg-show" gpg --batch --show-keys --with-colons "$_wf" 2>/dev/null | has "$_wf_fpr"; then
   ok "hooks/github-web-flow.asc has GitHub web-flow fingerprint $_wf_fpr"
 else
   bad "hooks/github-web-flow.asc missing GitHub web-flow fingerprint $_wf_fpr"
 fi
 if machine; then
-if gpg --list-keys --with-colons "$_wf_fpr" 2>/dev/null | grep -q "$_wf_fpr" \
-   && ! gpg --export-ownertrust 2>/dev/null | grep -q "^$_wf_fpr:"; then
+if gpg --list-keys --with-colons "$_wf_fpr" 2>/dev/null | has "$_wf_fpr" \
+   && ! gpg --export-ownertrust 2>/dev/null | has "^$_wf_fpr:"; then
   ok "GitHub web-flow public key is in the keyring, and no ownertrust is set on it"
 else
   bad "GitHub web-flow public key missing from keyring (run setup.sh), or someone set ownertrust on it"
@@ -2003,7 +2020,7 @@ do
 done
 # Live FLAG= assignment must use the new names (legacy migration lines may still say NEEDS-MERGE)
 for f in "$HOOKS/check-links.sh" "$HOOKS/check-claude-memory.sh"; do
-  if grep -E '^\s*FLAG=' "$f" | grep -q 'NEEDS-SYMLINK-MERGE\|NEEDS-MEMORY-MERGE'; then
+  if grep -E '^\s*FLAG=' "$f" | has 'NEEDS-SYMLINK-MERGE\|NEEDS-MEMORY-MERGE'; then
     ok "FLAG= uses new name in $(basename "$f")"
   else
     bad "FLAG= still wrong in $f"
@@ -2594,7 +2611,7 @@ hook_case() {
     bad "$label: the hook exited $rc"
   elif [ "$expect" = quiet ]; then
     if [ -z "$out" ]; then ok "$label"; else bad "$label printed output"; fi
-  elif printf '%s' "$out" | grep -q -- "$expect"; then
+  elif printf '%s' "$out" | has -- "$expect"; then
     ok "$label"
   else
     bad "$label missing [$expect]"
@@ -2899,10 +2916,10 @@ else
       ;;
     cron)
       ct="$(crontab -l 2>/dev/null || true)"
-      echo "$ct" | grep -q 'agents-symlink-guard/check-links.sh' && ok "crontab symlink guard" || bad "crontab missing symlink guard"
-      echo "$ct" | grep -q 'merge-strays.sh' && bad "crontab still runs the retired stray merge (run setup.sh)" || ok "crontab does not run the retired stray merge"
-      echo "$ct" | grep -q 'claude-memory-guard/check-memory.sh' && ok "crontab memory guard" || bad "crontab missing memory guard"
-      echo "$ct" | grep -q 'ai-terminal-tools-update-on-boot/boot-check.sh' && ok "crontab tool updater" || bad "crontab missing tool updater"
+      echo "$ct" | has 'agents-symlink-guard/check-links.sh' && ok "crontab symlink guard" || bad "crontab missing symlink guard"
+      echo "$ct" | has 'merge-strays.sh' && bad "crontab still runs the retired stray merge (run setup.sh)" || ok "crontab does not run the retired stray merge"
+      echo "$ct" | has 'claude-memory-guard/check-memory.sh' && ok "crontab memory guard" || bad "crontab missing memory guard"
+      echo "$ct" | has 'ai-terminal-tools-update-on-boot/boot-check.sh' && ok "crontab tool updater" || bad "crontab missing tool updater"
       ;;
     both) bad "both schedulers are installed — every guard runs twice (run setup.sh)" ;;
     *)
@@ -3355,8 +3372,8 @@ if [ -n "$_lake" ]; then
   # One proved theorem and one with a hole: the audit must count 1 of 2 and name the hole.
   printf '\nnamespace Fixture\ntheorem thm_open (n : Nat) : n * 1 = n := by sorry\nend Fixture\n' >> "$_leantmp/Paper.lean"
   _audit="$(cd "$_leantmp" && PATH="${HOME}/.elan/bin:${PATH}" "$_lake" build >/dev/null 2>&1; bash "$_leantmp/axiom-audit.sh" 2>&1 || true)"
-  if printf '%s\n' "$_audit" | grep -qx 'lean: 1/2 kernel-checked Lean statements' \
-     && printf '%s\n' "$_audit" | grep -qx '  Fixture.thm_open'; then
+  if printf '%s\n' "$_audit" | has -x 'lean: 1/2 kernel-checked Lean statements' \
+     && printf '%s\n' "$_audit" | has -x '  Fixture.thm_open'; then
     ok "axiom audit counts 1/2 kernel-checked and names the theorem with a hole"
   else
     bad "axiom audit is wrong: $(printf '%s' "$_audit" | head -n 2 | tr '\n' ' ')"
@@ -3376,7 +3393,7 @@ if [ -f "$_exskill" ] \
    && grep -qF 'explain/page.html' "$RULES" \
    && grep -qF 'explain/' "$AGENTS_HOME/.gitignore" \
    && grep -qF 'explain/' "$TEMPLATE/.gitignore" \
-   && ! find "$AGENTS_HOME/skills/explain-thing" \( -iname '*dictionary*' -o -iname '*word-list*' -o -iname '*wordlist*' \) | grep -q .; then
+   && ! find "$AGENTS_HOME/skills/explain-thing" \( -iname '*dictionary*' -o -iname '*word-list*' -o -iname '*wordlist*' \) | has .; then
   ok "explain_thing is 80% STE prose plus SVG, HTML on ask, no dictionary"
 else
   bad "explain_thing skill, trigger files, gitignore, or a vendored dictionary drifted"
@@ -3439,7 +3456,7 @@ EOF
 chmod +x "$_oc_fix/opencode"
 _oc_prc=0
 _oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
-if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q 'systematic-debugging'; then
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | has 'systematic-debugging'; then
   ok "opencode 1.x skill list falls back to debug skill"
 else
   bad "opencode 1.x skill list did not fall back to debug skill"
@@ -3473,7 +3490,7 @@ exit 1
 EOF
 _oc_prc=0
 _oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
-if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q '"data":\[\]'; then
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | has '"data":\[\]'; then
   ok "opencode 2.x empty skill.list is returned for the INFO path"
 else
   bad "opencode 2.x empty skill.list was not returned"
@@ -3495,7 +3512,7 @@ printf '#!/bin/sh\nexit 0\n' >"$_oc_fix/pgrep"
 chmod +x "$_oc_fix/pgrep"
 _oc_prc=0
 _oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
-if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q 'systematic-debugging'; then
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | has 'systematic-debugging'; then
   ok "opencode 2.x empty private list falls back to a running service"
 else
   bad "opencode 2.x empty private list did not ask the running service"
@@ -3503,7 +3520,7 @@ fi
 printf '#!/bin/sh\nexit 1\n' >"$_oc_fix/pgrep"
 _oc_prc=0
 _oc_got="$(PATH="$_oc_fix:$PATH" bash "$_oc_helper" 2>/dev/null)" || _oc_prc=$?
-if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | grep -q '"data":\[\]'; then
+if [ "$_oc_prc" -eq 0 ] && printf '%s' "$_oc_got" | has '"data":\[\]'; then
   ok "opencode 2.x with no running service does not start one"
 else
   bad "opencode 2.x asked for a service that was not running"
@@ -3530,7 +3547,7 @@ elif command -v opencode >/dev/null 2>&1; then
       ok "opencode skill.list includes the tracked skills"
     else
       _flat="$(printf '%s' "$_oc" | tr -d '[:space:]')"
-      if [ -z "$_flat" ] || printf '%s' "$_flat" | grep -q '"data":\[\]'; then
+      if [ -z "$_flat" ] || printf '%s' "$_flat" | has '"data":\[\]'; then
         info "opencode skill.list is empty — the private server lists none and no background service is running; skill files stay the check"
       else
         bad "opencode skill.list missing: ${_missing}"
@@ -3550,7 +3567,7 @@ fi
 echo "[entrypoint, dry run, uninstall]"
 _cli="$AGENTS_HOME/bin/1config"
 _rc=0; bash "$_cli" no-such-command >/dev/null 2>&1 || _rc=$?
-if [ -x "$_cli" ] && bash "$_cli" help 2>/dev/null | grep -q '^usage: 1config <command>' && [ "$_rc" -eq 2 ]; then
+if [ -x "$_cli" ] && bash "$_cli" help 2>/dev/null | has '^usage: 1config <command>' && [ "$_rc" -eq 2 ]; then
   ok "bin/1config prints its commands and rejects an unknown one (exit 2)"
 else
   bad "bin/1config missing, not executable, or accepts an unknown command"

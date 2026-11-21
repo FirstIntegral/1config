@@ -52,6 +52,17 @@ fail() {
   fi
   exit 1
 }
+# has PATTERN... — "does the piped text match", for use after a pipe. It reads
+# all of its input before it searches. grep -q stops at the first match, the
+# writer then dies of SIGPIPE, and under pipefail the pipeline is false although
+# the text was found (and `! writer | grep -q X` is then true although X is
+# there). Some greps stop early with output to /dev/null as well, so the input
+# is taken whole first and grep reads it from a here-string.
+has() {
+  local _has_text
+  _has_text="$(cat)"
+  grep -q "$@" <<<"$_has_text"
+}
 ok()   { echo "  ok    $*"; }
 # A listing of everything under $HOME except the checkout, gpg's own home, and
 # the directories a GitHub runner keeps writing to while a job runs (its work
@@ -153,7 +164,7 @@ grep -qx 'git@git.example.test:Stranger/1config.git' "$A/BRAIN_REMOTE" || fail "
   || fail "the fork-init commit is not signed"
 [ "$(git -C "$A" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "AGENTS.md BRAIN_REMOTE BRAIN_SIGNERS BRAIN_SIGNERS.asc NOTES_REMOTE fork-parents.txt " ] \
   || fail "the fork-init commit holds something other than the owner files, the key file, and AGENTS.md"
-gpg --batch --show-keys --with-colons "$A/BRAIN_SIGNERS.asc" 2>/dev/null | grep -q "$FPR" \
+gpg --batch --show-keys --with-colons "$A/BRAIN_SIGNERS.asc" 2>/dev/null | has "$FPR" \
   || fail "BRAIN_SIGNERS.asc is not this person's public key"
 grep -qF 'The GitHub repo is `Stranger/1config`' "$A/AGENTS.md" || fail "AGENTS.md still names the upstream repo"
 bash "$A/bin/1config" fork-init >"$OUT/fork-again.out" 2>&1 && grep -q 'Nothing to do' "$OUT/fork-again.out" \

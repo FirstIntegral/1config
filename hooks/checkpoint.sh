@@ -335,7 +335,7 @@ merge_theirs() {
   fi
   out="$(GIT_MERGE_AUTOEDIT=no git -C "$PROJECT" merge --no-edit "$ref" 2>&1)"; rc=$?
   if [ "$rc" -ne 0 ]; then
-    if git -C "$PROJECT" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+    if [ -n "$(git -C "$PROJECT" diff --name-only --diff-filter=U 2>/dev/null)" ]; then
       git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
       echo "  sync     conflict with $ref — merge aborted, local commits kept, not pushed"
       printf '%s\n' "$out" | sed 's/^/           /'
@@ -347,7 +347,7 @@ merge_theirs() {
     bash "$HOME/.agents/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
     out="$(GIT_MERGE_AUTOEDIT=no git -C "$PROJECT" merge --no-edit "$ref" 2>&1)"; rc=$?
     if [ "$rc" -ne 0 ]; then
-      if git -C "$PROJECT" diff --name-only --diff-filter=U 2>/dev/null | grep -q .; then
+      if [ -n "$(git -C "$PROJECT" diff --name-only --diff-filter=U 2>/dev/null)" ]; then
         git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
         echo "  sync     conflict with $ref — merge aborted, local commits kept, not pushed"
         printf '%s\n' "$out" | sed 's/^/           /'

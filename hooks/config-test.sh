@@ -14,6 +14,17 @@ HOOKS="$(cd "$(dirname "$0")" && pwd -P)"
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 
+# has PATTERN... — "does the piped text match", for use after a pipe. It reads
+# all of its input before it searches. grep -q stops at the first match, the
+# writer then dies of SIGPIPE, and under pipefail the pipeline is false although
+# the text was found (and `! writer | grep -q X` is then true although X is
+# there). Some greps stop early with output to /dev/null as well, so the input
+# is taken whole first and grep reads it from a here-string.
+has() {
+  local _has_text
+  _has_text="$(cat)"
+  grep -q "$@" <<<"$_has_text"
+}
 fails=0
 pass() { echo "ok $*"; }
 fail() { echo "FAIL $*"; fails=$((fails + 1)); }
@@ -156,7 +167,7 @@ plat_case() {
   local label="$1" body="$2" has_omarchy="$3" want_family="$4" want_hint="$5" f="$T/os-release"
   printf '%s' "$body" > "$f"
   platform_detect "$f" "$has_omarchy"
-  if [ "$FAMILY" = "$want_family" ] && printf '%s\n' "$HINT" | grep -qF -- "$want_hint"; then
+  if [ "$FAMILY" = "$want_family" ] && printf '%s\n' "$HINT" | has -F -- "$want_hint"; then
     pass "$label"
   else
     fail "$label (family $FAMILY, hint: $HINT)"
