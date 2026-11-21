@@ -124,4 +124,102 @@ else
   fail "a differently named upstream branch did not get the push (exit $RC)"
 fi
 
+# --- a foreign checkout keeps our notes out, also in a linked worktree ---------
+# In a linked worktree .git is a file. The exclude file is in the main
+# repository's git directory, and that is where the block has to land.
+FORK='git@github.com:fixture-owner/omalauncher.git'
+main="$(new_work)"
+forkbare="$(new_bare "$main" "$FORK")"
+git -C "$main" remote add origin "$FORK"
+wt="$(mktemp -d -p "$T")/wt"
+git -C "$main" worktree add -q -b feat "$wt"
+echo more >> "$wt/a.txt"
+echo notes > "$wt/AGENTS.md"
+mkdir -p "$wt/docs" && echo adr > "$wt/docs/DECISIONS.md"
+run_cp "$wt" -m wt
+names="$(git -C "$wt" show --name-only --format= HEAD 2>/dev/null)"
+if [ "$RC" -eq 0 ] && printf '%s\n' "$names" | grep -qx a.txt \
+   && ! printf '%s\n' "$names" | grep -qx AGENTS.md \
+   && ! printf '%s\n' "$names" | grep -qx docs/DECISIONS.md \
+   && grep -qx '/AGENTS.md' "$main/.git/info/exclude" 2>/dev/null \
+   && [ -z "$(git -C "$forkbare" log --all --format=%H -- AGENTS.md docs/DECISIONS.md)" ]; then
+  pass "a linked worktree of a foreign fork keeps our notes out of the push"
+else
+  fail "a linked worktree of a foreign fork published our notes (exit $RC)"
+fi
+
+# The block could not be written. Saying "exclude updated" and going on would
+# publish the files the block was meant to hide.
+w="$(new_work)"
+forkbare="$(new_bare "$w" "$FORK")"
+git -C "$w" remote add origin "$FORK"
+rm -rf "$w/.git/info" && : > "$w/.git/info"
+echo more >> "$w/a.txt"
+echo notes > "$w/AGENTS.md"
+before="$(git -C "$w" rev-parse HEAD)"
+run_cp "$w" -m blocked
+if [ "$RC" -eq 20 ] && [ "$(git -C "$w" rev-parse HEAD)" = "$before" ] && [ "$(commits "$forkbare")" -eq 0 ]; then
+  pass "an exclude block that cannot be written stops the checkpoint (exit 20)"
+else
+  fail "checkpoint went on without its exclude block (exit $RC)"
+fi
+
+# Exit 15 is the listed fork with our file already tracked. A push URL of
+# another owner is exit 14: the commit is made and nothing is pushed.
+w="$(new_work)"
+theirs="$(new_bare "$w" "$THEIRS")"
+echo theirs > "$w/AGENTS.md"
+git -C "$w" add AGENTS.md && git -C "$w" commit -qm "their rules"
+git -C "$w" remote add origin "$THEIRS"
+echo more >> "$w/a.txt"
+run_cp "$w" -m local
+if [ "$RC" -eq 14 ] && [ "$(git -C "$w" rev-list --count HEAD)" -eq 3 ] && [ "$(commits "$theirs")" -eq 0 ]; then
+  pass "a tracked AGENTS.md in another owner's repo is exit 14, committed and not pushed"
+else
+  fail "a tracked AGENTS.md in another owner's repo (exit $RC, wanted 14)"
+fi
+
+# --- the Sites rule is enforced, not only written down --------------------------
+site_case() {
+  local label="$1" want="$2" file="$3" ignore="$4" home site bare
+  home="$(mktemp -d -p "$T")"
+  site="$home/Projects/sites/demo"
+  mkdir -p "$site"
+  git init -q "$site"
+  printf 'session_compact.md\n%s\n' "$ignore" > "$site/.gitignore"
+  echo page > "$site/index.html"
+  git -C "$site" add -A && git -C "$site" commit -qm page
+  bare="$(new_bare "$site" "$OURS")"
+  git -C "$site" remote add origin "$OURS"
+  echo rules > "$site/$file"
+  echo more >> "$site/index.html"
+  RC=0
+  OUT="$(HOME="$home" bash "$CP" "$site" -m site 2>&1)" || RC=$?
+  if [ "$RC" -eq "$want" ] && [ -z "$(git -C "$bare" log --all --format=%H -- "$file" 2>/dev/null)" ]; then
+    pass "$label (exit $want)"
+  else
+    fail "$label (exit $RC, wanted $want)"
+  fi
+}
+site_case "a site with an unignored AGENTS.md is refused" 20 AGENTS.md ''
+site_case "a site with an unignored CLAUDE.md is refused" 20 CLAUDE.md ''
+site_case "a site that ignores AGENTS.md is pushed without it" 0 AGENTS.md 'AGENTS.md'
+
+# --- a secret scan that did not run is not a clean scan -------------------------
+w="$(new_work)"
+ours="$(new_bare "$w" "$OURS")"
+git -C "$w" remote add origin "$OURS"
+echo two > "$w/b.txt"
+stub="$(mktemp -d -p "$T")"
+printf '#!/bin/sh\nexit 3\n' > "$stub/python3"
+chmod +x "$stub/python3"
+before="$(git -C "$w" rev-parse HEAD)"
+RC=0
+OUT="$(PATH="$stub:$PATH" bash "$CP" "$w" -m unscanned 2>&1)" || RC=$?
+if [ "$RC" -eq 20 ] && [ "$(git -C "$w" rev-parse HEAD)" = "$before" ] && [ "$(commits "$ours")" -eq 0 ]; then
+  pass "a secret scan that did not run stops the checkpoint (exit 20)"
+else
+  fail "checkpoint committed without a secret scan (exit $RC)"
+fi
+
 [ "$fails" -eq 0 ]

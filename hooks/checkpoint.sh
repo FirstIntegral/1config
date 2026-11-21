@@ -187,16 +187,30 @@ remote_pushes_outside() {
   return 1
 }
 
+# The block lands in the repository's own exclude file. In a linked worktree
+# .git is a file, so git is asked for the path. Returns 1 when the block is not
+# in effect afterwards: the caller must not go on to `git add`.
 write_foreign_exclude() {
-  local ex="$PROJECT/.git/info/exclude" tmp
-  mkdir -p "$(dirname "$ex")"
-  [ -f "$ex" ] || : > "$ex"
-  tmp="$(mktemp)"
-  awk -v b="$FOREIGN_BEGIN" -v e="$FOREIGN_END" '
+  local ex tmp
+  ex="$(git -C "$PROJECT" rev-parse --git-path info/exclude 2>/dev/null || true)"
+  [ -n "$ex" ] || return 1
+  case "$ex" in
+    /*) ;;
+    *) ex="$PROJECT/$ex" ;;
+  esac
+  mkdir -p "$(dirname "$ex")" 2>/dev/null || return 1
+  if [ ! -f "$ex" ]; then
+    : > "$ex" 2>/dev/null || return 1
+  fi
+  tmp="$(mktemp)" || return 1
+  if ! awk -v b="$FOREIGN_BEGIN" -v e="$FOREIGN_END" '
     $0 == b { skip = 1; next }
     $0 == e { skip = 0; next }
     !skip { print }
-  ' "$ex" > "$tmp"
+  ' "$ex" > "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    return 1
+  fi
   cat >> "$tmp" <<EOF
 
 $FOREIGN_BEGIN
@@ -209,7 +223,12 @@ $FOREIGN_BEGIN
 /explain/
 $FOREIGN_END
 EOF
-  mv "$tmp" "$ex"
+  if ! mv "$tmp" "$ex" 2>/dev/null; then
+    rm -f "$tmp"
+    return 1
+  fi
+  # Ask git, not the file: the block counts only when git now ignores the path.
+  git -C "$PROJECT" check-ignore -q --no-index -- notes.allow 2>/dev/null
 }
 
 PROJECT=""
@@ -454,16 +473,24 @@ if [ "$FOREIGN" = 1 ] || [ "$OUTSIDE_PUSH" = 1 ]; then
     *)
       if [ "$DRY" = 1 ]; then
         echo "  foreign  would write .git/info/exclude"
-      else
-        write_foreign_exclude
+      elif write_foreign_exclude; then
         echo "  foreign  exclude updated"
+      else
+        echo "  action   REFUSED — the exclude block that keeps our notes out of their"
+        echo "           repository could not be written. Nothing committed."
+        exit 20
       fi
+      # Exit 15 is the listed fork: the push would carry our file into it. A push
+      # URL of another owner is never pushed to (exit 14), and a tracked AGENTS.md
+      # there is theirs.
       TRACKED_PRIVATE=()
-      for f in AGENTS.md docs/DECISIONS.md; do
-        if git -C "$PROJECT" ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-          TRACKED_PRIVATE+=("$f")
-        fi
-      done
+      if [ "$FOREIGN" = 1 ]; then
+        for f in AGENTS.md docs/DECISIONS.md; do
+          if git -C "$PROJECT" ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+            TRACKED_PRIVATE+=("$f")
+          fi
+        done
+      fi
       if [ ${#TRACKED_PRIVATE[@]} -gt 0 ]; then
         echo "  action   REFUSED — foreign checkout, already tracked:"
         printf '             %s\n' "${TRACKED_PRIVATE[@]}"
@@ -486,6 +513,19 @@ for f in session_compact.md session_transcript.md claude_memory_import.md notes.
     LEAKED+=("$f (not gitignored)")
   fi
 done
+# A site is a public repository. Its agent rules stay on this machine.
+case "$PROJECT" in
+  "$HOME/Projects/sites"/*)
+    for f in AGENTS.md CLAUDE.md; do
+      [ -e "$PROJECT/$f" ] || continue
+      if git -C "$PROJECT" ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+        LEAKED+=("$f (already tracked; a site keeps its agent rules local)")
+      elif ! git -C "$PROJECT" check-ignore -q "$f"; then
+        LEAKED+=("$f (not gitignored; a site keeps its agent rules local)")
+      fi
+    done
+    ;;
+esac
 if [ -d "$PROJECT/explain" ]; then
   if [ -n "$(git -C "$PROJECT" ls-files -- explain)" ]; then
     LEAKED+=("explain/ (already tracked)")
@@ -534,7 +574,11 @@ if [ "$_scan_rc" -eq 1 ]; then
   echo "           remove it. A fixture keeps a fake token with gitleaks:allow on that line."
   exit 20
 elif [ "$_scan_rc" -ne 0 ]; then
-  echo "  WARNING  secret scan did not run (exit $_scan_rc) — nothing was checked for tokens"
+  # A scan that did not run is not a clean scan.
+  echo "  action   REFUSED — the secret scan did not run (exit $_scan_rc), so nothing was"
+  echo "           checked for tokens. Nothing committed."
+  printf '%s\n' "$_scan_out" | sed 's/^/             /'
+  exit 20
 else
   echo "  secrets  no secret-named file, no oversized file, no token-shaped string"
 fi

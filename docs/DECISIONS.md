@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — A checkpoint pushes where it looked, and stops when a guard did not run
+
+**Policy:** checkpoint_push_target=upstream-else-origin-named
+
+**Decision:** `checkpoint.sh` reads its push target once, from `branch.<name>.remote` and `branch.<name>.merge`, otherwise `origin`. The push names that remote and ref. The owner check reads every push URL of that remote. The foreign exclude block is written to the path git gives for `info/exclude`, and the script then asks `git check-ignore` whether the block is in effect. A block that is not in effect is exit 20. A secret scan that did not run is exit 20. Under `~/Projects/sites/*` a tracked or unignored `AGENTS.md` or `CLAUDE.md` is exit 20. Exit 15 is only the fork listed in `fork-parents.txt`; a tracked `AGENTS.md` behind another owner's push URL is exit 14.
+
+**Why:** The review of 2026-11-20 found each of these, and a fixture in `hooks/checkpoint-test.sh` reproduced each one before the fix. The owner check read `@{upstream}` or `origin`, and the push was a bare `git push`, which follows `remote.pushDefault` and `branch.<name>.pushRemote`: the commit went to another owner's repository and the script printed "push ok". A remote with two push URLs was checked on one. In a linked worktree `.git` is a file, the exclude write failed, the script printed "exclude updated", and `AGENTS.md` and `docs/DECISIONS.md` were pushed to the fork. A scan that crashed was a warning, and the push went on. The Sites rule was prose only. Exit 15 fired for any clone of another owner's repository that tracks its own `AGENTS.md`, and committed nothing there.
+
+**Rejected:** Following git's own choice of push remote and checking that one instead: `AGENTS.md` says the push goes to the upstream, otherwise `origin`, and a second rule for a triangular setup is one more path to get wrong. Exit 21 for a scan that did not run: nothing was committed, so it is a refusal. A new exit code for the exclude failure: it is the same case as exit 20, a private file would be published. Fixtures inline in `verify.sh`: that file is near 4,000 lines, so new cases go in `hooks/checkpoint-test.sh`, which prints one line per case, and `verify.sh` fails when the file stops early.
+
 ## 2026-11-21 — Owner answers for the hardening pass
 
 **Decision:** The review of 2026-11-20 left questions that only the owner could answer. The owner answered them on 2026-11-21. Each one lands with its own commit; this entry is the record, so a later review does not ask again.
