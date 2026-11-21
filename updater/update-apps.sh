@@ -71,7 +71,16 @@ github_token_refused() {
   [ "$code" = "401" ]
 }
 
-# Sets GITHUB_TOKEN (exported), GITHUB_TOKEN_SOURCE, and GITHUB_TOKEN_REFUSED.
+# The token is this script's own variable. It is not exported: a tool's updater
+# (`grok update`, `claude update`) is somebody else's program and has no use for
+# a GitHub credential. The one command that needs it gets it by name, below.
+# A token that came in through the environment is taken out of it here.
+_env_github_token="${GITHUB_TOKEN:-}"
+_env_gh_token="${GH_TOKEN:-}"
+unset GITHUB_TOKEN GH_TOKEN
+GITHUB_TOKEN=""
+
+# Sets GITHUB_TOKEN (not exported), GITHUB_TOKEN_SOURCE, and GITHUB_TOKEN_REFUSED.
 load_github_token() {
   local source candidate f
   GITHUB_TOKEN_SOURCE=""
@@ -79,8 +88,8 @@ load_github_token() {
   for source in env-GITHUB_TOKEN env-GH_TOKEN gh file; do
     candidate=""
     case "$source" in
-      env-GITHUB_TOKEN) candidate="${GITHUB_TOKEN:-}" ;;
-      env-GH_TOKEN)     candidate="${GH_TOKEN:-}" ;;
+      env-GITHUB_TOKEN) candidate="$_env_github_token" ;;
+      env-GH_TOKEN)     candidate="$_env_gh_token" ;;
       gh)
         if command -v gh >/dev/null 2>&1; then
           candidate="$(gh auth token 2>/dev/null || true)"
@@ -100,12 +109,12 @@ load_github_token() {
       GITHUB_TOKEN_REFUSED="${GITHUB_TOKEN_REFUSED:+$GITHUB_TOKEN_REFUSED }$source"
       continue
     fi
-    export GITHUB_TOKEN="$candidate"
+    GITHUB_TOKEN="$candidate"
     GITHUB_TOKEN_SOURCE="$source"
     return 0
   done
-  # Nothing usable. A refused token must not reach a child through the environment.
-  unset GITHUB_TOKEN
+  # Nothing usable.
+  GITHUB_TOKEN=""
   return 1
 }
 
@@ -127,7 +136,10 @@ if [ "${1:-}" = "--token-source" ]; then
   exit 0
 fi
 
-# Refuse to run if another update is already in progress (boot-check or resume)
+# Refuse to run if another update is already in progress (boot-check or resume).
+# The lock is file descriptor 9. A program this script starts gets `9>&-`: a
+# child that inherits the descriptor and stays alive keeps the lock after this
+# script has gone, and every later run then says "another run holds the lock".
 exec 9>"$LOCK"
 if ! flock -n 9; then
   echo "[$(ts)] update-apps: another run holds the lock → exit" >> "$LOG"
@@ -407,7 +419,7 @@ elif command -v opencode >/dev/null 2>&1; then
       if [ -n "${latest_ver:-}" ]; then
         echo "[$(ts)]    local=${local_ver:-?} latest=${latest_ver}" >> "$LOG"
       fi
-      if timeout "$TIMEOUT_DEFAULT" env ${GITHUB_TOKEN:+GITHUB_TOKEN="$GITHUB_TOKEN"} opencode upgrade >>"$LOG" 2>&1; then
+      if timeout "$TIMEOUT_DEFAULT" env ${GITHUB_TOKEN:+GITHUB_TOKEN="$GITHUB_TOKEN"} opencode upgrade >>"$LOG" 2>&1 9>&-; then
         echo "[$(ts)] opencode OK -> $(opencode --version 2>&1)" >> "$LOG"
       else
         rc=$?
@@ -434,7 +446,7 @@ if [ "$MANAGED_grok" = 1 ]; then
   echo "[$(ts)] grok mise-managed — skip direct update (mise cadence applies)" >> "$LOG"
 elif command -v grok >/dev/null 2>&1; then
   echo "[$(ts)] -> grok update" >> "$LOG"
-  if timeout "$TIMEOUT_DEFAULT" grok update >>"$LOG" 2>&1; then
+  if timeout "$TIMEOUT_DEFAULT" grok update >>"$LOG" 2>&1 9>&-; then
     echo "[$(ts)] grok OK -> $(grok --version 2>&1)" >> "$LOG"
   else
     rc=$?
@@ -456,7 +468,7 @@ elif command -v claude >/dev/null 2>&1 || [ -d "$CLAUDE_VERSIONS_DIR" ]; then
   echo "[$(ts)] -> claude update (CDN resume)" >> "$LOG"
   clean_incomplete_claude
   crc=0
-  claude_cdn_update || crc=$?
+  claude_cdn_update 9>&- || crc=$?
   case "$crc" in
     0)
       echo "[$(ts)] claude OK -> $(claude --version 2>&1)" >> "$LOG"
@@ -468,7 +480,7 @@ elif command -v claude >/dev/null 2>&1 || [ -d "$CLAUDE_VERSIONS_DIR" ]; then
     *)
       echo "[$(ts)] !! claude CDN update FAILED (rc=$crc) — falling back to claude update" >> "$LOG"
       if command -v claude >/dev/null 2>&1; then
-        if timeout "$TIMEOUT_CLAUDE_SLICE" claude update >>"$LOG" 2>&1; then
+        if timeout "$TIMEOUT_CLAUDE_SLICE" claude update >>"$LOG" 2>&1 9>&-; then
           echo "[$(ts)] claude OK (fallback) -> $(claude --version 2>&1)" >> "$LOG"
         else
           rc=$?
@@ -495,7 +507,7 @@ if command -v python3 >/dev/null 2>&1; then
   if AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}" \
       INVENTORY_MD="${AGENTS_HOME:-$HOME/.agents}/inventory.local.md" \
       INVENTORY_SOURCE=update-apps \
-      python3 "$DIR/refresh-inventory.py" >>"$LOG" 2>&1
+      python3 "$DIR/refresh-inventory.py" >>"$LOG" 2>&1 9>&-
   then
     echo "[$(ts)] inventory OK" >> "$LOG"
   else

@@ -3,10 +3,14 @@ Description=1config tool updater (boot check)
 Documentation=file://%h/.agents/SETUP.md
 
 [Service]
-Type=oneshot
+# exec, not oneshot: a oneshot unit holds its start job until the script ends,
+# and boot-check.sh may wait up to 34 minutes for the network. Everything
+# ordered after default.target would wait with it. With exec the start job is
+# done once the script is running. The boot dashboard waits on the run lock,
+# not on this unit.
+Type=exec
 ExecStart=%h/cron-jobs/ai-terminal-tools-update-on-boot/boot-check.sh
-# boot-check.sh may wait up to 34 minutes for the network before it gives up.
-TimeoutStartSec=60min
+RuntimeMaxSec=60min
 
 # Enabled, not timed: it starts once, when the user manager comes up. That is
 # before the boot dashboard opens, which waits on this run before it verifies.

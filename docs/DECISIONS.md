@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — The updater keeps its token and its lock to itself
+
+**Policy:** updater_github_token=not-exported
+
+**Decision:** `updater/update-apps.sh` holds the GitHub token in a shell variable and takes it out of the environment at start. `opencode upgrade` is given it by name. Every program the script starts gets `9>&-`. `1config-updater.service` is `Type=exec` with `RuntimeMaxSec=60min`. `hooks/scheduler.sh` writes a person's crontab lines back unchanged.
+
+**Why:** The token was exported, so `grok update` and `claude update`, two vendors' programs, ran with a GitHub credential they do not use. The run lock is a file descriptor, and a child that inherited it and stayed alive would have kept the lock after the script ended. A `oneshot` unit holds its start job until the script ends, and the script may wait 34 minutes for the network. `grep -v '^$'` on the way into `crontab -` deleted the blank lines of a person's own crontab at install and at removal. `hooks/updater-test.sh` runs the whole updater with stub tools and showed the token in `grok update`'s environment and the lock among its file descriptors.
+
+**Rejected:** Clearing the whole environment for each tool: the tools need `HOME` and `PATH`, and a list of what to keep would go stale. A timer in place of the service: the dashboard wants the run early in the login, and the lock already orders the two.
+
 ## 2026-11-21 — The pull works on commit ids, a diverged brain is gated, and "own key" means a secret key
 
 **Policy:** brain_pull_refs=full-names-resolved-once

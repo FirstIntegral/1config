@@ -109,12 +109,14 @@ cron_install() {
   local rest chain
   command -v crontab >/dev/null 2>&1 || return 1
   cron_read || return 1
+  # The person's own lines go back exactly as they were, blank lines and
+  # comments included. Only a crontab that had nothing of theirs prints no rest.
   rest="$(printf '%s\n' "$CT_OLD" | grep -vE "$OURS" || true)"
   chain="$GUARD_DIR/check-links.sh; $MEM_GUARD_DIR/check-memory.sh"
   {
-    printf '%s\n' "$rest"
+    [ -z "$rest" ] || printf '%s\n' "$rest"
     printf '@daily %s\n@reboot %s\n@reboot %s\n' "$chain" "$chain" "$UPD_DIR/boot-check.sh"
-  } | grep -v '^$' | crontab - || return 1
+  } | crontab - || return 1
   cron_has_ours
 }
 
@@ -122,8 +124,8 @@ cron_remove() {
   local rest
   cron_has_ours || return 0
   cron_read || return 1
-  rest="$(printf '%s\n' "$CT_OLD" | grep -vE "$OURS" | grep -v '^$' || true)"
-  if [ -n "$rest" ]; then
+  rest="$(printf '%s\n' "$CT_OLD" | grep -vE "$OURS" || true)"
+  if [ -n "$(printf '%s' "$rest" | tr -d '[:space:]')" ]; then
     printf '%s\n' "$rest" | crontab - || return 1
   else
     # Only our lines were there. An empty crontab and no crontab schedule the same.
