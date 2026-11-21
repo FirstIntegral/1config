@@ -64,6 +64,29 @@ fixture_env_off() {
   unset GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_URL_SSH_CONFIG BRAIN_REMOTE_FILE FORK_PARENTS_FILE
 }
 
+# Run a fixture file. It prints `ok <what>` or `FAIL <what>` per case and exits
+# nonzero when a case failed. Each line becomes a check here. A file that dies
+# without a FAIL line, or that ran no case, is a failure: a crash is not green.
+run_fixtures() {
+  local f="$1" out rc=0 line n=0 nbad=0
+  if [ ! -f "$f" ]; then
+    bad "fixture file missing: ${f##*/}"
+    return 0
+  fi
+  out="$(bash "$f" 2>&1)" || rc=$?
+  while IFS= read -r line; do
+    case "$line" in
+      'ok '*)   ok "${line#ok }"; n=$((n + 1)) ;;
+      'FAIL '*) bad "${line#FAIL }"; n=$((n + 1)); nbad=$((nbad + 1)) ;;
+    esac
+  done <<<"$out"
+  if [ "$rc" -ne 0 ] && [ "$nbad" -eq 0 ]; then
+    bad "${f##*/} stopped early (exit $rc): $(printf '%s\n' "$out" | tail -n 3 | tr '\n' ' ')"
+  elif [ "$n" -eq 0 ]; then
+    bad "${f##*/} ran no case"
+  fi
+}
+
 echo "== ~/.agents verify — $(date) =="
 machine || echo "scope: repo (machine state is not checked)"
 
@@ -228,7 +251,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -781,6 +804,7 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
     bad "sites checkout hid docs/DECISIONS.md (exit $_rc)"
   fi
   rm -rf "$_fxbare" "$_fxwork" "$_outbare" "$_outwork" "$_trwork" "$_ourbare" "$_ourwork" "$_sitehome" "$_sitebare"
+  run_fixtures "$HOOKS/checkpoint-test.sh"
 else
   bad "hooks/checkpoint.sh not executable — checkpoint_project has no git half"
 fi

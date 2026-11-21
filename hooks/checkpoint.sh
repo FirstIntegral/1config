@@ -116,6 +116,19 @@ raw_remote_url() {
   printf '%s\n' "$url"
 }
 
+# Every URL a push to this remote goes to, one per line, as a person set them.
+# A remote can carry several push URLs, and git pushes to each. A name that is
+# not a configured remote is itself the URL (branch.<name>.remote may hold one).
+raw_push_urls() {
+  local remote="$1" urls
+  urls="$(git -C "$PROJECT" config --get-all "remote.${remote}.pushurl" 2>/dev/null || true)"
+  if [ -z "$urls" ]; then
+    urls="$(git -C "$PROJECT" config --get-all "remote.${remote}.url" 2>/dev/null || true)"
+  fi
+  [ -n "$urls" ] || urls="$remote"
+  printf '%s\n' "$urls"
+}
+
 # origin matches fork-parents.txt and the parent owner is not ours.
 # Sites stay sites. A missing origin is not foreign.
 is_foreign_checkout() {
@@ -142,24 +155,36 @@ is_foreign_checkout() {
   return 1
 }
 
-# The URL checkpoint would push to. Unparsed is not outside. A raw URL that is
-# not ours gets one more look at what git dials after insteadOf: an alias such
-# as gh:owner/repo names no host until it is rewritten.
+# One push URL: is its owner someone else? Unparsed is not outside. A raw URL
+# that is not ours gets one more look at what git dials after insteadOf ($2):
+# an alias such as gh:owner/repo names no host until it is rewritten.
 push_owner_outside() {
-  local url="$1" remote="${2:-}" host owner eff
+  local url="$1" eff="${2:-}" host owner
   read -r host owner <<<"$(pair_of "$url")"
   [ -n "${owner:-}" ] || return 1
   inside_pair "$host" "$owner" && return 1
-  if [ -n "$remote" ]; then
-    eff="$(git -C "$PROJECT" remote get-url --push "$remote" 2>/dev/null || true)"
-    if [ -n "$eff" ] && [ "$eff" != "$url" ]; then
-      read -r host owner <<<"$(pair_of "$eff")"
-      if [ -n "${owner:-}" ] && inside_pair "$host" "$owner"; then
-        return 1
-      fi
+  if [ -n "$eff" ] && [ "$eff" != "$url" ]; then
+    read -r host owner <<<"$(pair_of "$eff")"
+    if [ -n "${owner:-}" ] && inside_pair "$host" "$owner"; then
+      return 1
     fi
   fi
   return 0
+}
+
+# Is any push URL of this remote another owner's? One is enough for the veto.
+remote_pushes_outside() {
+  local remote="$1" i
+  local -a raw eff
+  mapfile -t raw < <(raw_push_urls "$remote")
+  mapfile -t eff < <(git -C "$PROJECT" remote get-url --push --all "$remote" 2>/dev/null || true)
+  # The rewritten list lines up with the configured one, or it is not used.
+  [ "${#eff[@]}" -eq "${#raw[@]}" ] || eff=()
+  for i in "${!raw[@]}"; do
+    [ -n "${raw[$i]}" ] || continue
+    push_owner_outside "${raw[$i]}" "${eff[$i]:-}" && return 0
+  done
+  return 1
 }
 
 write_foreign_exclude() {
@@ -391,22 +416,36 @@ echo "  repo     $TOP  (branch $BRANCH)"
 # fork-parents.txt matches origin. A push aimed at an owner who is not on
 # BRAIN_REMOTE gets the same exclude, so a later retarget cannot publish notes
 # that this commit already captured. Sites are not this case. Dry-run writes nothing.
+# Where this checkpoint pushes: the branch's upstream, otherwise origin. It is
+# read from config and named on the push itself, so remote.pushDefault and
+# branch.<name>.pushRemote cannot carry the commit past the owner check.
+PUSH_REMOTE=""
+PUSH_REF=""
+HAS_UPSTREAM=0
+if git -C "$PROJECT" symbolic-ref -q HEAD >/dev/null 2>&1; then
+  _br="$(git -C "$PROJECT" config --get "branch.${BRANCH}.remote" 2>/dev/null || true)"
+  _bm="$(git -C "$PROJECT" config --get "branch.${BRANCH}.merge" 2>/dev/null || true)"
+  case "$_bm" in
+    refs/heads/*)
+      if [ -n "$_br" ] && [ "$_br" != "." ]; then
+        PUSH_REMOTE="$_br"
+        PUSH_REF="$_bm"
+        HAS_UPSTREAM=1
+      fi
+      ;;
+  esac
+  if [ -z "$PUSH_REMOTE" ] && git -C "$PROJECT" config --get remote.origin.url >/dev/null 2>&1; then
+    PUSH_REMOTE="origin"
+    PUSH_REF="refs/heads/${BRANCH}"
+  fi
+fi
+
 FOREIGN=0
 OUTSIDE_PUSH=0
-CHOSEN_URL=""
-CHOSEN_REMOTE=""
 if is_foreign_checkout; then
   FOREIGN=1
 fi
-_up="$(git -C "$PROJECT" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || true)"
-if [ -n "$_up" ]; then
-  CHOSEN_REMOTE="${_up%%/*}"
-  CHOSEN_URL="$(raw_remote_url "$CHOSEN_REMOTE")"
-elif git -C "$PROJECT" config --get remote.origin.url >/dev/null 2>&1; then
-  CHOSEN_REMOTE="origin"
-  CHOSEN_URL="$(raw_remote_url origin)"
-fi
-if [ -n "$CHOSEN_URL" ] && push_owner_outside "$CHOSEN_URL" "$CHOSEN_REMOTE"; then
+if [ -n "$PUSH_REMOTE" ] && remote_pushes_outside "$PUSH_REMOTE"; then
   OUTSIDE_PUSH=1
 fi
 if [ "$FOREIGN" = 1 ] || [ "$OUTSIDE_PUSH" = 1 ]; then
@@ -510,13 +549,7 @@ UNPUSHED=0
 # `git remote get-url --push` is the authority for WHERE to push. An AGENTS.md line is
 # documentation and is cross-checked below, never used to authorise a push: git config is
 # set by an explicit human action, whereas AGENTS.md is a file an AI writes.
-UPSTREAM="$(git -C "$PROJECT" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || true)"
-REMOTE=""
-if [ -n "$UPSTREAM" ]; then
-  REMOTE="${UPSTREAM%%/*}"
-elif git -C "$PROJECT" remote get-url origin >/dev/null 2>&1; then
-  REMOTE="origin"
-fi
+REMOTE="$PUSH_REMOTE"
 
 ALL_REMOTES="$(git -C "$PROJECT" remote | tr '\n' ' ')"
 if [ -z "$REMOTE" ]; then
@@ -665,7 +698,7 @@ if [ -z "$REMOTE" ]; then
   finish 12
 fi
 if [ "$DRY" = 1 ]; then
-  echo "  DRY    git -C $PROJECT push"
+  echo "  DRY    git -C $PROJECT push $REMOTE refs/heads/${BRANCH}:${PUSH_REF}"
   finish 0
 fi
 # BatchMode and a wall-clock bound, like the fetch: a passphrase prompt or a dead
@@ -674,8 +707,9 @@ _push() {
   GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=20' \
     timeout "$NET_TIMEOUT" git -C "$PROJECT" push "$@" 2>&1
 }
-if [ -n "$UPSTREAM" ]; then
-  PUSH_OUT="$(_push)"; RC=$?
+# The remote is always named. A bare `git push` lets git pick the remote again.
+if [ "$HAS_UPSTREAM" = 1 ]; then
+  PUSH_OUT="$(_push "$REMOTE" "refs/heads/${BRANCH}:${PUSH_REF}")"; RC=$?
 else
   PUSH_OUT="$(_push -u "$REMOTE" "$BRANCH")"; RC=$?
 fi
@@ -690,7 +724,7 @@ if [ $RC -ne 0 ]; then
   echo "  push     FAILED — commit $HASH is safe locally. Not retrying, not forcing."
   finish 21
 fi
-echo "  push     ok -> $REMOTE/$BRANCH"
+echo "  push     ok -> $REMOTE/${PUSH_REF#refs/heads/}"
 if [ "$TOOK_REMOTE" = 1 ] && [ "$NOTHING_TO_COMMIT" = 1 ]; then
   echo "== checkpoint: took remote commits and pushed $HASH"
 elif [ "$TOOK_REMOTE" = 1 ]; then
