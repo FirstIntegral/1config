@@ -891,6 +891,14 @@ fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------
 echo "[gpg] signing helpers"
+# vendor/ held one library for the retired unlock hooks. A pull removes its
+# files and leaves the byte-code cache Python wrote beside them. A directory
+# that holds nothing but that cache is removed; anything else in it stays.
+if [ -d "$AGENTS_HOME/vendor" ] \
+   && [ -z "$(find "$AGENTS_HOME/vendor" -type f ! -name '*.pyc' -print -quit 2>/dev/null)" ]; then
+  rm -rf "${AGENTS_HOME:?}/vendor"
+  log "removed vendor/ (only the byte-code cache of the retired library was left)"
+fi
 for h in gpg-signing-key.sh gpg-sign-check.sh; do
   if [ -f "$AGENTS_HOME/hooks/$h" ]; then
     chmod +x "$AGENTS_HOME/hooks/$h"

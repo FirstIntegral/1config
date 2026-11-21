@@ -176,11 +176,16 @@ say "setup.sh: install, and its verify.sh must pass with no warnings"
 # wrapper script that no longer exists. git then cannot sign or check anything.
 # setup.sh has to clear that itself, before its own preflight asks git about HEAD.
 git config --global gpg.program "$A/hooks/gpg-git.sh"
+# The same machine: git removed the vendored library when it pulled, and the
+# byte-code cache Python wrote next to it stayed. That is a leftover, not the library.
+mkdir -p "$A/vendor/jeepney/__pycache__"
+: > "$A/vendor/jeepney/__pycache__/bus.cpython-312.pyc"
 LAST="$OUT/setup.out"; rc=0
 bash "$A/setup.sh" >"$LAST" 2>&1 || rc=$?
 [ "$rc" -eq 0 ] || fail "setup.sh exited $rc"
 grep -q '^== PASS (warnings=0) ==' "$LAST" || fail "verify.sh did not end in PASS (warnings=0)"
 [ "$(readlink -f "$HOME/.claude/CLAUDE.md")" = "$A/AGENTS.md" ] || fail "~/.claude/CLAUDE.md is not the link"
+[ ! -e "$A/vendor" ] || fail "setup.sh left the byte-code cache of the retired vendor/ behind"
 [ -z "$(git config --global --get gpg.program 2>/dev/null || true)" ] \
   || fail "setup.sh set git's gpg.program; git must call gpg itself"
 ok "installed, verify PASS (warnings=0)"

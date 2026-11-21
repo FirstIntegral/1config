@@ -1701,9 +1701,16 @@ fi
 # and the panel name the old wrapper only to undo it on a machine that has it,
 # and the stranger install test names it to rehearse that undo.
 _retired_left=""
-for _rf in hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py hooks/gpg-git.sh vendor; do
+for _rf in hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py hooks/gpg-git.sh; do
   [ -e "$AGENTS_HOME/$_rf" ] && _retired_left="$_retired_left $_rf"
 done
+# vendor/ counts only when it holds a real file. After a pull, the byte-code
+# cache of the deleted library is still there until setup.sh has run: that is
+# a leftover, and calling it "the machinery is back" failed a healthy machine.
+if [ -d "$AGENTS_HOME/vendor" ] \
+   && [ -n "$(find "$AGENTS_HOME/vendor" -type f ! -name '*.pyc' -print -quit 2>/dev/null)" ]; then
+  _retired_left="$_retired_left vendor"
+fi
 if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
   _retired_named="$(git -C "$AGENTS_HOME" grep -l -e 'gpg-agent-unlock' -e 'gpg-store-passphrase' -e 'gpg-keyring\.py' -e 'gpg-git\.sh' -e 'jeepney' -- . \
     ':!docs' ':!verify.sh' ':!setup.sh' ':!uninstall.sh' ':!SETUP.md' ':!omarchy-plugin/firstintegral.1config/bin/usage.py' \
