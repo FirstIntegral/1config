@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — A stray rules file waits for a person; the stray merge is gone
+
+**Policy:** stray_rules_file=kept-and-flagged-no-merge
+
+**Decision:** `hooks/merge-strays.sh` is deleted. `hooks/check-links.sh` copies a diverged rules file to `backups/strays/`, compares the copy, restores the link, and lists the copy in `NEEDS-SYMLINK-MERGE`. If the copy fails, the file stays where it is and no link is made. The guard exits 2 while a listed stray exists, so the dashboard names it at every login. A person reads it, merges by hand, and deletes the stray file; the guard then drops the line, and the flag with the last line. `setup.sh` moves an installed copy of the old script into that run's backups. This replaces "2026-11-12 — The stray merge runs with no tools and tries each CLI".
+
+**Why:** The owner's answer on 2026-11-21: text from a stray must not become a rule without a person. The old script appended a model's reply to the file every tool obeys before anyone read it. Only the first line of the reply was checked, the stray had no size limit, and the stray was deleted after a merge and after a `SKIP`, so a wrong `SKIP` lost the only copy. `check-links.sh` did not check its `cp`, so a file could be replaced by the link with no copy kept; a new person's own `~/.claude/CLAUDE.md` took that path. The dashboard read `$?` after `fi`, which is always 0, and showed the flag only on the day it was raised.
+
+**Rejected:** Keeping the script with caps and a kept stray: it would still write to `AGENTS.md` unread. A staging file the model writes for a person to approve: one more file to read, and the stray is already that file. Keeping a script of that name to tidy the flag: the guard does it in eight lines.
+
 ## 2026-11-21 — Notes: a signature gate, a checkout id, and a way out of a failed push
 
 **Policy:** notes_incoming=signed-by-listed-key

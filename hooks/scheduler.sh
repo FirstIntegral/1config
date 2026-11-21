@@ -110,7 +110,7 @@ cron_install() {
   command -v crontab >/dev/null 2>&1 || return 1
   cron_read || return 1
   rest="$(printf '%s\n' "$CT_OLD" | grep -vE "$OURS" || true)"
-  chain="$GUARD_DIR/check-links.sh; $GUARD_DIR/merge-strays.sh; $MEM_GUARD_DIR/check-memory.sh"
+  chain="$GUARD_DIR/check-links.sh; $MEM_GUARD_DIR/check-memory.sh"
   {
     printf '%s\n' "$rest"
     printf '@daily %s\n@reboot %s\n@reboot %s\n' "$chain" "$chain" "$UPD_DIR/boot-check.sh"
@@ -169,7 +169,7 @@ install() {
       return 1
     fi
     log "WARNING: no systemd user manager and no crontab — add these jobs by hand:"
-    log "  @daily  $GUARD_DIR/check-links.sh; $GUARD_DIR/merge-strays.sh; $MEM_GUARD_DIR/check-memory.sh"
+    log "  @daily  $GUARD_DIR/check-links.sh; $MEM_GUARD_DIR/check-memory.sh"
     log "  @reboot $UPD_DIR/boot-check.sh"
     return 0
   fi

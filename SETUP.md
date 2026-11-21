@@ -224,7 +224,7 @@ bash ~/.agents/hooks/notes-sync.sh backfill
 
 Keyed facts in `docs/DECISIONS.md` use a `**Policy:**` line. One active value per key. A replaced value keeps a `superseded-by` line whose text is the heading that holds the live value. `verify.sh` fails on a second active value or a target heading that is not in the file. Whole headings stay when one ADR mixes a live fact and a dead one.
 
-Retired names live in `hooks/kill-tokens.deny` (one literal token per line; an empty file is legal). `merge-strays.sh` does not append a section that contains one; the stray stays. `verify.sh` fails if a token appears in `AGENTS.md`, `README.md`, the project-template markdown, or `SETUP.md` outside a fenced `gitignore` sample. `project-template/.gitignore` may still name a retired path so new projects keep ignoring it.
+Retired names live in `hooks/kill-tokens.deny` (one literal token per line; an empty file is legal). `verify.sh` fails if a token appears in `AGENTS.md`, `README.md`, the project-template markdown, or `SETUP.md` outside a fenced `gitignore` sample. `project-template/.gitignore` may still name a retired path so new projects keep ignoring it.
 
 ### §4c `hooks/watch-stale.sh` — staleness watch for detached runs
 
@@ -528,7 +528,7 @@ bash ~/.agents/hooks/scheduler.sh status                        # timers | cron 
 ```
 
 - **`auto`** (the default, or `AGENTS_SCHEDULER`): systemd user units when a user manager answers `systemctl --user daemon-reload`, cron when none does (a container, a box with no user session).
-- **Units** are the files in `systemd/`, copied to `~/.config/systemd/user/`. `1config-guards.timer` is `OnCalendar=daily` with `Persistent=true` (a machine that was off at midnight runs the missed day at the next login) and `OnStartupSec=2min`. `1config-guards.service` is one ordered chain: `check-links.sh`, then `merge-strays.sh`, then `check-memory.sh`. The merge reads the flag the symlink guard raises, so it has to follow it; each `ExecStart` has a leading `-` because `check-links.sh` exits 2 exactly when there is a stray to merge. `1config-updater.service` runs `boot-check.sh` and is enabled for `default.target`: once per login, before the boot dashboard opens. Output goes to the journal (`journalctl --user -u 1config-guards.service`) as well as each script's own log.
+- **Units** are the files in `systemd/`, copied to `~/.config/systemd/user/`. `1config-guards.timer` is `OnCalendar=daily` with `Persistent=true` (a machine that was off at midnight runs the missed day at the next login) and `OnStartupSec=2min`. `1config-guards.service` is one ordered chain: `check-links.sh`, then `check-memory.sh`. Each `ExecStart` has a leading `-` because `check-links.sh` exits 2 while a stray rules file waits for a person. `1config-updater.service` runs `boot-check.sh` and is enabled for `default.target`: once per login, before the boot dashboard opens. Output goes to the journal (`journalctl --user -u 1config-guards.service`) as well as each script's own log.
 - **Cron** is the same jobs: `@daily` and `@reboot` lines that hold the whole guard chain, joined by `;`, and one `@reboot` line for `boot-check.sh`. Before 2026-11-12 the merge had its own `@daily` line in the same minute as the guard, with no ordering and no catch-up.
 - **Exactly one is left installed.** The other is removed only after the chosen one is confirmed: the crontab lines go once both units report `enabled`, and the units go once the crontab holds our lines. A crontab line that is not ours is never touched. A `crontab -l` that fails for any reason other than "no crontab" leaves the crontab as it is, because writing back an empty read would delete the user's own jobs. A crontab that held only our lines is removed.
 - **Back to cron:** `AGENTS_SCHEDULER=cron bash ~/.agents/setup.sh`. `SKIP_CRON=1` skips the step.
@@ -546,13 +546,15 @@ bash ~/.agents/hooks/scheduler.sh status                        # timers | cron 
 | symlink points elsewhere | re-point to canonical | `REPOINT` |
 | path missing | create symlink | `CREATE` |
 | regular file, identical to canonical | re-link, no content change | `FIXED` |
-| regular file, diverged (any difference) | quarantine to `~/.agents/backups/strays/`, re-link, append to **`NEEDS-SYMLINK-MERGE`** | `CONFLICT` |
+| regular file, diverged (any difference) | copy to `~/.agents/backups/strays/`, compare the copy, re-link, append to **`NEEDS-SYMLINK-MERGE`** | `CONFLICT` |
+| regular file, diverged, and the copy fails | leave the file where it is; no link | `ERROR` |
 
-(No auto-append of stray bytes — see suggestion 2026-08; quarantined strays are AI-merged.)
+(No auto-append of stray bytes, by a script or by a model. A stray waits for a person.)
 
 - Log: `~/cron-jobs/agents-symlink-guard/check-links.log`.
 - Flag: **`NEEDS-SYMLINK-MERGE`** in same folder (exists only after a CONFLICT).
-- **AI merge is automated:** `hooks/merge-strays.sh` (installed to the guard dir, byte-verified; second step of the guard chain, right after the guard) feeds each stray to a headless LLM, sanitizes the markdown output, appends to canonical with a provenance comment, deletes the stray, clears the flag. Backends are tried in order, `claude`, `grok`, `opencode`: the first installed CLI that answers wins, so a machine where one of them is logged out still merges (`MERGE_LLM_BACKEND` names a single one). The prompt holds the bytes of a quarantined file, so the model runs with no way to act on them: `claude -p --tools "" --strict-mcp-config --permission-prompts none`, `grok --prompt-file … --tools list_dir --disallowed-tools Agent --disable-web-search --no-subagents`, `opencode run --standalone` with `OPENCODE_PERMISSION` deny-all. The prompt travels as stdin or a file, never as an argument: one argv string caps at 128 KiB and the canonical file is most of that. The script's PATH is the login shell's PATH and then the vendor dirs (`hooks/tool-path.sh`), so a mise-managed CLI is found from cron or a timer. If no backend answers, the flag survives for the next run; manual fallback procedure lives in canonical `AGENTS.md`. Sandbox knobs: `CANON`, `GUARD_DIR`, `STRAYS_DIR`, `MERGE_LLM_MODEL`, `MERGE_MAX_BYTES` (4000), `MERGE_TIMEOUT` (120), `MERGE_SKIP_LLM=1` (report only). The guard logs (`check-links.log`, `merge-strays.log`, `check-memory.log`) keep their last 2000 lines once they pass 4000.
+- **Nothing merges a stray.** The canonical file is the one every tool obeys, so what enters it is a person's decision. The stray file stays under `backups/strays/`. The flag lists it. `check-links.sh` exits 2 while a listed stray exists, so the boot dashboard shows a warn row that names the file at every login, the 1config panel shows that row from the close slip, and an agent says so at session start. The person reads the stray, copies what they want into `AGENTS.md` (`setup.sh`, then `sync.sh`), and deletes the stray file. The next guard run drops that line, and the flag with the last line. Until 2026-11-21 a script named `merge-strays.sh` gave each stray to a headless model and appended the reply; `setup.sh` moves an installed copy of it into that run's backups.
+- Exit: `0` healthy, `2` a stray waits, `1` a copy or a link failed. Sandbox knobs: `CANON`, `LINKS`, `GUARD_DIR`, `STRAYS_DIR`. The guard logs (`check-links.log`, `check-memory.log`) keep their last 2000 lines once they pass 4000.
 
 ### 7b. Tool-memory residue guard
 
@@ -592,7 +594,7 @@ This is the Omarchy surface of 1config. Claude, Grok, and OpenCode do not each g
 3. Grok config keys (§4) + delete `~/.grok/memory/` if present (after archive).
 4. Claude memory wipe-to-stub for every `~/.claude/projects/*/memory/` (§4).
 5. Claude AGENTS.md SessionStart hook (§4) — merged into `~/.claude/settings.json`, preserving existing hooks.
-6. Install/refresh symlink guard + stray-merge hook (§7a) — copied from `hooks/check-links.sh` + `hooks/merge-strays.sh`.
+6. Install/refresh symlink guard (§7a) — copied from `hooks/check-links.sh`. An installed copy of the retired `merge-strays.sh` is moved to the run's backups.
 7. Install/refresh claude-memory-guard (§6b/§7b) — copied from `hooks/check-claude-memory.sh`.
 8. Install/refresh tool updater (§7c) — user scripts copied from `updater/`; install the root resume shim with the `sudo install` command above and repeat after shim changes.
 9. Scheduler for guards + updater (§7.0): `bash ~/.agents/hooks/scheduler.sh install` — systemd user units, or cron, and other crontab lines are preserved.
@@ -682,7 +684,6 @@ python3 -c "import tomllib,os; tomllib.load(open(os.path.expanduser('~/.grok/con
 bash ~/.agents/hooks/scheduler.sh status          # timers or cron; both or none is a fault
 systemctl --user list-timers 1config-guards.timer  # when status is timers
 cmp -s ~/.agents/hooks/check-links.sh ~/cron-jobs/agents-symlink-guard/check-links.sh && echo LINKS-SYNC-OK
-cmp -s ~/.agents/hooks/merge-strays.sh ~/cron-jobs/agents-symlink-guard/merge-strays.sh && echo MERGE-SYNC-OK
 cmp -s ~/.agents/hooks/check-claude-memory.sh ~/cron-jobs/claude-memory-guard/check-memory.sh && echo MEM-SYNC-OK
 cmp -s ~/.agents/updater/update-apps.sh ~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh && echo UPD-SYNC-OK
 bash ~/.agents/hooks/gpg-agent-unlock.sh && echo GPG-CACHED-OK || echo GPG-UNLOCK-NEEDED

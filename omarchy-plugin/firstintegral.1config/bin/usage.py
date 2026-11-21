@@ -1361,7 +1361,6 @@ HOOK_FILES = (
     "hooks/checkpoint.sh",
     "hooks/brain-sync.sh",
     "hooks/digit-refuse.sh",
-    "hooks/merge-strays.sh",
 )
 SCAFFOLD_FILES = (
     "project-template/AGENTS.md",
@@ -1934,7 +1933,7 @@ def self_test() -> None:
         "level": ("warn", "no ref"),
         "links": ("fail", "0/4"),
         "permissions": ("fail", "broken"),
-        "hooks": ("fail", "0/9"),
+        "hooks": ("fail", "0/8"),
         "scaffolds": ("fail", "0/4"),
         "slip": ("warn", "no exit"),
         "memory": ("fail", "not installed"),

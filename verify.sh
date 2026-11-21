@@ -251,7 +251,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh guards-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -1332,20 +1332,14 @@ fi
 
 echo "[kill tokens]"
 _killdeny="$HOOKS/kill-tokens.deny"
-if [ -f "$_killdeny" ] && grep -q 'kill-tokens.deny' "$HOOKS/merge-strays.sh"; then
-  ok "kill-tokens.deny present and merge-strays.sh consults it"
+if [ -f "$_killdeny" ]; then
+  ok "kill-tokens.deny present"
 else
-  bad "kill-tokens.deny missing or merge-strays.sh does not consult it"
+  bad "kill-tokens.deny missing"
 fi
 if [ -f "$_killdeny" ]; then
-  _rc=0; bash "$HOOKS/merge-strays.sh" --check-kill "plain sentence with no retired name" >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -eq 0 ] && ok "kill check allows text with no retired name" \
-                   || bad "kill check rejected clean text (exit $_rc)"
   _tok="$(grep -vE '^[[:space:]]*(#|$)' "$_killdeny" | head -n 1 || true)"
   if [ -n "$_tok" ]; then
-    _rc=0; bash "$HOOKS/merge-strays.sh" --check-kill "please revive ${_tok} now" >/dev/null 2>&1 || _rc=$?
-    [ "$_rc" -eq 1 ] && ok "kill check refuses a retired name" \
-                     || bad "kill check did not refuse a retired name (exit $_rc)"
     _setup_body="$(awk '
       /^```gitignore$/ { s = 1; next }
       /^```$/ && s { s = 0; next }
@@ -1377,59 +1371,9 @@ if [ -f "$_killdeny" ]; then
   fi
 fi
 
-# Stray merge against stub CLIs. The prompt must arrive as stdin or a file (one
-# argv string caps at 128 KiB), the model must get no tools, and a first
-# backend that is logged out must not end the run.
-_ms="$(mktemp -d -p "$VTMP")"
-mkdir -p "$_ms/bin" "$_ms/guard" "$_ms/strays"
-cp "$CANON" "$_ms/AGENTS.md"
-cat > "$_ms/bin/claude" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$@" > "$STUB_DIR/claude.argv"
-cat > "$STUB_DIR/claude.stdin"
-if [ -n "${STUB_CLAUDE_FAIL:-}" ]; then
-  echo "Not logged in"
-  exit 1
-fi
-printf '%s\n' "$STUB_REPLY"
-EOF
-cat > "$_ms/bin/grok" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$@" > "$STUB_DIR/grok.argv"
-printf '%s\n' "$STUB_REPLY"
-EOF
-chmod +x "$_ms/bin/claude" "$_ms/bin/grok"
-_ms_run() {
-  _rc=0
-  env AGENTS_HOME="$AGENTS_HOME" CANON="$_ms/AGENTS.md" GUARD_DIR="$_ms/guard" STRAYS_DIR="$_ms/strays" \
-    STUB_DIR="$_ms" MERGE_TOOL_PATH="$_ms/bin:/usr/bin:/bin" "$@" \
-    bash "$HOOKS/merge-strays.sh" >/dev/null 2>&1 || _rc=$?
-}
-head -c 200000 /dev/zero | tr '\0' 'x' > "$_ms/strays/big"
-printf '%s\n' "$_ms/strays/big" > "$_ms/guard/NEEDS-SYMLINK-MERGE"
-_ms_run MERGE_LLM_BACKEND=claude STUB_REPLY=SKIP
-if [ "$_rc" -eq 0 ] && [ ! -e "$_ms/guard/NEEDS-SYMLINK-MERGE" ] && [ ! -e "$_ms/strays/big" ] \
-   && cmp -s "$CANON" "$_ms/AGENTS.md" \
-   && [ "$(wc -c < "$_ms/claude.stdin")" -gt 131072 ] \
-   && awk 'prev == "--tools" && $0 == "" { ok = 1 } { prev = $0 } END { exit ok ? 0 : 1 }' "$_ms/claude.argv" \
-   && grep -qx -- '--strict-mcp-config' "$_ms/claude.argv" \
-   && ! grep -q 'CANONICAL' "$_ms/claude.argv"; then
-  ok "stray merge sends a 200 KB prompt on stdin and gives the model no tools"
-else
-  bad "stray merge put the prompt in argv, or left the model its tools (exit $_rc)"
-fi
-printf 'a stray rule\n' > "$_ms/strays/small"
-printf '%s\n' "$_ms/strays/small" > "$_ms/guard/NEEDS-SYMLINK-MERGE"
-_ms_run STUB_CLAUDE_FAIL=1 STUB_REPLY=$'## Merged rule\n- keep this line'
-if [ "$_rc" -eq 0 ] && [ ! -e "$_ms/guard/NEEDS-SYMLINK-MERGE" ] \
-   && grep -qx -- '--prompt-file' "$_ms/grok.argv" \
-   && grep -qx -- 'list_dir' "$_ms/grok.argv" \
-   && grep -q 'reply from grok' "$_ms/guard/merge-strays.log" \
-   && [ "$(tail -n 1 "$_ms/AGENTS.md")" = "- keep this line" ]; then
-  ok "stray merge falls through a logged-out backend to the next one"
-else
-  bad "stray merge stopped at the first backend that failed (exit $_rc)"
-fi
+# The two guards, against a scratch home: a stray rules file waits for a person,
+# and no script or model merges it.
+run_fixtures "$HOOKS/guards-test.sh"
 
 # watch-stale.sh behaviour. A watch that never fires is worse than none, so the
 # stale verdict and the exit line are both exercised against a real scratch process.
@@ -1556,14 +1500,10 @@ if [ -f "$HOOKS/check-claude-memory.sh" ] && [ -f "$MEM_GUARD_DIR/check-memory.s
 else
   bad "memory guard install missing (run setup.sh)"
 fi
-if [ -f "$HOOKS/merge-strays.sh" ] && [ -f "$GUARD_DIR/merge-strays.sh" ]; then
-  if cmp -s "$HOOKS/merge-strays.sh" "$GUARD_DIR/merge-strays.sh"; then
-    ok "stray-merge hook matches hooks/merge-strays.sh"
-  else
-    bad "stray-merge DRIFT — $GUARD_DIR/merge-strays.sh ≠ hooks/ (run setup.sh)"
-  fi
+if [ -e "$GUARD_DIR/merge-strays.sh" ]; then
+  bad "the retired stray-merge script is still installed at $GUARD_DIR/merge-strays.sh (run setup.sh)"
 else
-  bad "stray-merge install missing (run setup.sh)"
+  ok "no retired stray-merge script is installed"
 fi
 fi  # machine
 
@@ -2802,15 +2742,14 @@ _unit_src_ok=1
 for _u in $_units; do
   [ -f "$AGENTS_HOME/systemd/$_u" ] || _unit_src_ok=0
 done
-# The chain order is the point of the service: the merge reads the guard's flag.
+# The service is the two guards and nothing else: no script merges a stray.
 if [ "$_unit_src_ok" = 1 ] \
    && grep -qx 'Persistent=true' "$AGENTS_HOME/systemd/1config-guards.timer" \
    && grep -qx 'OnCalendar=daily' "$AGENTS_HOME/systemd/1config-guards.timer" \
-   && [ "$(grep -c '^ExecStart=' "$AGENTS_HOME/systemd/1config-guards.service")" -eq 3 ] \
-   && [ "$(grep '^ExecStart=' "$AGENTS_HOME/systemd/1config-guards.service" | sed -n '1p;2p' | tr '\n' ' ')" \
-        = "ExecStart=-%h/cron-jobs/agents-symlink-guard/check-links.sh ExecStart=-%h/cron-jobs/agents-symlink-guard/merge-strays.sh " ] \
+   && [ "$(grep '^ExecStart=' "$AGENTS_HOME/systemd/1config-guards.service" | tr '\n' ' ')" \
+        = "ExecStart=-%h/cron-jobs/agents-symlink-guard/check-links.sh ExecStart=-%h/cron-jobs/claude-memory-guard/check-memory.sh " ] \
    && grep -qx 'WantedBy=default.target' "$AGENTS_HOME/systemd/1config-updater.service"; then
-  ok "systemd units: daily timer with catch-up, guard then merge then memory, updater at login"
+  ok "systemd units: daily timer with catch-up, link guard then memory guard, updater at login"
 else
   bad "systemd/ units missing, or the guard chain / catch-up / login start drifted"
 fi
@@ -2867,10 +2806,11 @@ fi
 _sc_install STUB_NO_MANAGER=1
 if [ "$_rc" -eq 0 ] && [ "$(_sc_env STUB_NO_MANAGER=1 bash "$HOOKS/scheduler.sh" status)" = "cron" ] \
    && grep -qx '0 3 \* \* \* /usr/local/bin/my-own-job' "$_sc/crontab.txt" \
-   && grep -q "^@daily .*check-links.sh; .*merge-strays.sh; .*check-memory.sh\$" "$_sc/crontab.txt" \
+   && grep -q "^@daily .*check-links.sh; .*check-memory.sh\$" "$_sc/crontab.txt" \
+   && ! grep -q 'merge-strays' "$_sc/crontab.txt" \
    && grep -q '^@reboot .*boot-check.sh$' "$_sc/crontab.txt" \
    && [ ! -e "$_sc/home/.config/systemd/user/1config-guards.timer" ]; then
-  ok "scheduler: no user manager falls back to cron, guard and merge on one line"
+  ok "scheduler: no user manager falls back to cron, both guards on one line, the old merge line gone"
 else
   bad "scheduler: cron fallback is wrong (exit $_rc)"
 fi
@@ -2906,7 +2846,7 @@ else
     cron)
       ct="$(crontab -l 2>/dev/null || true)"
       echo "$ct" | grep -q 'agents-symlink-guard/check-links.sh' && ok "crontab symlink guard" || bad "crontab missing symlink guard"
-      echo "$ct" | grep -q 'check-links.sh; .*agents-symlink-guard/merge-strays.sh' && ok "crontab stray-merge follows the guard" || bad "crontab stray-merge is not chained after the guard (run setup.sh)"
+      echo "$ct" | grep -q 'merge-strays.sh' && bad "crontab still runs the retired stray merge (run setup.sh)" || ok "crontab does not run the retired stray merge"
       echo "$ct" | grep -q 'claude-memory-guard/check-memory.sh' && ok "crontab memory guard" || bad "crontab missing memory guard"
       echo "$ct" | grep -q 'ai-terminal-tools-update-on-boot/boot-check.sh' && ok "crontab tool updater" || bad "crontab missing tool updater"
       ;;

@@ -316,7 +316,7 @@ When the user says **`continue_project <path>`** (example: `continue_project $HO
 1. Resolve `<path>` (absolute or relative). Must be a directory. If missing/invalid → stop and say so.
 2. **Residue / conflict check (all tools):**
    - Memory: if `~/cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE` or `~/.agents/backups/claude-residue/PENDING.md` or `<path>/claude_memory_import.md` exists → process memory residue merge (Memory policy) **before** relying on project files.
-   - Symlinks: if `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` exists → process symlink conflict merge (see Cron guards) before editing global rules.
+   - Symlinks: if `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` exists → tell the user and name the stray files (see Cron guards). Do not merge them.
 3. **Notes pull, before any read:** `bash ~/.agents/hooks/notes-sync.sh pull <path>`. A missing real clone is created from `NOTES_REMOTE` once. If that fails, stdout is `notes: skipped` plus the setup hint, and nothing is invented. A fetch that fails (offline) is also `notes: skipped`, with the reason on stderr; the local files may then be behind the other machine. `notes: merged` means both machines' copies are in the file. Read that file. A merged `session_compact.md` has both copies under `notes-sync-merge`. Both are current. Do not drop either machine's open items. The next checkpoint rewrites one compact. Exit `23`: merge refused (one side deleted the file while the other edited it, or the path is not markdown and will not 3-way clean). Stop. Do not overwrite it and do not read past it. Foreign "write the missing `AGENTS.md`" runs only after this pull, and only if that path is still absent.
 4. **Read, in order** (only if the file exists):
    1. `<path>/session_compact.md` — where we left off (AI handoff; **required read when present**)
@@ -591,7 +591,7 @@ Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does
 
 ### On session start
 
-0. **Residue / conflict check:** memory (`NEEDS-MEMORY-MERGE` / `PENDING.md` / project `claude_memory_import.md`) and/or symlink (`NEEDS-SYMLINK-MERGE`) — process first (Memory policy + Cron guards).
+0. **Residue / conflict check:** memory (`NEEDS-MEMORY-MERGE` / `PENDING.md` / project `claude_memory_import.md`) — process first (Memory policy). Symlink (`NEEDS-SYMLINK-MERGE`) — tell the user and name the stray files; do not merge them (Cron guards).
 0.5. **Notes pull** when the project root is a git checkout: `bash ~/.agents/hooks/notes-sync.sh pull <project-root>`, before reading `session_compact.md`. Missing clone: the pull tries setup once; failure stays `notes: skipped`. `notes: merged`: the compact has both machines' copies. Keep every open item from both. Exit `23`: stop, do not overwrite the file.
 1. If `session_compact.md` exists in the project root, read it first — it says where we left off.
 2. Read project `AGENTS.md` and `docs/DECISIONS.md` if they exist.
@@ -641,14 +641,14 @@ Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does
 | Symlink | `~/.agents/hooks/check-links.sh` | `~/cron-jobs/agents-symlink-guard/check-links.sh` | `NEEDS-SYMLINK-MERGE` | Keep the 4 AGENTS symlinks healthy |
 | Tool memory | `~/.agents/hooks/check-claude-memory.sh` | `~/cron-jobs/claude-memory-guard/check-memory.sh` | `NEEDS-MEMORY-MERGE` | Detect Claude/Grok memory residue → archive → stage → wipe to stub |
 
-Both installed by `setup.sh` (copy from `hooks/`). Schedule: `1config-guards.timer`, a systemd user timer. It runs daily, catches up a missed day, and runs two minutes after login. One run is the symlink guard, then the stray merge (`~/.agents/hooks/merge-strays.sh`, see Symlink conflict section below), then the memory guard. A machine with no systemd user manager gets the same chain in cron. `hooks/scheduler.sh` picks, and leaves exactly one of the two installed.
+Both installed by `setup.sh` (copy from `hooks/`). Schedule: `1config-guards.timer`, a systemd user timer. It runs daily, catches up a missed day, and runs two minutes after login. One run is the symlink guard, then the memory guard. No script merges a stray rules file (see the Symlink conflict section below). A machine with no systemd user manager gets the same chain in cron. `hooks/scheduler.sh` picks, and leaves exactly one of the two installed.
 
 **Two different flags — do not mix them up:**
 
 | Flag path | Meaning |
 |-----------|---------|
 | `~/cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE` | Staged Claude/Grok memory residue to merge into markdown |
-| `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` | Quarantined divergent global-rules file under `backups/strays/` |
+| `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` | A divergent global-rules file kept under `backups/strays/`, waiting for the user |
 
 ### Claude/Grok residue → merge into standard files (AI duty)
 
@@ -672,14 +672,12 @@ Cron **cannot** judge “important facts” (no LLM). It only stages. **You (the
 3. Delete processed `claude_memory_import.md`. Remove processed packet lines from `PENDING.md`; if empty, delete `PENDING.md` and the `NEEDS-MEMORY-MERGE` flag.
 4. Never re-create tool memory stores. Never leave durable facts only in the archive. Do not write `session_transcript.md`.
 
-### Symlink conflict → merge into canonical (AUTOMATED)
+### Symlink conflict → the stray waits for the user
 
-**`~/.agents/hooks/merge-strays.sh` does this automatically** (same scheduled run, right after the guard): each quarantined stray is fed to a headless LLM ("extract unique durable rules not already in canonical → one markdown section or SKIP"), output is sanitized and appended to canonical, the stray is deleted, the flag cleared. That model runs with no tools, and the first installed CLI that answers is used (claude, then grok, then opencode). A reply that contains a name from `hooks/kill-tokens.deny` is not appended; the stray stays for a human. Nothing to type when the reply is clean.
+`hooks/check-links.sh` copies a diverged rules file to `~/.agents/backups/strays/`, restores the link, and lists the copy in `NEEDS-SYMLINK-MERGE`. No script and no model merges it into this file: every tool obeys this file, so what enters it is the user's decision.
 
-**You (AI/human) intervene only when:** the flag survives two merge runs (LLM failing), or you want to relocate merged content from the file tail into its proper section.
+When the flag exists:
 
-Manual procedure (fallback only):
-1. Read each listed file under `~/.agents/backups/strays/`.
-2. If it has unique durable rules not already in `~/.agents/AGENTS.md`, merge those into the canonical file (this file).
-3. Delete the processed stray file path lines from `NEEDS-SYMLINK-MERGE`; if empty, delete the flag.
-4. Symlinks should already point at the canonical file (guard re-linked them).
+1. Tell the user, and name each stray file the flag lists. Do not merge it.
+2. Merge only the lines the user asks for, as a normal brain edit (`setup.sh`, then `sync.sh`).
+3. Delete a stray file only when the user says it is done. The guard then drops its line, and the flag with the last line.

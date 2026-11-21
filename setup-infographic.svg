@@ -90,9 +90,9 @@
   <text x="1132" y="386" font-size="12" fill="#79c0ff">1config-guards.timer · daily + at login</text>
   <text x="1132" y="404" font-size="12" fill="#8b949e">one chain · cron where no user manager</text>
   <text x="1132" y="424" font-size="12" fill="#79c0ff">1 symlink guard · heals 4 rules links</text>
-  <text x="1132" y="442" font-size="12" fill="#79c0ff">2 merge-strays.sh · LLM with no tools</text>
-  <text x="1132" y="460" font-size="12" fill="#79c0ff">3 memory guard · residue → stage → stub</text>
-  <text x="1132" y="478" font-size="12" fill="#8b949e">strays quarantined → merged → canonical</text>
+  <text x="1132" y="442" font-size="12" fill="#79c0ff">2 memory guard · residue → stage → stub</text>
+  <text x="1132" y="460" font-size="12" fill="#8b949e">a stray rules file is kept and flagged</text>
+  <text x="1132" y="478" font-size="12" fill="#8b949e">a person merges it · no script, no model</text>
   <text x="1132" y="500" font-size="12" fill="#79c0ff">updater: user service @login · resume shim</text>
   <text x="1132" y="518" font-size="12" fill="#8b949e">skips mise-managed · refreshes inventory</text>
   <text x="1132" y="538" font-size="12" fill="#79c0ff">boot-dashboard @login (XDG, Wayland+X11)</text>

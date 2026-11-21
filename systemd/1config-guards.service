@@ -1,13 +1,11 @@
 [Unit]
-Description=1config guards: rules symlinks, stray merge, tool-memory residue
+Description=1config guards: rules symlinks, tool-memory residue
 Documentation=file://%h/.agents/SETUP.md
 
 [Service]
 Type=oneshot
-# One ordered chain. The stray merge reads the flag the symlink guard raises,
-# so it has to run after it. A leading "-" keeps the chain going when a guard
-# exits non-zero: check-links.sh exits 2 exactly when there is a stray to merge.
+# One ordered chain. A leading "-" keeps it going when a guard exits non-zero:
+# check-links.sh exits 2 while a stray rules file waits for a person.
 ExecStart=-%h/cron-jobs/agents-symlink-guard/check-links.sh
-ExecStart=-%h/cron-jobs/agents-symlink-guard/merge-strays.sh
 ExecStart=-%h/cron-jobs/claude-memory-guard/check-memory.sh
 TimeoutStartSec=15min

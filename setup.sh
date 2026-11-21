@@ -754,7 +754,6 @@ if ! live; then
   _n=0
   for pair in \
     "hooks/check-links.sh:$GUARD_DIR/check-links.sh" \
-    "hooks/merge-strays.sh:$GUARD_DIR/merge-strays.sh" \
     "hooks/check-claude-memory.sh:$MEM_GUARD_DIR/check-memory.sh" \
     "updater/boot-check.sh:$UPD_DIR/boot-check.sh" \
     "updater/update-apps.sh:$UPD_DIR/update-apps.sh" \
@@ -841,18 +840,16 @@ else
   log "WARNING: updater/ missing — copy ~/.agents fully; skipping updater install"
 fi
 
-# --- 7c stray-merge (AI) hook: source hooks/merge-strays.sh ------------------
-echo "[7c] stray-merge hook (AI merge of quarantined strays)"
-MERGE_SRC="$AGENTS_HOME/hooks/merge-strays.sh"
-if [ -f "$MERGE_SRC" ]; then
-  if [ -f "$GUARD_DIR/merge-strays.sh" ] && ! cmp -s "$MERGE_SRC" "$GUARD_DIR/merge-strays.sh"; then
-    cp -p "$GUARD_DIR/merge-strays.sh" "$BACKUP_DIR/merge-strays.sh" 2>/dev/null || true
-  fi
-  cp -p "$MERGE_SRC" "$GUARD_DIR/merge-strays.sh"
-  chmod +x "$GUARD_DIR/merge-strays.sh" "$MERGE_SRC"
-  log "refreshed $GUARD_DIR/merge-strays.sh (from hooks/)"
+# --- 7c the stray merge is retired ---------------------------------------------
+# A stray rules file waits for a person (hooks/check-links.sh). An installed copy
+# of the old merge script is moved to this run's backups, not left to run.
+echo "[7c] retired stray-merge script"
+if [ -e "$GUARD_DIR/merge-strays.sh" ]; then
+  mkdir -p "$BACKUP_DIR"
+  mv "$GUARD_DIR/merge-strays.sh" "$BACKUP_DIR/merge-strays.sh"
+  log "moved the retired $GUARD_DIR/merge-strays.sh to $BACKUP_DIR"
 else
-  log "WARNING: hooks/merge-strays.sh missing — skip"
+  log "ok       no retired merge script installed"
 fi
 
 # --- 8 scheduler (source: hooks/scheduler.sh + systemd/) ----------------------

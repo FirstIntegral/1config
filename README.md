@@ -210,7 +210,7 @@ A few examples of the mechanical guards in this repo so nothing silently drifts 
   - Claude Code `2.1.277+` loads project `AGENTS.md` natively unless a project `CLAUDE.md` suppresses it. To prevent injecting the file twice into the context window, the `SessionStart` hook checks `claude --version`, `pluginConfigs` instruction mode, and parent dirs for suppressing `CLAUDE.md` files — printing `AGENTS.md` (capped at `AGENTS_CAP=20480` bytes) only when native loading will not happen.
 - **Dual-signal staleness & retired token bans (`hooks/watch-stale.sh`, `hooks/kill-tokens.deny`):**
   - `watch-stale.sh` declares `STALE` only when **both** log growth is 0 bytes and `/proc/<pid>/stat` fields 14+15 (`utime+stime`, parsed after the last `)` in `comm`) use `<1s` CPU over the 10-minute window.
-  - `hooks/kill-tokens.deny` blocks retired names from re-entering prompts, templates, or LLM stray merges (`merge-strays.sh`).
+  - `hooks/kill-tokens.deny` blocks retired names from re-entering prompts and templates.
 
 ## Skills
 

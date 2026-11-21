@@ -176,13 +176,15 @@ check_link_guard() {
     row fail "link guard" "missing"
     return 1
   fi
-  if "$GUARD_DIR/check-links.sh" >/dev/null 2>&1; then
+  # `rc=$?` after an `if ...; fi` is always 0, so the code is taken here.
+  local rc=0
+  "$GUARD_DIR/check-links.sh" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 0 ]; then
     row ok "link guard" "healthy"
     return 0
   fi
-  local rc=$?
   if [ -f "$GUARD_DIR/NEEDS-SYMLINK-MERGE" ]; then
-    row warn "link guard" "NEEDS-SYMLINK-MERGE set"
+    row warn "link guard" "a stray rules file waits for you: $(head -n 1 "$GUARD_DIR/NEEDS-SYMLINK-MERGE") — read it, merge by hand, delete it"
     return 1
   fi
   row warn "link guard" "exit $rc (see check-links.log)"
