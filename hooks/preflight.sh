@@ -10,8 +10,8 @@
 # replaced. This script asks the same questions first and changes nothing.
 # Each line it prints names the fix.
 #
-# It reads this checkout (the directory above hooks/), git config, and the gpg
-# keyring. It writes no file and opens no network connection. gpg creates its
+# It reads this checkout (the directory above hooks/), git config, the gpg
+# keyring, ~/.grok/config.toml, and local.json. It writes no file and opens no network connection. gpg creates its
 # home directory the first time anything asks it a question, so on a machine
 # with no gpg home yet this script does not ask: no keyring means no key.
 set -uo pipefail
@@ -99,6 +99,19 @@ if [ "$fork_hint" = 0 ] && git -C "$ROOT" rev-parse --verify -q HEAD >/dev/null 
             "someone else's repo, cloned directly: fork it, clone your fork, then" \
             "  bash $ROOT/bin/1config fork-init" ;;
   esac
+fi
+
+# setup.sh edits two files it does not own in a way that can fail: Grok's
+# config.toml (three switches, then the permission table) and local.json.
+# Both are asked now, so a file setup cannot edit stops it before the first write.
+if [ -f "$HOME/.grok/config.toml" ] && [ -f "$ROOT/hooks/grok-config.py" ]; then
+  why="$(python3 "$ROOT/hooks/grok-config.py" switches "$HOME/.grok/config.toml" --check 2>&1)" \
+    || miss "setup.sh cannot edit ~/.grok/config.toml safely" "${why#grok-config: }"
+fi
+if [ -f "$ROOT/local.json" ] && [ -f "$ROOT/hooks/local-rules.py" ]; then
+  _lr_rc=0
+  why="$(python3 "$ROOT/hooks/local-rules.py" check --local-json "$ROOT/local.json" 2>&1 >/dev/null)" || _lr_rc=$?
+  [ "$_lr_rc" -ne 2 ] || miss "local.json cannot be read" "${why#local-rules: }"
 fi
 
 if [ "$n" -gt 0 ]; then

@@ -16,7 +16,10 @@ tool, in the place that tool always loads:
 
 No `caveman` key, the value `full`, or no local.json at all removes those four
 again. `check` exits 1 when what is installed differs from what local.json asks
-for. --home and --local-json are for verify.sh only.
+for. A local.json that is not a JSON object, or a `caveman` value that is not
+off, lite, full, or ultra, is exit 2: a typo must not read as "no override".
+--backup-dir DIR saves opencode.jsonc there before this script rewrites it (the
+rewrite drops comments). --home and --local-json are for verify.sh only.
 """
 import argparse
 import json
@@ -98,13 +101,28 @@ def load_jsonc(text):
 
 
 def wanted_level(local_json):
+    """The level to install, or None for the default. Exits 2 on a file or a value it cannot read."""
     if not local_json.is_file():
         return None
     try:
-        value = json.loads(local_json.read_text()).get("caveman")
-    except (ValueError, AttributeError):
+        data = json.loads(local_json.read_text())
+    except ValueError as e:
+        sys.exit(_usage_error(f"{local_json} is not valid JSON ({e}). Fix it or delete it."))
+    if not isinstance(data, dict):
+        sys.exit(_usage_error(f"{local_json} must hold one JSON object."))
+    if "caveman" not in data:
         return None
-    return value if value in LEVELS else None
+    value = data["caveman"]
+    if value == "full":
+        return None
+    if not isinstance(value, str) or value not in LEVELS:
+        sys.exit(_usage_error(f'{local_json}: "caveman" must be "off", "lite", "full", or "ultra", not {value!r}.'))
+    return value
+
+
+def _usage_error(msg):
+    print(f"local-rules: {msg}", file=sys.stderr)
+    return 2
 
 
 def targets(home):
@@ -129,6 +147,7 @@ def main():
     ap.add_argument("mode", choices=["apply", "check"])
     ap.add_argument("--home", default=str(pathlib.Path.home()))
     ap.add_argument("--local-json", default=None)
+    ap.add_argument("--backup-dir", default=None)
     args = ap.parse_args()
 
     home = pathlib.Path(args.home)
@@ -153,6 +172,13 @@ def main():
             path.write_text(want)
             changed.append(f"wrote {path}")
 
+    def save_opencode():
+        # json.dumps drops the comments a .jsonc file may hold. Keep the file as it was.
+        if args.backup_dir and oc_cfg.is_file():
+            dest = pathlib.Path(args.backup_dir) / "opencode-local-rules.jsonc"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(oc_cfg.read_bytes())
+
     present, cfg = opencode_entry_present(oc_cfg)
     if bool(level) != present:
         if args.mode == "check":
@@ -166,12 +192,14 @@ def main():
             entries.append(OC_ENTRY)
             cfg["instructions"] = entries
             oc_cfg.parent.mkdir(parents=True, exist_ok=True)
+            save_opencode()
             oc_cfg.write_text(json.dumps(cfg, indent=2) + "\n")
             changed.append(f"listed {OC_ENTRY} in {oc_cfg}")
         else:
             cfg["instructions"] = [e for e in cfg["instructions"] if e != OC_ENTRY]
             if not cfg["instructions"]:
                 del cfg["instructions"]
+            save_opencode()
             oc_cfg.write_text(json.dumps(cfg, indent=2) + "\n")
             changed.append(f"unlisted {OC_ENTRY} in {oc_cfg}")
 

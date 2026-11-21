@@ -232,35 +232,10 @@ GROK_CFG="$TARGET_HOME/.grok/config.toml"
 if [ -f "$GROK_CFG" ]; then
   cp -p "$GROK_CFG" "$BACKUP_DIR/"
 fi
-GROK_CFG="$GROK_CFG" python3 - <<'PYEOF'
-import os, re, pathlib
-p = pathlib.Path(os.environ["GROK_CFG"])
-text = p.read_text() if p.exists() else "# grok config — created by ~/.agents/setup.sh\n"
-
-def set_key(text, section, key, value):
-    if not re.search(rf"(?m)^\[{re.escape(section)}\]\s*$", text):
-        return text.rstrip() + f"\n\n[{section}]\n{key} = {value}\n"
-    lines = text.splitlines()
-    start = next(i for i, l in enumerate(lines) if l.strip() == f"[{section}]")
-    end = next((i for i in range(start + 1, len(lines))
-                if lines[i].lstrip().startswith("[")), len(lines))
-    for i in range(start + 1, end):
-        if re.match(rf"\s*{re.escape(key)}\s*=", lines[i]):
-            lines[i] = re.sub(r"=.*$", f"= {value}", lines[i])
-            return "\n".join(lines) + "\n"
-    lines.insert(start + 1, f"{key} = {value}")
-    return "\n".join(lines) + "\n"
-
-for section, key, value in [
-    ("compat.claude", "agents", "false"),   # no double-read of CLAUDE.md
-    ("compat.claude", "rules", "false"),
-    ("memory", "enabled", "false"),         # memory lives in shared markdown
-]:
-    text = set_key(text, section, key, value)
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(text)
-print("  set      [compat.claude] agents/rules=false, [memory] enabled=false")
-PYEOF
+# The edit is parsed before it is written. A file this script cannot edit
+# safely stops setup here; the preflight asks the same question earlier.
+python3 "$AGENTS_HOME/hooks/grok-config.py" switches "$GROK_CFG" \
+  || die "could not set the Grok switches in $GROK_CFG (see the line above); nothing was written to it"
 # Backup dedupe: drop the pre-copy if nothing changed
 if [ -f "$BACKUP_DIR/$(basename "$GROK_CFG")" ] && cmp -s "$GROK_CFG" "$BACKUP_DIR/$(basename "$GROK_CFG")"; then
   rm -f "$BACKUP_DIR/$(basename "$GROK_CFG")"
@@ -488,7 +463,11 @@ def render(bucket):
 section = "[permission]\n" + render("allow") + render("ask") + render("deny")
 
 lines = text.splitlines()
-start = next((i for i, l in enumerate(lines) if l.strip() == "[permission]"), None)
+# A header may be indented or carry a comment after it.
+def is_header(line, name):
+    return re.fullmatch(rf"\s*\[\s*{re.escape(name)}\s*\]\s*(#.*)?", line) is not None
+
+start = next((i for i, l in enumerate(lines) if is_header(l, "permission")), None)
 if start is None:
     text = text.rstrip() + "\n\n" + section
 else:
@@ -507,7 +486,7 @@ else:
 MODE_LINE = f'permission_mode = {json.dumps(want_mode)}'
 before_ui = text
 lines = text.splitlines()
-ui = next((i for i, l in enumerate(lines) if l.strip() == "[ui]"), None)
+ui = next((i for i, l in enumerate(lines) if is_header(l, "ui")), None)
 if ui is None:
     lines += ["", "[ui]", MODE_LINE]
 else:
@@ -721,8 +700,8 @@ echo "[5f] local.json overrides → per-tool local rule"
 LOCAL_RULES="$AGENTS_HOME/hooks/local-rules.py"
 if [ -f "$LOCAL_RULES" ]; then
   live && chmod +x "$LOCAL_RULES"
-  python3 "$LOCAL_RULES" apply --home "$TARGET_HOME" --local-json "$LOCAL_JSON" \
-    || die "hooks/local-rules.py apply failed"
+  python3 "$LOCAL_RULES" apply --home "$TARGET_HOME" --local-json "$LOCAL_JSON" --backup-dir "$BACKUP_DIR" \
+    || die "hooks/local-rules.py apply failed (see the line above)"
 else
   log "WARNING: hooks/local-rules.py missing — a local.json caveman level is not applied"
 fi
@@ -1062,10 +1041,13 @@ echo "[omarchy-plugin] firstintegral.1config"
 PLUGIN_SRC="$AGENTS_HOME/omarchy-plugin/firstintegral.1config"
 PLUGIN_DST="$HOME/.config/omarchy/plugins/firstintegral.1config"
 if [ -d "$HOME/.config/omarchy/plugins" ] && [ -f "$PLUGIN_SRC/manifest.json" ]; then
-  case "$PLUGIN_DST" in
-    "$HOME/.config/omarchy/plugins/firstintegral.1config") ;;
-    *) die "refusing unexpected plugin destination: $PLUGIN_DST" ;;
+  # The directory below is removed and copied again. It must be the plugin's
+  # own directory under a real home, and not a link to somewhere else.
+  case "$HOME" in
+    /?*) ;;
+    *) die "HOME is not an absolute path: '$HOME'" ;;
   esac
+  [ ! -L "$PLUGIN_DST" ] || die "refusing to replace $PLUGIN_DST: it is a symlink"
   chmod +x "$PLUGIN_SRC/bin/usage.py"
   rm -rf "$PLUGIN_DST"
   mkdir -p "$PLUGIN_DST"

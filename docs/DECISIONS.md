@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — Config edits are parsed before they are written, and the preflight asks first
+
+**Policy:** grok_config_edit=parse-before-write
+
+**Decision:** Step 2 of `setup.sh` is `hooks/grok-config.py switches`. It edits `~/.grok/config.toml` by line, parses the result, reads the three switches back, and writes only then. `hooks/preflight.sh` runs it with `--check`, which also names a `[permission]` key that step `5c` would stop on. `hooks/local-rules.py` exits 2 on a `local.json` that is not a JSON object and on a `caveman` value outside `off`, `lite`, `full`, `ultra`, and it saves `opencode.jsonc` to the run's backups before a rewrite. The plugin copy in `setup.sh` checks that `HOME` is absolute and that the plugin directory is not a symlink before `rm -rf`.
+
+**Why:** Step 2 was an inline editor with no check. For `[memory] # note`, an indented header, `memory.enabled = true`, `claude.agents = true` under `[compat]`, and an inline table, it appended a second table and left a file Grok could not read; each case was run against the old code and each one wrote invalid TOML. An extra `[permission]` key stopped `setup.sh` at step `5c`, after the rules links and two tool configs were already replaced. A misspelled `caveman` level, or a `local.json` with a missing brace, read as "no override". The guard before the plugin `rm -rf` compared a variable with the literal it was assigned from one line above.
+
+**Rejected:** A TOML writer from PyPI: `setup.sh` runs on a new machine before anything is installed. Rewriting the whole file from the parsed data: comments and key order are the person's. Editing an inline table: rare, and stopping with the key to set is one line for the person.
+
 ## 2026-11-21 — The memory wipe checks its archive, and the stub is the whole file
 
 **Policy:** memory_wipe=archive-compared-first
