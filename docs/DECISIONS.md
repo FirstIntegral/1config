@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — Signing: the same key, with no passphrase
+
+**Policy:** signing=key-no-passphrase
+
+**Decision:** The owner's signing key keeps its identity and loses its passphrase, one machine at a time (`gpg --passwd <fingerprint>`, empty new passphrase). The first machine was done on 2026-11-21. The unlock hooks (`gpg-agent-unlock.sh`, `gpg-store-passphrase.sh`, `gpg-keyring.py`, `gpg-git.sh`) and `vendor/` stay until the second machine is done too, and are deleted then. `verify.sh` prints, per machine, whether the key there still has a passphrase. A signing subkey per machine with the primary key offline stays possible later: `BRAIN_SIGNERS.asc` and the gate's import already carry a new subkey to another machine.
+
+**Why:** The passphrase sat in a keyring collection with an empty master password, so any process that runs as the user could read it. It cost four hooks, a vendored D-Bus library, and a login step, and it protected only against a copy of `~/.gnupg` that leaks without the keyring file next to it. The owner chose this over the subkey path on 2026-11-21: the subkey path pays off only when the primary key moves to an offline drive, and there is none at hand. Checked on the first machine: with the agent stopped and pinentry disabled, a signature is made.
+
+**Rejected:** Subkeys now, with the "offline" copy in a folder on the same disk: ten steps for the same exposure. Deleting the hooks today: the second machine's key still has its passphrase, and without `gpg-git.sh` it would open a pinentry window at a commit.
+
 ## 2026-11-21 — A piped check reads all of its input
 
 **Policy:** piped_checks=has-reads-all

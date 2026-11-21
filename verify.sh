@@ -1663,8 +1663,9 @@ fi
 
 # --- gpg unlock hooks --------------------------------------------------------
 echo "[gpg hooks]"
-# Where this machine stands on the move to a signing subkey with no passphrase.
-# An INFO, not a fault: the unlock hooks below exist for a key that has one.
+# Where this machine stands on the move to a signing key with no passphrase
+# (docs/DECISIONS.md, "Signing: the same key, with no passphrase"). A key that
+# still has one is an INFO, not a fault: the unlock hooks below exist for it.
 # Field 8 of KEYINFO is P (under a passphrase) or C (in the clear). A test
 # signature cannot tell the two apart, because a cached passphrase signs too.
 if machine && command -v gpg-connect-agent >/dev/null 2>&1; then
@@ -1684,7 +1685,7 @@ if machine && command -v gpg-connect-agent >/dev/null 2>&1; then
   if [ "$_sk_any" = 1 ] && [ "$_sk_clear" = 1 ] && [ "$_sk_stub" = 1 ]; then
     ok "this machine signs with a subkey that has no passphrase, and the primary secret key is not here"
   elif [ "$_sk_any" = 1 ] && [ "$_sk_clear" = 1 ]; then
-    info "the signing key here has no passphrase, but the primary secret key is still on this machine"
+    ok "the signing key on this machine has no passphrase: it signs with no unlock step"
   elif [ "$_sk_any" = 1 ]; then
     info "the signing key here is under a passphrase: the unlock hooks are still needed on this machine"
   fi
