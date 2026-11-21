@@ -104,7 +104,7 @@ git -C ~/.agents merge --ff-only origin/main
 bash ~/.agents/setup.sh
 ```
 
-`setup.sh` is idempotent: re-copies hooks, refreshes the scheduled guards, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. 1config does not edit your `.profile` and does not link a tool binary into `~/.local/bin`. The one link it makes there is its own `1config` command.
+`setup.sh` is idempotent: re-copies hooks, refreshes the scheduled guards, re-fans permissions, rewrites the autostart `Exec=` to *this* `$HOME`. Live CLI versions go to **gitignored** `inventory.local.md`, so an Ubuntu box pulling Omarchy-era versions (or the reverse) no longer fails verify and no longer dirties git with a version-table fight. That table uses login `command -v` first, then the vendor dirs the updater already knows (`~/.opencode/bin`, `~/.grok/bin`, `~/.local/bin`) — Ubuntu's official OpenCode installer is visible even though its PATH line lives behind `.bashrc`'s interactive-guard; an Omarchy mise shim on login PATH still wins. `setup.sh` does not edit your `.profile` and links no tool binary. The one link it makes in `~/.local/bin` is its own `1config` command. The boot updater is the exception to name: when it installs a new Claude Code version itself, it repoints `~/.local/bin/claude` at that version, as Claude's own installer does.
 
 ## One command, and the way out
 
@@ -217,7 +217,7 @@ A few examples of the mechanical guards in this repo so nothing silently drifts 
   - Global `AGENTS.md` is kept at ~1.4% of a 1M-token window (under the 3% ceiling).
   - Claude Code `2.1.277+` loads project `AGENTS.md` natively unless a project `CLAUDE.md` suppresses it. To prevent injecting the file twice into the context window, the `SessionStart` hook checks `claude --version`, `pluginConfigs` instruction mode, and parent dirs for suppressing `CLAUDE.md` files — printing `AGENTS.md` (capped at `AGENTS_CAP=20480` bytes) only when native loading will not happen.
 - **Dual-signal staleness & retired token bans (`hooks/watch-stale.sh`, `hooks/kill-tokens.deny`):**
-  - `watch-stale.sh` declares `STALE` only when **both** log growth is 0 bytes and `/proc/<pid>/stat` fields 14+15 (`utime+stime`, parsed after the last `)` in `comm`) use `<1s` CPU over the 10-minute window.
+  - `watch-stale.sh` declares `STALE` only when **both** log growth is 0 bytes and `/proc/<pid>/stat` fields 14 to 17 (`utime`, `stime`, `cutime`, `cstime`, parsed after the last `)` in `comm`), summed over the pid and its descendants, use `<1s` CPU over the 10-minute window.
   - `hooks/kill-tokens.deny` blocks retired names from re-entering prompts and templates.
 
 ## Skills

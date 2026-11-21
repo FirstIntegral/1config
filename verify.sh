@@ -3639,6 +3639,7 @@ printf '%s\n' '# Accepted origin URLs for this brain.' 'https://git.example.test
 printf '%s\n' '# Signers this brain accepts.' 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' > "$_fk/brain/BRAIN_SIGNERS"
 printf '%s\n' 'git@git.example.test:Upstream/machine-notes.git' > "$_fk/brain/NOTES_REMOTE"
 printf '%s\n' '# Forks we contribute back to.' 'Upstream/tool Parent/tool' > "$_fk/brain/fork-parents.txt"
+printf '%s\n' '# Rules' '' 'This tree is **1config**. The GitHub repo is `Upstream/brain` (`git@git.example.test:Upstream/brain.git`, `https://git.example.test/Upstream/brain.git`). On this machine the checkout is `~/.agents/`.' > "$_fk/brain/AGENTS.md"
 printf '%s\n' '[user]' '	name = fork owner' '	email = owner@fixture.invalid' '	signingkey = '"$_k1" \
   '[init]' '	defaultBranch = main' '[commit]' '	gpgsign = true' > "$_fk/gitconfig-signed"
 _fk_plain() { env -u GPG_SIGNING_KEY HOME="$_fk/home" GIT_CONFIG_GLOBAL="$VTMP/gitconfig" GIT_CONFIG_NOSYSTEM=1 GNUPGHOME="$_gh" "$@"; }
@@ -3670,7 +3671,7 @@ if [ -n "$_k1" ]; then
   _rc=0; _fk_signed bash "$_fk/brain/bin/1config" fork-init >"$_fk/fi1.out" 2>&1 || _rc=$?
   if [ "$_rc" -eq 0 ] && grep -q '^== plan only' "$_fk/fi1.out" && grep -q '^--- BRAIN_SIGNERS' "$_fk/fi1.out" \
      && [ "$(git -C "$_fk/brain" rev-parse HEAD)" = "$_fk_head" ] && [ -z "$(git -C "$_fk/brain" status --porcelain)" ]; then
-    ok "fork-init without --yes prints the four diffs and changes nothing"
+    ok "fork-init without --yes prints the diffs and changes nothing"
   else
     bad "fork-init changed the fork without --yes, or printed no plan (exit $_rc)"
   fi
@@ -3683,9 +3684,11 @@ if [ -n "$_k1" ]; then
      && grep -q '^# Signers this brain accepts' "$_fk/brain/BRAIN_SIGNERS" \
      && [ "$(grep -v '^#' "$_fk/brain/NOTES_REMOTE")" = "git@git.example.test:Someone/notes.git" ] \
      && [ "$(_fk_signed git -C "$_fk/brain" log -1 --format='%G? %GP')" = "G $_k1" ] \
-     && [ "$(git -C "$_fk/brain" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt " ] \
+     && [ "$(git -C "$_fk/brain" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "AGENTS.md BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt " ] \
+     && grep -qF 'The GitHub repo is `Someone/Brain` (`git@git.example.test:Someone/Brain.git`, `https://git.example.test/Someone/Brain.git`). On this machine' "$_fk/brain/AGENTS.md" \
+     && ! grep -q 'Upstream' "$_fk/brain/AGENTS.md" \
      && [ -z "$(git -C "$_fk/brain" status --porcelain)" ]; then
-    ok "fork-init --yes rewrites the four owner files from origin and the signing key, in one signed commit"
+    ok "fork-init --yes rewrites the four owner files and the repo name in AGENTS.md, in one signed commit"
   else
     bad "fork-init --yes left an upstream line, or its commit is wrong (exit $_rc)"
   fi

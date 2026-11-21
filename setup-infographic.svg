@@ -79,7 +79,7 @@
   <text x="800" y="390" text-anchor="middle" font-size="12" fill="#8b949e">CANONICAL GLOBAL RULES — edit here (or via any symlink)</text>
   <text x="612" y="416" font-size="12" fill="#f85149">HARD: no AI attribution in commits/PRs</text>
   <text x="612" y="436" font-size="12" fill="#f85149">HARD: never bypass GPG commit signing</text>
-  <text x="612" y="456" font-size="12" fill="#f85149">HARD: transcript = user-only, AI never reads</text>
+  <text x="612" y="456" font-size="12" fill="#f85149">HARD: red lines wait for an explicit yes</text>
   <text x="612" y="476" font-size="12" fill="#e6edf3">caveman always on · tool parity</text>
   <text x="612" y="496" font-size="12" fill="#e6edf3">triggers: create · continue · checkpoint ·</text>
   <text x="612" y="516" font-size="12" fill="#e6edf3">writepaper · explain_thing · global_brain_update</text>
@@ -150,12 +150,12 @@
 
   <!-- ===== PER-PROJECT STANDARD ===== -->
   <rect x="130" y="756" width="1340" height="430" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
-  <text x="800" y="790" text-anchor="middle" font-size="17" font-weight="bold" fill="#e6edf3">PER-PROJECT — AGENTS · compact · transcript · DECISIONS · .gitignore (NO CLAUDE.md)</text>
+  <text x="800" y="790" text-anchor="middle" font-size="17" font-weight="bold" fill="#e6edf3">PER-PROJECT — AGENTS · compact · DECISIONS · .gitignore (NO CLAUDE.md)</text>
 
   <!-- AGENTS.md -->
   <rect x="160" y="812" width="627" height="100" rx="8" fill="#0d1117" stroke="#39d3e0" stroke-width="1.5"/>
   <text x="180" y="840" font-size="14" font-weight="bold" fill="#39d3e0">AGENTS.md</text>
-  <text x="180" y="862" font-size="12" fill="#e6edf3">canonical + ONLY project rules file — all tools (Claude via hook)</text>
+  <text x="180" y="862" font-size="12" fill="#e6edf3">canonical + ONLY project rules file — all four tools read it natively</text>
   <text x="180" y="882" font-size="12" fill="#8b949e">## Repo line documents remote (git config always wins)</text>
   <text x="180" y="900" font-size="12" fill="#8b949e">sites repos: kept local, never committed</text>
 
@@ -170,7 +170,7 @@
   <rect x="160" y="932" width="1280" height="118" rx="8" fill="#0d1117" stroke="#3fb950" stroke-width="1.5"/>
   <text x="180" y="960" font-size="14" font-weight="bold" fill="#3fb950">session_compact.md — AI HANDOFF</text>
   <text x="180" y="982" font-size="12" fill="#e6edf3">read FIRST at session start · REWRITE at end / milestone</text>
-  <text x="180" y="1002" font-size="12" fill="#8b949e">state · left-off · next step · decisions · open issues · Models used = CUMULATIVE list</text>
+  <text x="180" y="1002" font-size="12" fill="#8b949e">status card on top: How things are · Left to do · then decisions · Models used = CUMULATIVE</text>
   <text x="180" y="1022" font-size="12" fill="#d29922">gitignored in the project · setup.sh and login clone private machine-notes</text>
   <text x="180" y="1040" font-size="12" fill="#8b949e">session_transcript.md is retired — old files stay, do not read, do not sync, do not create</text>
 

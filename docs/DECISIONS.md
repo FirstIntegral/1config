@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — fork-init rewrites the repo name in a fork's AGENTS.md
+
+**Policy:** fork_repo_name=fork-init-rewrites-one-sentence
+
+**Decision:** `hooks/fork-init.sh` rewrites one sentence of `AGENTS.md`: "The GitHub repo is `owner/repo` (`git@host:owner/repo.git`, `https://host/owner/repo.git`)". It goes into the same signed commit as the four owner files. `AGENTS.md` no longer names the notes repo; it points at `NOTES_REMOTE`. A second run with the name already right is still a no-op.
+
+**Why:** After `fork-init`, a fork's rules still told every agent that the repo is `FirstIntegral/1config`. An agent told to change "the brain" reads that sentence as the place it edits and pushes. The owner chose the rewrite on 2026-11-21 over a sentence that names no repo.
+
+**Rejected:** A sentence that points at `BRAIN_REMOTE` and names no repo: the owner wants the name in the rules. Replacing every `FirstIntegral` in the file: the plugin id `firstintegral.1config` and the licence line are not the fork's to change.
+
 ## 2026-11-21 — verify.sh: a check runs the behaviour, says what it checked, and reads no machine in repo scope
 
 **Policy:** verify_checks=behaviour-first

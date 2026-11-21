@@ -14,7 +14,7 @@
 #   2. They fork and clone. setup.sh must stop before it changes anything, twice:
 #      once because signing is not set up, once because the fork still points
 #      at the upstream owner.
-#   3. `1config fork-init` plans, then writes the four owner files in one signed commit.
+#   3. `1config fork-init` plans, then writes the four owner files and the repo name in AGENTS.md in one signed commit.
 #   4. setup.sh installs and its own verify.sh ends in PASS with no warnings.
 #   5. What they had was saved before it was replaced, as README.md says.
 #   6. A project under their own owner is theirs: checkpoint.sh does not veto the push.
@@ -151,11 +151,12 @@ grep -qx 'git@git.example.test:Stranger/1config.git' "$A/BRAIN_REMOTE" || fail "
 [ -z "$(sed -n '/^#/d;/^$/d;p' "$A/NOTES_REMOTE")" ] || fail "NOTES_REMOTE still names a repo"
 [ "$(git -C "$A" log -1 --format='%G?')" = G ] || [ "$(git -C "$A" log -1 --format='%G?')" = U ] \
   || fail "the fork-init commit is not signed"
-[ "$(git -C "$A" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt " ] \
-  || fail "the fork-init commit holds something other than the four owner files"
+[ "$(git -C "$A" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "AGENTS.md BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt " ] \
+  || fail "the fork-init commit holds something other than the four owner files and AGENTS.md"
+grep -qF 'The GitHub repo is `Stranger/1config`' "$A/AGENTS.md" || fail "AGENTS.md still names the upstream repo"
 bash "$A/bin/1config" fork-init >"$OUT/fork-again.out" 2>&1 && grep -q 'Nothing to do' "$OUT/fork-again.out" \
   || fail "a second fork-init did not say there is nothing to do"
-ok "four files, one signed commit, a second run is a no-op"
+ok "four owner files and the repo name in AGENTS.md, one signed commit, a second run is a no-op"
 
 say "setup.sh: install, and its verify.sh must pass with no warnings"
 LAST="$OUT/setup.out"; rc=0

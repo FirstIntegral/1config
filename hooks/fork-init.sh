@@ -6,18 +6,20 @@
 #   bash ~/.agents/bin/1config fork-init --yes --notes URL   # also name your private notes repo
 #
 # Four tracked files say who owns a checkout. A fresh fork still carries the
-# upstream owner's four:
+# upstream owner's four, and AGENTS.md still names the upstream repo:
 #   BRAIN_REMOTE      the origin URLs sync.sh, verify.sh, and login sync accept, and
 #                     the host and owner checkpoint.sh treats as "ours"
 #   BRAIN_SIGNERS     the key fingerprints whose commits a login pull installs
 #   NOTES_REMOTE      the private machine-notes repo; no URL means notes are off
 #   fork-parents.txt  the upstream owner's own forks
+#   AGENTS.md         one sentence: "The GitHub repo is `owner/repo` (...)". The
+#                     agents take it as the name of this repo, so it is rewritten too.
 # Left alone, your projects never push (checkpoint exit 14), every login tries
 # to clone a private repo you cannot read, and the upstream owner's key stays
 # able to ship code to your machine. This script rewrites the four from what
 # this checkout already knows: its origin URL and git's signing key.
 #
-# It makes one commit that holds only those four files and does not push.
+# It makes one commit that holds only those files and does not push.
 # setup.sh comes next; sync.sh publishes.
 #
 # Exit 0 done, plan printed, or nothing to do · 1 cannot run (reason named) · 2 usage.
@@ -79,7 +81,12 @@ else
   already=0
 fi
 grep -qx "$FPR" "$ROOT/BRAIN_SIGNERS" 2>/dev/null || already=0
-if [ "$already" = 1 ] && [ -z "$NOTES" ]; then
+name_ok=1
+if [ -f "$ROOT/AGENTS.md" ] && grep -q 'The GitHub repo is `' "$ROOT/AGENTS.md" \
+   && ! grep -qF "The GitHub repo is \`$PATHPART\` " "$ROOT/AGENTS.md"; then
+  name_ok=0
+fi
+if [ "$already" = 1 ] && [ "$name_ok" = 1 ] && [ -z "$NOTES" ]; then
   echo "fork-init: origin and this machine's key are already listed. Nothing to do."
   exit 0
 fi
@@ -128,13 +135,32 @@ else
   header "$ROOT/fork-parents.txt" > "$TMP/fork-parents.txt"
 fi
 
+# The rules file names the repo in one sentence. An agent reads that sentence as
+# "this is the repo I edit and push", so a fork must not keep the upstream name.
+# Only that sentence changes. A file without it is left as it is.
+if [ -f "$ROOT/AGENTS.md" ]; then
+  NAME_LINE="The GitHub repo is \`$PATHPART\` (\`git@$HOST:$PATHPART.git\`, \`https://$HOST/$PATHPART.git\`)."
+  NAME_LINE="$NAME_LINE" python3 - "$ROOT/AGENTS.md" "$TMP/AGENTS.md" <<'PYNAME'
+import os
+import re
+import sys
+
+src, dst = sys.argv[1], sys.argv[2]
+text = open(src, encoding="utf-8").read()
+want = os.environ["NAME_LINE"]
+new = re.sub(r"The GitHub repo is `[^`\n]+` \(`[^`\n]+`, `[^`\n]+`\)\.", lambda _m: want, text, count=1)
+open(dst, "w", encoding="utf-8").write(new)
+PYNAME
+fi
+
 FILES=(BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt)
+[ -f "$TMP/AGENTS.md" ] && FILES+=(AGENTS.md)
 changed=()
 for f in "${FILES[@]}"; do
   cmp -s "$TMP/$f" "$ROOT/$f" || changed+=("$f")
 done
 if [ "${#changed[@]}" -eq 0 ]; then
-  echo "fork-init: the four files already say $HOST/$OWNER/$REPO and key $FPR. Nothing to do."
+  echo "fork-init: the owner files already say $HOST/$OWNER/$REPO and key $FPR. Nothing to do."
   exit 0
 fi
 
@@ -167,7 +193,7 @@ if git -C "$ROOT" commit -q -m "Point this fork at $HOST/$OWNER/$REPO" -- "${cha
   echo "Next:  bash $ROOT/setup.sh"
   echo "Then:  bash $ROOT/sync.sh -m \"<subject>\"     # publishes to ${ORIGINS[0]}"
 else
-  echo "fork-init: the commit failed (signing?). The four files are written and not committed." >&2
+  echo "fork-init: the commit failed (signing?). The files are written and not committed." >&2
   echo "fork-init: fix signing, then: git -C $ROOT commit -m \"Point this fork at $HOST/$OWNER/$REPO\" -- ${changed[*]}" >&2
   exit 1
 fi
