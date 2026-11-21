@@ -43,6 +43,8 @@ TOKEN_RE = re.compile(
     r"|\d+(?:--\d+)+"
     r"|-?\d{3,}"
     r")(?![A-Za-z0-9])(?!\.\d)"
+    # 0.85\linewidth is a layout factor, not a measurement.
+    r"(?!\s*\\(?:(?:line|text|column|paper)?(?:width|height)|baselineskip|hsize|vsize)(?![A-Za-z]))"
 )
 
 YEAR_RE = re.compile(r"^-?(?:19|20)\d{2}$")
@@ -101,11 +103,12 @@ def strip_comment(line: str) -> str:
     return line
 
 
-def parse_cfg(path: Path) -> tuple[str, set[str]]:
+def parse_cfg(path: Path) -> tuple[str, set[str], set[str]]:
     scope = "paper"
     skip: set[str] = set()
+    years: set[str] = set()
     if not path.is_file():
-        return scope, skip
+        return scope, skip, years
     for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.split("#", 1)[0].strip()
         if not line:
@@ -121,9 +124,16 @@ def parse_cfg(path: Path) -> tuple[str, set[str]]:
             if not re.fullmatch(r"[A-Za-z]+", value):
                 refuse("digit-refuse: refused bad cfg")
             skip.add(value)
+        elif key == "allow-year":
+            # A year the prose may name without a table row. One year per line,
+            # exact, so a result that happens to look like a year is not let in
+            # by a range or a pattern.
+            if not YEAR_RE.fullmatch(value) or value.startswith("-"):
+                refuse("digit-refuse: refused bad cfg")
+            years.add(value)
         else:
             refuse("digit-refuse: refused bad cfg")
-    return scope, skip
+    return scope, skip, years
 
 
 def load_deny(path: Path) -> list[str]:
@@ -177,8 +187,6 @@ def tokens_of(text: str) -> list[str]:
     out: list[str] = []
     for match in TOKEN_RE.finditer(prepared):
         token = match.group(1)
-        if YEAR_RE.fullmatch(token):
-            continue
         if BARE_INT_RE.fullmatch(token) and tied_by_single_hyphen(prepared, match.start(1), match.end(1)):
             continue
         out.append(token)
@@ -202,8 +210,22 @@ def blank_command(text: str, name: str) -> str:
         k = after
         while k < n and text[k] in " \t":
             k += 1
+        # Optional arguments come first: \includegraphics[width=0.85\linewidth]{f}.
+        # They are as untypeset as the braces, so they are blanked with them.
+        had_option = False
+        while k < n and text[k] == "[":
+            k = consume_bracket(text, k)
+            had_option = True
+            while k < n and text[k] in " \t":
+                k += 1
         if k >= n or text[k] != "{":
-            i = after
+            if had_option:
+                for pos in range(j, k):
+                    if out[pos] != "\n":
+                        out[pos] = " "
+                i = k
+            else:
+                i = after
             continue
         depth = 0
         end = k
@@ -535,7 +557,7 @@ def scope_ids(lines: list[Line], scope: str) -> list[int]:
 
 def check(main: Path, pdf: Path) -> list[str]:
     main = main.resolve()
-    cfg_scope, skip = parse_cfg(main.parent / "digit-refuse.cfg")
+    cfg_scope, skip, years = parse_cfg(main.parent / "digit-refuse.cfg")
     deny = load_deny(main.parent / "digit-refuse.deny")
     lines = expand_file(main, main, ())
     defs = collect_macros(lines)
@@ -620,7 +642,7 @@ def check(main: Path, pdf: Path) -> list[str]:
 
     all_legal = set().union(*legal.values()) if legal else set()
     for index, token in prose_hits:
-        if token in deny:
+        if token in deny or token in years:
             continue
         scope_id = scopes[index]
         if cfg_scope == "paper" or scope_id == 0:
@@ -628,7 +650,11 @@ def check(main: Path, pdf: Path) -> list[str]:
         else:
             allowed = legal.get(scope_id, set())
         if token not in allowed:
-            add(index, token, "not in a table")
+            if YEAR_RE.fullmatch(token):
+                # 1900 to 2099 is checked like any number: 2048 can be a result.
+                add(index, token, f"not in a table (a real year? add `allow-year = {token}` to digit-refuse.cfg)")
+            else:
+                add(index, token, "not in a table")
 
     problems.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
     return [f"{path}:{number}: {token} {reason}" for path, number, token, reason in problems]

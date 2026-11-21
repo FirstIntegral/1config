@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — Digit refuse checks year-shaped numbers, and widths are not measurements
+
+**Policy:** digit_refuse_years=checked-allow-year-line
+
+**Decision:** `hooks/digit-refuse.py` treats a number from 1900 to 2099 as a token. A year the prose names is allowed by one `allow-year=<year>` line in `digit-refuse.cfg`, exact, and a value that is not a year is exit 2. The miss line for such a number names that line. A number directly in front of `\linewidth`, `\textwidth`, `\columnwidth`, `\paperwidth`, a height of the same family, `\baselineskip`, `\hsize`, or `\vsize` is not a token. The optional arguments of the untypeset commands are blanked with their braces.
+
+**Why:** Every integer from 1900 to 2099 was skipped as a year, so a result such as 2048 in prose was never checked against a table: the gate had a hole exactly where a four-digit count lives. `\includegraphics[width=0.85\linewidth]{f}` failed the build, because the blanking looked for `{` right after the command name and left the option text in place, and `0.85` read as a measurement. The owner chose the check on 2026-11-21.
+
+**Rejected:** Guessing from the words around the number ("in 2019", "since"): the gate's rule is exact characters and no reading. A range or a pattern in `allow-year`: one line per year keeps a result from riding in on a range. Skipping only the current year: a paper names other years.
+
 ## 2026-11-21 — The updater keeps its token and its lock to itself
 
 **Policy:** updater_github_token=not-exported

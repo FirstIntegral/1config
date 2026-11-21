@@ -46,23 +46,23 @@ $body
 EOF
 }
 
-# Kill switch: refused before any scan, and it writes nothing.
+# Kill switch: refused before any scan, and it writes nothing. The test's own
+# output goes outside the directory, so anything new in it is the hook's.
 mkdir -p "$ROOT/kill"
 printf 'marker\n' >"$ROOT/kill/marker"
 before="$(ls -A "$ROOT/kill" | sort)"
 set +e
-bash "$HOOK" --fuzzy >"$ROOT/kill/out" 2>"$ROOT/kill/err"
+(cd "$ROOT/kill" && bash "$HOOK" --fuzzy) >"$ROOT/kill.out" 2>"$ROOT/kill.err"
 rc=$?
 set -e
 [ "$rc" = "2" ] || fail "fuzzy exit $rc"
-[ ! -s "$ROOT/kill/out" ] || fail "fuzzy wrote stdout"
+[ ! -s "$ROOT/kill.out" ] || fail "fuzzy wrote stdout"
 after="$(ls -A "$ROOT/kill" | sort)"
-# out and err are the test's files. The hook must not add its own.
-[ "$before" = "marker" ] || fail "kill dir was not empty of hook output"
-grep -q 'refused' "$ROOT/kill/err" || fail "fuzzy stderr"
+[ "$after" = "$before" ] || fail "the refused run wrote into its directory: $after"
+grep -q 'refused' "$ROOT/kill.err" || fail "fuzzy stderr"
 for flag in --near --llm --repo --anywhere --close --substr --nope; do
   set +e
-  bash "$HOOK" "$flag" >/dev/null 2>"$ROOT/kill/err2"
+  bash "$HOOK" "$flag" >/dev/null 2>"$ROOT/kill.err2"
   rc=$?
   set -e
   [ "$rc" = "2" ] || fail "$flag exit $rc"
@@ -73,12 +73,7 @@ mkdir -p "$ROOT/bare"
 printf '100\n' >"$ROOT/bare/digit-refuse.deny"
 printf 'x\n' >"$ROOT/bare/main.tex"
 printf '%%pdf\n' >"$ROOT/bare/main.pdf"
-set +e
-bash "$HOOK" main.tex main.pdf >"$ROOT/bare/out" 2>"$ROOT/bare/err"
-rc=$?
-set -e
-# run from the deny file's directory
-rm -f "$ROOT/bare/out" "$ROOT/bare/err"
+# The deny file is read from the paper's directory, so the run starts there.
 set +e
 out="$(cd "$ROOT/bare" && bash "$HOOK" main.tex main.pdf 2>"$ROOT/bare/err")"
 rc=$?
@@ -227,8 +222,8 @@ run "$ROOT/ident" main.tex main.pdf
 expect_rc "$ROOT/ident" 0
 [ ! -s "$ROOT/ident/out" ] || fail "identifier was not silent: $(cat "$ROOT/ident/out")"
 
-# A calendar year is not a measurement token.
-write_doc "$ROOT/year" '
+# A calendar year the paper names is allowed by one line in the cfg.
+write_doc "$ROOT/calendar" '
 Recorded in 2026.
 \begin{table}
 \caption{D=10}
@@ -237,10 +232,11 @@ score & 100/135 \\
 \end{tabular}
 \end{table}
 '
-build_pdf "$ROOT/year"
-run "$ROOT/year" main.tex main.pdf
-expect_rc "$ROOT/year" 0
-[ ! -s "$ROOT/year/out" ] || fail "year was not silent: $(cat "$ROOT/year/out")"
+printf 'allow-year=2026\n' >"$ROOT/calendar/digit-refuse.cfg"
+build_pdf "$ROOT/calendar"
+run "$ROOT/calendar" main.tex main.pdf
+expect_rc "$ROOT/calendar" 0
+[ ! -s "$ROOT/calendar/out" ] || fail "an allowed year was not silent: $(cat "$ROOT/calendar/out")"
 
 # Chapter scope: a later chapter may not borrow an earlier table.
 # Front matter may.
@@ -316,5 +312,66 @@ build_pdf "$ROOT/inc"
 run "$ROOT/inc" main.tex main.pdf
 expect_rc "$ROOT/inc" 0
 [ ! -s "$ROOT/inc/out" ] || fail "input was not silent: $(cat "$ROOT/inc/out")"
+
+# A number from 1900 to 2099 is a number: 2048 can be a result.
+write_doc "$ROOT/year" '
+The run reached 2048 tiles.
+'
+build_pdf "$ROOT/year"
+run "$ROOT/year" main.tex main.pdf
+expect_rc "$ROOT/year" 1
+grep -q '^main.tex:5: 2048 not in a table' "$ROOT/year/out" || fail "year-shaped number was not flagged: $(cat "$ROOT/year/out")"
+grep -q 'allow-year = 2048' "$ROOT/year/out" || fail "no hint for a real year"
+
+# A real year gets one exact line in the cfg. Another year is still flagged.
+write_doc "$ROOT/yearok" '
+The work began in 2019. It reached 2048 tiles.
+'
+printf 'allow-year=2019\n' >"$ROOT/yearok/digit-refuse.cfg"
+build_pdf "$ROOT/yearok"
+run "$ROOT/yearok" main.tex main.pdf
+expect_rc "$ROOT/yearok" 1
+grep -q '2048 not in a table' "$ROOT/yearok/out" || fail "allow-year let another number through"
+! grep -q '2019' "$ROOT/yearok/out" || fail "an allowed year was flagged: $(cat "$ROOT/yearok/out")"
+
+# allow-year takes a year and nothing else.
+mkdir -p "$ROOT/yearbad"
+cp "$ROOT/yearok/main.tex" "$ROOT/yearok/main.pdf" "$ROOT/yearbad/"
+printf 'allow-year=20\n' >"$ROOT/yearbad/digit-refuse.cfg"
+run "$ROOT/yearbad" main.tex main.pdf
+expect_rc "$ROOT/yearbad" 2
+
+# A width is layout, not a measurement: an option of \includegraphics, and a
+# factor in front of a length. The same digits as a claim are still flagged.
+mkdir -p "$ROOT/width"
+cat >"$ROOT/width/fig.tex" <<'EOF'
+\documentclass{article}
+\pagestyle{empty}
+\begin{document}
+x
+\end{document}
+EOF
+(cd "$ROOT/width" && pdflatex -interaction=nonstopmode -halt-on-error fig.tex >fig.log)
+cat >"$ROOT/width/main.tex" <<'EOF'
+\documentclass{article}
+\usepackage{graphicx}
+\begin{document}
+\includegraphics[width=0.85\linewidth, trim=10 20 30 40]{fig}
+\begin{minipage}{0.48\textwidth}
+left
+\end{minipage}
+\end{document}
+EOF
+build_pdf "$ROOT/width"
+run "$ROOT/width" main.tex main.pdf
+expect_rc "$ROOT/width" 0
+[ ! -s "$ROOT/width/out" ] || fail "a width was read as a measurement: $(cat "$ROOT/width/out")"
+write_doc "$ROOT/claim" '
+The accuracy is 0.85 on the held-out set.
+'
+build_pdf "$ROOT/claim"
+run "$ROOT/claim" main.tex main.pdf
+expect_rc "$ROOT/claim" 1
+grep -q '0.85 not in a table' "$ROOT/claim/out" || fail "a claim was not flagged"
 
 echo "digit-refuse-test: ok"
