@@ -151,8 +151,10 @@ grep -qx 'git@git.example.test:Stranger/1config.git' "$A/BRAIN_REMOTE" || fail "
 [ -z "$(sed -n '/^#/d;/^$/d;p' "$A/NOTES_REMOTE")" ] || fail "NOTES_REMOTE still names a repo"
 [ "$(git -C "$A" log -1 --format='%G?')" = G ] || [ "$(git -C "$A" log -1 --format='%G?')" = U ] \
   || fail "the fork-init commit is not signed"
-[ "$(git -C "$A" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "AGENTS.md BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt " ] \
-  || fail "the fork-init commit holds something other than the four owner files and AGENTS.md"
+[ "$(git -C "$A" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "AGENTS.md BRAIN_REMOTE BRAIN_SIGNERS BRAIN_SIGNERS.asc NOTES_REMOTE fork-parents.txt " ] \
+  || fail "the fork-init commit holds something other than the owner files, the key file, and AGENTS.md"
+gpg --batch --show-keys --with-colons "$A/BRAIN_SIGNERS.asc" 2>/dev/null | grep -q "$FPR" \
+  || fail "BRAIN_SIGNERS.asc is not this person's public key"
 grep -qF 'The GitHub repo is `Stranger/1config`' "$A/AGENTS.md" || fail "AGENTS.md still names the upstream repo"
 bash "$A/bin/1config" fork-init >"$OUT/fork-again.out" 2>&1 && grep -q 'Nothing to do' "$OUT/fork-again.out" \
   || fail "a second fork-init did not say there is nothing to do"

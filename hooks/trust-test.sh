@@ -293,4 +293,50 @@ else
   fail "gpg-signing-key.sh: wrong key source (env '$got', config '$got2', none '$got3' exit $RC)"
 fi
 
+# --- a new signing subkey reaches a second machine with the commit it signed ----
+# The owner adds a signing subkey. A machine that has only the old public key
+# cannot check a commit that subkey signed. The public key file travels in the
+# repository, and the gate imports it from the commits it is about to check,
+# but only when every key in that file is already a listed signer.
+GHS="$T/gnupg-owner"
+GHM="$T/gnupg-machine2"
+mkdir -m 700 "$GHS" "$GHM"
+OWN="$(newkey "$GHS" 'owner <owner@fixture.invalid>')"
+GNUPGHOME="$GHS" gpg --batch --armor --export "$OWN" > "$T/owner-old.asc"
+GNUPGHOME="$GHM" gpg --batch --import "$T/owner-old.asc" >/dev/null 2>&1
+GNUPGHOME="$GHS" gpg --batch --pinentry-mode loopback --passphrase '' --quick-add-key "$OWN" ed25519 sign never >/dev/null 2>&1
+printf '%s\n' "$OWN" > "$T/owner-signers"
+sk="$(mktemp -d -p "$T")"
+git init -q -b main "$sk"
+commit "$sk" "$OWN" base "$GHS"
+sk_base="$(git -C "$sk" rev-parse HEAD)"
+SUBID="$(GNUPGHOME="$GHS" gpg --batch --list-keys --with-colons "$OWN" | awk -F: '$1 == "sub" && $12 ~ /s/ { print $5; exit }')"
+# The commit that ships the key file is signed by the new subkey itself.
+GNUPGHOME="$GHS" gpg --batch --armor --export-options export-minimal --export "$OWN" > "$sk/BRAIN_SIGNERS.asc"
+git -C "$sk" add BRAIN_SIGNERS.asc
+GNUPGHOME="$GHS" git -C "$sk" -c user.signingkey="${SUBID}!" commit -q -S -m "ship the signers' public keys"
+sk_tip="$(git -C "$sk" rev-parse HEAD)"
+gate2() {
+  RC=0
+  OUT="$(env GNUPGHOME="$GHM" BRAIN_SIGNERS_FILE="$1" bash "$HOOKS/verify-incoming.sh" "$sk" "$sk_base" "$sk_tip" 2>&1)" || RC=$?
+}
+gate2 "$T/owner-signers"
+if [ "$RC" -eq 0 ]; then
+  pass "the gate: a commit signed by a new subkey is accepted once the key file it carries is imported"
+else
+  fail "the gate: a second machine cannot check a commit signed by the owner's new subkey (exit $RC: $OUT)"
+fi
+# The same file from a repository whose signer list does not name that key: not imported.
+GHN="$T/gnupg-stranger"
+mkdir -m 700 "$GHN"
+: > "$T/other-signers"
+printf '%s\n' "$K1" > "$T/other-signers"
+RC=0
+env GNUPGHOME="$GHN" BRAIN_SIGNERS_FILE="$T/other-signers" bash "$HOOKS/verify-incoming.sh" "$sk" "$sk_base" "$sk_tip" >/dev/null 2>&1 || RC=$?
+if [ "$RC" -eq 6 ] && ! GNUPGHOME="$GHN" gpg --batch --list-keys "$OWN" >/dev/null 2>&1; then
+  pass "the gate: a key file whose key is not a listed signer is not imported, and its commit is refused"
+else
+  fail "the gate: imported a key that BRAIN_SIGNERS does not list (exit $RC)"
+fi
+
 [ "$fails" -eq 0 ]

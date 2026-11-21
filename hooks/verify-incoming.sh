@@ -14,6 +14,9 @@
 # made through the API with a stolen token, so it is not accepted unless the
 # owner lists it. A web commit is named and left for a manual pull.
 #
+# Before the walk, a BRAIN_SIGNERS.asc in <tip> is imported when every key in it
+# is already a listed signer (see import_tip_keys below).
+#
 # Exit 0  every mainline commit is signed by a listed key (prints nothing)
 #      5  every refused commit is signed by GitHub web-flow
 #      6  a refused commit is unsigned, unverifiable, or signed by an unlisted key
@@ -70,6 +73,36 @@ in_list() {
   done
   return 1
 }
+
+# The signers' public keys travel in the repository as BRAIN_SIGNERS.asc. A
+# machine has to hold a signer's new subkey before it can check a commit that
+# subkey signed, and the commit that ships the file may be signed by that very
+# subkey. So the file is read from the commit being checked, before the check.
+# It is imported only when every key in it is already on the list above.
+# An import gives no trust: the list decides who may sign, and gpg takes a
+# subkey only with a binding that the listed primary key signed.
+import_tip_keys() {
+  local tmp f
+  git -C "$REPO" cat-file -e "$TIP:BRAIN_SIGNERS.asc" 2>/dev/null || return 0
+  [ "$(git -C "$REPO" cat-file -s "$TIP:BRAIN_SIGNERS.asc" 2>/dev/null || echo 0)" -le 262144 ] || return 0
+  tmp="$(mktemp)" || return 0
+  if git -C "$REPO" show "$TIP:BRAIN_SIGNERS.asc" > "$tmp" 2>/dev/null; then
+    local -a found=()
+    while IFS= read -r f; do
+      [ -n "$f" ] && found+=("$(upper "$f")")
+    done < <(gpg --batch --show-keys --with-colons "$tmp" 2>/dev/null \
+      | awk -F: '$1 == "pub" { p = 1; next } p && $1 == "fpr" { print $10; p = 0 }')
+    local ok=0
+    [ "${#found[@]}" -gt 0 ] && ok=1
+    for f in ${found[@]+"${found[@]}"}; do
+      in_list "$f" ${allowed[@]+"${allowed[@]}"} || ok=0
+    done
+    [ "$ok" = 1 ] && gpg --batch --import "$tmp" >/dev/null 2>&1
+  fi
+  rm -f "$tmp"
+  return 0
+}
+import_tip_keys
 
 rows="$(git -C "$REPO" log --first-parent --format='%H%x09%G?%x09%GP' "$BASE..$TIP" 2>/dev/null)" || {
   echo "cannot read $BASE..$TIP in $REPO" >&2

@@ -10,6 +10,7 @@
 #   BRAIN_REMOTE      the origin URLs sync.sh, verify.sh, and login sync accept, and
 #                     the host and owner checkpoint.sh treats as "ours"
 #   BRAIN_SIGNERS     the key fingerprints whose commits a login pull installs
+#   BRAIN_SIGNERS.asc the public half of those keys, for the owner's other machines
 #   NOTES_REMOTE      the private machine-notes repo; no URL means notes are off
 #   fork-parents.txt  the upstream owner's own forks
 #   AGENTS.md         one sentence: "The GitHub repo is `owner/repo` (...)". The
@@ -153,11 +154,24 @@ open(dst, "w", encoding="utf-8").write(new)
 PYNAME
 fi
 
-FILES=(BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt)
+# The public half of the key BRAIN_SIGNERS now names, so the owner's other
+# machines can check a commit that a later subkey signs. export-minimal leaves
+# out other people's signatures on the key.
+gpg --batch --armor --export-options export-minimal --export "$FPR" > "$TMP/BRAIN_SIGNERS.asc" 2>/dev/null \
+  || die "could not export the public key $FPR"
+[ -s "$TMP/BRAIN_SIGNERS.asc" ] || die "the public key export of $FPR is empty"
+
+FILES=(BRAIN_REMOTE BRAIN_SIGNERS BRAIN_SIGNERS.asc NOTES_REMOTE fork-parents.txt)
 [ -f "$TMP/AGENTS.md" ] && FILES+=(AGENTS.md)
 changed=()
 for f in "${FILES[@]}"; do
-  cmp -s "$TMP/$f" "$ROOT/$f" || changed+=("$f")
+  if [ "$f" = BRAIN_SIGNERS.asc ] && [ -f "$ROOT/$f" ]; then
+    # Two exports of one key differ in their armor header at most. The key in
+    # the file is what counts: leave a file that already holds this key alone.
+    have="$(gpg --batch --show-keys --with-colons "$ROOT/$f" 2>/dev/null | awk -F: '$1 == "pub" { p = 1; next } p && $1 == "fpr" { print $10; p = 0 }' | tr '\n' ' ')"
+    [ "$have" = "$FPR " ] && continue
+  fi
+  cmp -s "$TMP/$f" "$ROOT/$f" 2>/dev/null || changed+=("$f")
 done
 if [ "${#changed[@]}" -eq 0 ]; then
   echo "fork-init: the owner files already say $HOST/$OWNER/$REPO and key $FPR. Nothing to do."
@@ -171,7 +185,11 @@ echo "  signer   $FPR  (git user.signingkey=$KEY)"
 if [ -n "$NOTES" ]; then echo "  notes    $NOTES"; else echo "  notes    $(sed -n '/^#/d;/^$/d;p' "$TMP/NOTES_REMOTE" | head -n 1 | grep . || echo 'off (pass --notes URL to name a private notes repo)')"; fi
 for f in "${changed[@]}"; do
   echo "--- $f"
-  diff -u "$ROOT/$f" "$TMP/$f" | sed '1,2d' || true
+  if [ "$f" = BRAIN_SIGNERS.asc ]; then
+    echo "  the public key of $FPR (replaces the upstream owner's key file)"
+  else
+    diff -u "$ROOT/$f" "$TMP/$f" | sed '1,2d' || true
+  fi
 done
 
 if [ "$DO" != 1 ]; then
@@ -188,6 +206,7 @@ git -C "$ROOT" diff --cached --quiet 2>/dev/null \
 for f in "${changed[@]}"; do
   cp "$TMP/$f" "$ROOT/$f"
 done
+git -C "$ROOT" add -- "${changed[@]}"
 if git -C "$ROOT" commit -q -m "Point this fork at $HOST/$OWNER/$REPO" -- "${changed[@]}"; then
   echo "== done. Committed $(git -C "$ROOT" log -1 --format=%h) (signed, not pushed). =="
   echo "Next:  bash $ROOT/setup.sh"

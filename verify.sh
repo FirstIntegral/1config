@@ -1867,6 +1867,18 @@ else
   bad "signature gate fixtures did not run (gpg, verify-incoming.sh, or brain-sync.sh missing)"
 fi
 run_fixtures "$HOOKS/trust-test.sh"
+# The key file and the list name the same keys: a listed signer with no key in
+# the file cannot be checked on a new machine, and a key in the file that is
+# not listed has no business there.
+mkdir -p -m 700 "$VTMP/gnupg-show"
+_sa_listed="$(grep -oE '^[0-9A-Fa-f]{40}' "$AGENTS_HOME/BRAIN_SIGNERS" 2>/dev/null | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' ')"
+_sa_shipped="$(GNUPGHOME="$VTMP/gnupg-show" gpg --batch --show-keys --with-colons "$AGENTS_HOME/BRAIN_SIGNERS.asc" 2>/dev/null \
+  | awk -F: '$1 == "pub" { p = 1; next } p && $1 == "fpr" { print $10; p = 0 }' | sort -u | tr '\n' ' ')"
+if [ -n "$_sa_listed" ] && [ "$_sa_listed" = "$_sa_shipped" ]; then
+  ok "BRAIN_SIGNERS.asc holds the public key of every listed signer, and no other key"
+else
+  bad "BRAIN_SIGNERS.asc and BRAIN_SIGNERS name different keys (listed: ${_sa_listed:-none} shipped: ${_sa_shipped:-none})"
+fi
 if [ -f "$AGENTS_HOME/BRAIN_SIGNERS" ] \
    && grep -qE '^[0-9A-Fa-f]{40}[[:space:]]*$' "$AGENTS_HOME/BRAIN_SIGNERS"; then
   ok "BRAIN_SIGNERS lists at least one fingerprint"
@@ -3751,7 +3763,8 @@ if [ -n "$_k1" ]; then
      && grep -q '^# Signers this brain accepts' "$_fk/brain/BRAIN_SIGNERS" \
      && [ "$(grep -v '^#' "$_fk/brain/NOTES_REMOTE")" = "git@git.example.test:Someone/notes.git" ] \
      && [ "$(_fk_signed git -C "$_fk/brain" log -1 --format='%G? %GP')" = "G $_k1" ] \
-     && [ "$(git -C "$_fk/brain" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "AGENTS.md BRAIN_REMOTE BRAIN_SIGNERS NOTES_REMOTE fork-parents.txt " ] \
+     && [ "$(git -C "$_fk/brain" diff --name-only HEAD~1 HEAD | LC_ALL=C sort | tr '\n' ' ')" = "AGENTS.md BRAIN_REMOTE BRAIN_SIGNERS BRAIN_SIGNERS.asc NOTES_REMOTE fork-parents.txt " ] \
+     && [ "$(GNUPGHOME="$VTMP/gnupg-show" gpg --batch --show-keys --with-colons "$_fk/brain/BRAIN_SIGNERS.asc" 2>/dev/null | awk -F: '$1 == "pub" { p = 1; next } p && $1 == "fpr" { print $10; p = 0 }')" = "$_k1" ] \
      && grep -qF 'The GitHub repo is `Someone/Brain` (`git@git.example.test:Someone/Brain.git`, `https://git.example.test/Someone/Brain.git`). On this machine' "$_fk/brain/AGENTS.md" \
      && ! grep -q 'Upstream' "$_fk/brain/AGENTS.md" \
      && [ -z "$(git -C "$_fk/brain" status --porcelain)" ]; then

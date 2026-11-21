@@ -880,6 +880,16 @@ if command -v git >/dev/null && [ -x "$AGENTS_HOME/hooks/gpg-git.sh" ]; then
   git config --global gpg.program "$AGENTS_HOME/hooks/gpg-git.sh"
   log "git     gpg.program → hooks/gpg-git.sh (loopback, no pinentry GUI)"
 fi
+# The signers' own public keys, subkeys included. A second machine needs them
+# before it can check a commit that a new subkey signed. No ownertrust is set.
+SIGNERS_ASC="$AGENTS_HOME/BRAIN_SIGNERS.asc"
+if [ -f "$SIGNERS_ASC" ]; then
+  if gpg --batch --import "$SIGNERS_ASC" >/dev/null 2>&1; then
+    log "gpg     signers' public keys imported from BRAIN_SIGNERS.asc"
+  else
+    log "WARNING: gpg --import BRAIN_SIGNERS.asc failed"
+  fi
+fi
 # Public keys only. Ownertrust stays unset so a good web signature is %G? = U.
 WEB_FLOW="$AGENTS_HOME/hooks/github-web-flow.asc"
 if [ -f "$WEB_FLOW" ]; then

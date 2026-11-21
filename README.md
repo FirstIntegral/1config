@@ -185,6 +185,7 @@ Run `bash ~/.agents/setup.sh --dry-run` first: it prints all of this for your ma
 | `LICENSE` | MIT. Commercial use is fine. Keep the copyright notice. |
 | `BRAIN_REMOTE` | Origin allowlist. Its host and owner are "ours" for checkpoints. Forks change this file, not the scripts. |
 | `BRAIN_SIGNERS` | Signer allowlist for incoming commits: one key fingerprint per line. |
+| `BRAIN_SIGNERS.asc` | The public half of each listed key. `setup.sh` imports it, and the gate imports it from an incoming commit when every key in it is already listed, so a second machine can check a commit that a new signing subkey made. A fork gets its own from `fork-init`. |
 | `NOTES_REMOTE` | URL of the private machine-notes repo. |
 | `fork-parents.txt` | Forks we contribute back to: `ourOwner/repo parentOwner/repo`. May be empty. |
 | `local.json.example` | Opt-out only. Copy to gitignored `local.json` to leave autonomy or caveman. Every key in it changes what `setup.sh` writes; `verify.sh` runs that as a test. |

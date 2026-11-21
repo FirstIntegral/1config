@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — The signers' public keys ship in the repo, and the gate imports them first
+
+**Policy:** signers_public_keys=shipped-in-repo
+
+**Decision:** `BRAIN_SIGNERS.asc` holds the public half of every key on `BRAIN_SIGNERS`, exported with `export-minimal`. `setup.sh` imports it and sets no ownertrust. `hooks/verify-incoming.sh` reads the file from the tip it is about to check and imports it when every key in it is already a listed signer. `fork-init` writes a fork's own file in its one commit. `verify.sh` fails when the file and the list name different keys. This is the first step of the move to a signing subkey per machine (the plan of 2026-11-12, option A1); the unlock hooks and `vendor/` stay until every machine signs with a passphrase-less subkey.
+
+**Why:** A commit signed by a new subkey shows `%G?` = `E` on a machine that holds only the old public key, so its login pull would refuse that commit and every commit after it until someone imported the key by hand. A rehearsal on a throwaway key (GnuPG 2.4.9) showed exactly that, and showed the pull working once the updated public key was imported. Reading the file from the incoming tip covers the machine that missed the commit that shipped it. The import cannot widen who may sign: the fingerprint list is read from this checkout, and gpg accepts a subkey only with a binding signed by its primary key. This reverses one line of "2026-11-20 — Other people install from a fork, and setup checks before it writes", which rejected a key file because it carries the key's email; the owner allowed it on 2026-11-21, and that email is on every public commit already.
+
+**Rejected:** Importing whatever key file the tip carries: a pushed file could fill the keyring with other people's keys. A keyserver fetch at login: a network dependency in the gate, and a third party's answer. Telling the owner to import by hand on each machine: that is the stuck state this avoids.
+
 ## 2026-11-21 — AGENTS.md is a core and playbooks, capped at 24,000 bytes
 
 **Policy:** rules_file=core-plus-playbooks
