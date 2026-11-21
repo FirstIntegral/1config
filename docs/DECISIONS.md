@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — verify.sh: a check runs the behaviour, says what it checked, and reads no machine in repo scope
+
+**Policy:** verify_checks=behaviour-first
+
+**Decision:** New fixtures live in `hooks/*-test.sh`. Each prints `ok <what>` or `FAIL <what>` per case, and `verify.sh` replays the lines through `run_fixtures`, which fails when a file stops early or runs no case. Seven such files hold 89 cases. Twelve checks that only read a document for a word a fixture already proves are gone. Nine checks that read a script's text are replaced by a run of the script, or cut down to the part nothing can run, with a `# keep:` line that says why. A check's `ok` text says what it looked at. `verify.sh --repo` no longer reads the resume shim under `/usr/lib`, the installed bar plugin, this machine's `opencode`, this machine's Claude settings, or this machine's tool versions, and it does not run `checkpoint.sh` against the real checkout.
+
+**Why:** The review of 2026-11-20 counted 320 `ok` sites: 132 ran a fixture, 45 read machine state, 48 read a document, 58 read script source, 34 were static. Four were false greens: the welcome self-test printed OK when `node` was absent, the loader fixture hid a crash behind `|| true`, a dry-run check accepted five exit codes, and `digit-refuse-test.sh` computed a listing it never compared. A source grep broke on a rewrite of `notes-sync.sh` that kept the behaviour, and a grep for `--ff-only` would have stayed green through the tag bug in the same file. One new check failed for a reason of its own: `printf | grep -q` under `pipefail` dies of SIGPIPE on a large input, so it uses a here-string.
+
+**Rejected:** Deleting every source grep: the QML panel, a prompt that needs a terminal, and `setup.sh`'s own call of the notes clone cannot be run in a fixture. Moving the old inline fixtures out of `verify.sh` as well: they pass, and the move would be a rewrite with no finding behind it. Keeping the document greps as a parity check: the owner keeps the ones where the sentence is the only implementation, and these twelve are not that.
+
 ## 2026-11-21 — The panel survives one bad source, and two limits are written down
 
 **Policy:** deny_rules=exact-text-limit-stated

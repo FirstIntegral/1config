@@ -103,4 +103,21 @@ else
   fail "scheduler: removing the cron lines did not give the person's crontab back"
 fi
 
+# --- one run at a time: the lock that sync.sh and setup.sh also take ------------
+h2="$T/home2"
+mkdir -p "$h2/.grok/bin" "$h2/upd"
+printf '#!/bin/sh\n[ "$1" = update ] && : > "$HOME/grok-ran"\necho 1.0.0\n' > "$h2/.grok/bin/grok"
+chmod +x "$h2/.grok/bin/grok"
+(
+  exec 7>"$h2/upd/.update.lock"
+  flock 7
+  env -i HOME="$h2" PATH=/usr/bin:/bin UPD_INSTALL_DIR="$h2/upd" AGENTS_HOME="$h2/brain" TIMEOUT_DEFAULT=20 \
+    bash "$ROOT/updater/update-apps.sh" >/dev/null 2>&1 7>&-
+)
+if [ ! -e "$h2/grok-ran" ] && grep -q 'another run holds the lock' "$h2/upd/update-apps.log" 2>/dev/null; then
+  pass "updater: a run that finds the lock held does nothing and says so"
+else
+  fail "updater: ran while another run held the lock"
+fi
+
 [ "$fails" -eq 0 ]

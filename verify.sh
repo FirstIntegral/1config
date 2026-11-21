@@ -183,7 +183,7 @@ if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
     fi
   done
 fi
-[ -f "$AGENTS_HOME/permissions.json" ] && ok "permissions.json (canonical, all 3 tools)" || bad "permissions.json missing"
+[ -f "$AGENTS_HOME/permissions.json" ] && ok "permissions.json present" || bad "permissions.json missing"
 PAPER_TPL="$AGENTS_HOME/paper-template"
 if [ -d "$PAPER_TPL" ]; then
   for f in main.tex build.sh lean/lakefile.toml lean/lean-toolchain lean/Paper.lean lean/.gitignore lean/axiom-audit.sh; do
@@ -249,9 +249,9 @@ if [ -d "$PAPER_TPL" ]; then
 else
   bad "paper-template/ missing (writepaper_project has no scaffold)"
 fi
-[ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
+[ -f "$AGENTS_HOME/README.md" ] && ok "README.md present" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh guards-test.sh config-test.sh trust-test.sh updater-test.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh guards-test.sh config-test.sh trust-test.sh updater-test.sh platform.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -259,11 +259,6 @@ for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install
 done
 
 echo "[digit-refuse]"
-if grep -q 'Digit refuse' "$AGENTS_HOME/AGENTS.md" && grep -q 'Digit refuse' "$SETUP"; then
-  ok "digit-refuse documented in AGENTS.md and SETUP.md"
-else
-  bad "digit-refuse missing from AGENTS.md or SETUP.md"
-fi
 # The fixtures build real PDFs. setup.sh treats TeX as optional, so a machine
 # without it skips them here. CI installs TeX, so a skip there is a failure:
 # otherwise a broken runner image would turn the whole gate off unseen.
@@ -455,12 +450,6 @@ if grep -q 'SETUP_STRICT' "$AGENTS_HOME/setup.sh"; then
 else
   ok "setup.sh has no lenient verification path"
 fi
-if grep -q 'git commit -S' "$AGENTS_HOME/sync.sh" && grep -q "format='%G?'" "$AGENTS_HOME/sync.sh" \
-    && grep -q 'refs/heads/\$BRANCH:refs/remotes/origin/\$BRANCH' "$AGENTS_HOME/sync.sh"; then
-  ok "sync.sh explicitly signs and verifies outgoing commits after a fresh fetch"
-else
-  bad "sync.sh signed-outgoing enforcement is incomplete"
-fi
 
 # checkpoint.sh behaviour, not just presence. The failure that matters is the one that
 # publishes something, so the two refusals are exercised for real against a scratch dir.
@@ -477,9 +466,16 @@ if [ -x "$HOOKS/checkpoint.sh" ]; then
   _rc=0; bash "$HOOKS/checkpoint.sh" "$_cptmp" >/dev/null 2>&1 || _rc=$?
   [ "$_rc" -eq 10 ] && ok "refuses a non-repo (exit 10, no git init)" \
                     || bad "checkpoint.sh did not refuse a non-repo (exit $_rc, wanted 10)"
-  _rc=0; bash "$HOOKS/checkpoint.sh" "$AGENTS_HOME" >/dev/null 2>&1 || _rc=$?
-  [ "$_rc" -eq 22 ] && ok "refuses the brain checkout (exit 22)" \
-                    || bad "checkpoint.sh did not refuse the brain checkout (exit $_rc, wanted 22)"
+  # The checkout the script lives in is the brain. A scratch copy stands in for it.
+  _cpself="$(mktemp -d -p "$VTMP")"
+  mkdir -p "$_cpself/hooks"
+  cp "$HOOKS/checkpoint.sh" "$HOOKS/git-url.sh" "$HOOKS/brain-remote.sh" "$HOOKS/secret-scan.sh" "$_cpself/hooks/"
+  git init -q "$_cpself"
+  _rc=0; bash "$_cpself/hooks/checkpoint.sh" "$_cpself" >/dev/null 2>&1 || _rc=$?
+  [ "$_rc" -eq 22 ] && [ -z "$(git -C "$_cpself" rev-list --all 2>/dev/null)" ] \
+    && ok "refuses the checkout it lives in, before any git command (exit 22)" \
+    || bad "checkpoint.sh did not refuse the brain checkout (exit $_rc, wanted 22)"
+  rm -rf "$_cpself"
   _brainfake="$(mktemp -d -p "$VTMP")"
   git init -q "$_brainfake"
   printf 'https://example.test/brain.git\n' > "$_brainfake/BRAIN_REMOTE"
@@ -815,13 +811,6 @@ if [ -x "$HOOKS/notes-sync.sh" ] && bash -n "$HOOKS/notes-sync.sh" 2>/dev/null; 
 else
   bad "notes-sync.sh missing or does not parse"
 fi
-if grep -q '### Machine notes' "$CANON" && grep -q 'hooks/notes-sync.sh' "$SETUP" \
-   && grep -q '| `23`' "$CANON" && grep -q 'notes diverge' "$SETUP" \
-   && grep -q 'notes: merged' "$CANON" && grep -q 'notes-sync-merge' "$SETUP"; then
-  ok "machine-notes documented in AGENTS.md and SETUP.md"
-else
-  bad "machine-notes missing from AGENTS.md or SETUP.md"
-fi
 if grep -q 'private machine-notes' "$AGENTS_HOME/setup-infographic.svg"; then
   ok "infographic names private machine-notes"
 else
@@ -831,9 +820,9 @@ if grep -qF 'session_transcript=retired' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -qF 'for rel in session_compact.md session_transcript.md' "$HOOKS/notes-sync.sh" \
    && grep -qF 'Do not create `session_transcript.md`' "$CANON" \
    && ! grep -q 'session_transcript.md — HUMAN ONLY' "$AGENTS_HOME/setup-infographic.svg"; then
-  ok "session_transcript is not collected"
+  ok "the retired session_transcript is named as retired in DECISIONS.md, AGENTS.md, and the figure"
 else
-  bad "session_transcript collection is still wired"
+  bad "a document or the figure still describes session_transcript as collected"
 fi
 if [ -f "$AGENTS_HOME/NOTES_REMOTE" ] \
    && grep -q 'NOTES_REMOTE' "$HOOKS/notes-sync.sh" \
@@ -845,14 +834,11 @@ if [ -f "$AGENTS_HOME/NOTES_REMOTE" ] \
 else
   bad "notes-sync setup path missing from hook, NOTES_REMOTE, AGENTS.md, or SETUP.md"
 fi
-if grep -q 'ensure_notes_clone' "$HOOKS/notes-sync.sh" \
-   && grep -q 'BatchMode=yes' "$HOOKS/notes-sync.sh" \
-   && grep -q 'timeout 60 git clone' "$HOOKS/notes-sync.sh" \
-   && grep -q 'NOTES_SYNC_HOME is the real home' "$HOOKS/notes-sync.sh" \
-   && grep -q 'unset NOTES_SYNC_TEST_ROOT NOTES_SYNC_HOME NOTES_REMOTE_FILE' "$HOOKS/checkpoint.sh" \
-   && grep -q 'NS_SRC" setup' "$AGENTS_HOME/setup.sh" \
+# keep: setup.sh is a whole install, so its call of the notes clone is read, not run.
+# The clone itself, its timeout, and the real-home guard are run in the fixtures below.
+if grep -q 'NS_SRC" setup' "$AGENTS_HOME/setup.sh" \
    && grep -q 'machine-notes clone failed' "$AGENTS_HOME/setup.sh"; then
-  ok "machine-notes clone is automatic and a failed clone does not fail setup"
+  ok "setup.sh calls the machine-notes clone, and a failed clone is a note, not a failed setup"
 else
   bad "automatic machine-notes clone is not wired through setup.sh"
 fi
@@ -1084,7 +1070,8 @@ _before_ns="$(git -C "$_ns" rev-parse HEAD)"
 git -C "$_np" config url."$_nbare/n.git".insteadOf "git@github.com:fixture-owner/notes-fixture.git"
 _rc=0
 NOTES_SYNC_TEST_ROOT="$_ns" bash "$HOOKS/checkpoint.sh" "$_np" --dry-run >"$VTMP/notes-dry.out" 2>&1 || _rc=$?
-if [ "$_rc" -eq 0 ] || [ "$_rc" -eq 3 ] || [ "$_rc" -eq 12 ] || [ "$_rc" -eq 13 ] || [ "$_rc" -eq 14 ]; then
+# One state, one answer: a dirty tree and a reachable remote of ours is exit 0.
+if [ "$_rc" -eq 0 ]; then
   if grep -q 'notes:' "$VTMP/notes-dry.out"; then
     bad "dry-run mentioned notes"
   elif [ "$(git -C "$_ns" rev-parse HEAD)" != "$_before_ns" ]; then
@@ -1250,21 +1237,6 @@ if grep -q 'rule-oracles.sh' "$CANON" && grep -q 'rule-oracles.sh' "$SETUP"; the
 else
   bad "rule-oracles missing from AGENTS.md or SETUP.md"
 fi
-if grep -q 'exits 22' "$CANON" && grep -q 'exits 22' "$SETUP"; then
-  ok "brain checkpoint exit 22 documented in AGENTS.md and SETUP.md"
-else
-  bad "exit 22 missing from AGENTS.md or SETUP.md"
-fi
-if grep -q 'foreign checkout' "$CANON" && grep -q 'foreign checkout' "$SETUP"; then
-  ok "foreign checkout documented in AGENTS.md and SETUP.md"
-else
-  bad "foreign checkout missing from AGENTS.md or SETUP.md"
-fi
-if grep -q 'exits 14' "$CANON" && grep -q 'exits 14' "$SETUP"; then
-  ok "checkpoint exit 14 documented in AGENTS.md and SETUP.md"
-else
-  bad "exit 14 missing from AGENTS.md or SETUP.md"
-fi
 # The file lists this owner's forks. A fork of 1config lists its own, or none.
 if [ -f "$AGENTS_HOME/fork-parents.txt" ] \
    && awk '
@@ -1275,16 +1247,6 @@ if [ -f "$AGENTS_HOME/fork-parents.txt" ] \
   ok "fork-parents.txt lines are ourOwner/repo parentOwner/repo"
 else
   bad "fork-parents.txt missing, or a line is not ourOwner/repo parentOwner/repo"
-fi
-if grep -q 'kill-tokens.deny' "$CANON" && grep -q 'kill-tokens.deny' "$SETUP"; then
-  ok "kill-tokens.deny documented in AGENTS.md and SETUP.md"
-else
-  bad "kill-tokens.deny missing from AGENTS.md or SETUP.md"
-fi
-if grep -qF '**Policy:**' "$CANON" && grep -qF '**Policy:**' "$SETUP"; then
-  ok "policy-key rule documented in AGENTS.md and SETUP.md"
-else
-  bad "policy-key rule missing from AGENTS.md or SETUP.md"
 fi
 
 echo "[policy keys]"
@@ -1526,7 +1488,9 @@ if [ -d "$UPD_SRC" ]; then
   SHIM_SRC="$UPD_SRC/system-sleep-shim.sh"
   SHIM_DST="/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh"
   [ -x "$SHIM_SRC" ] && ok "updater system-sleep-shim.sh present + executable" || bad "updater system-sleep-shim.sh missing/not executable"
-  if [ -f "$SHIM_DST" ]; then
+  if ! machine; then
+    :
+  elif [ -f "$SHIM_DST" ]; then
     [ -x "$SHIM_DST" ] && ok "systemd resume shim executable" || bad "systemd resume shim is not executable"
     [ "$(stat -c '%U:%G' "$SHIM_DST" 2>/dev/null)" = "root:root" ] \
       && ok "systemd resume shim root-owned" || bad "systemd resume shim is not root:root"
@@ -1684,13 +1648,6 @@ if [ -d "$BD" ] && grep -q 'no stored passphrase' "$BD/dashboard.sh" 2>/dev/null
 else
   bad "boot dashboard still lumps all gpg failures as keyring locked/empty"
 fi
-if [ -x "$HOOKS/gpg-git.sh" ] \
-   && grep -q 'pinentry-mode loopback' "$HOOKS/gpg-git.sh" \
-   && grep -q 'gpg-agent-unlock.sh' "$HOOKS/gpg-git.sh"; then
-  ok "hooks/gpg-git.sh loopback + unlock-retry (no pinentry GUI)"
-else
-  bad "hooks/gpg-git.sh missing loopback unlock wrapper"
-fi
 if machine; then
 _gp="$(git config --global --get gpg.program 2>/dev/null || true)"
 if [ "$_gp" = "$HOOKS/gpg-git.sh" ]; then
@@ -1709,17 +1666,13 @@ else
   bad "hooks/github-web-flow.asc missing GitHub web-flow fingerprint $_wf_fpr"
 fi
 if machine; then
-if gpg --list-keys --with-colons "$_wf_fpr" 2>/dev/null | grep -q "$_wf_fpr"; then
-  ok "GitHub web-flow public key is in the keyring (ownertrust unchanged)"
+if gpg --list-keys --with-colons "$_wf_fpr" 2>/dev/null | grep -q "$_wf_fpr" \
+   && ! gpg --export-ownertrust 2>/dev/null | grep -q "^$_wf_fpr:"; then
+  ok "GitHub web-flow public key is in the keyring, and no ownertrust is set on it"
 else
-  bad "GitHub web-flow public key missing from keyring (run setup.sh)"
+  bad "GitHub web-flow public key missing from keyring (run setup.sh), or someone set ownertrust on it"
 fi
 fi  # machine
-if grep -q "$_wf_fpr" "$CANON" && grep -q "$_wf_fpr" "$SETUP"; then
-  ok "GitHub web-flow fingerprint documented in AGENTS.md and SETUP.md"
-else
-  bad "GitHub web-flow fingerprint missing from AGENTS.md or SETUP.md"
-fi
 if [ -d "$BD" ]; then
   _gpg_call="$(awk '/^main\(\)/{m=1} m && /check_gpg_sign/{print NR; exit}' "$BD/dashboard.sh")"
   _upd_call="$(awk '/^main\(\)/{m=1} m && /check_tool_updates/{print NR; exit}' "$BD/dashboard.sh")"
@@ -1733,13 +1686,8 @@ fi
 # --- brain self-sync (boot dashboard pulls ~/.agents to match 1config) ------
 echo "[brain sync]"
 if [ -x "$HOOKS/brain-sync.sh" ]; then
-  grep -q -- '--ff-only' "$HOOKS/brain-sync.sh" \
-    && ok "brain-sync pulls fast-forward only" \
-    || bad "brain-sync lacks --ff-only guard (must never rewrite local commits)"
-  grep -q 'brain-remote.sh' "$HOOKS/brain-sync.sh" \
-    && grep -q 'BRAIN_REMOTE' "$HOOKS/brain-sync.sh" \
-    && ok "brain-sync validates origin against BRAIN_REMOTE" \
-    || bad "brain-sync does not validate origin against BRAIN_REMOTE"
+  # Fast-forward only and the BRAIN_REMOTE check are run in hooks/trust-test.sh.
+  # keep: a passphrase prompt cannot be run without a terminal, so the option is read.
   grep -q 'BatchMode=yes' "$HOOKS/brain-sync.sh" \
     && ok "brain-sync never prompts (ssh BatchMode)" \
     || bad "brain-sync can hang on an ssh passphrase prompt at boot"
@@ -1937,11 +1885,6 @@ if [ -d "$BD" ] && [ -f "$BD/dashboard.sh" ]; then
   else
     bad "boot dashboard exit 5 must list diverged files and both ways out"
   fi
-  if grep -q 'close-slip.txt' "$CANON" && grep -q 'close-slip.txt' "$SETUP"; then
-    ok "close slip documented in AGENTS.md and SETUP.md"
-  else
-    bad "close slip missing from AGENTS.md or SETUP.md"
-  fi
 fi
 if [ -x "$HOOKS/close-slip.sh" ] && bash "$HOOKS/close-slip.sh" --selftest; then
   ok "close-slip.sh drops a resolved row and leaves the others"
@@ -2013,17 +1956,20 @@ if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=
     bad "refresh-inventory.py --self-test failed"
   fi
   _invtmp="$(mktemp -p "$VTMP")"
+  _invhome="$(mktemp -d -p "$VTMP")"
   _inv_rc=0
-  INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+  # A scratch home: the refresh looks for the tools there and starts none of this machine's.
+  _inv_run() { env HOME="$_invhome" INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1; }
+  _inv_run || _inv_rc=$?
   if [ "$_inv_rc" -eq 0 ]; then
     _inv_before="$(sha256sum "$_invtmp" | cut -d' ' -f1)"
-    INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+    _inv_run || _inv_rc=$?
     _inv_after="$(sha256sum "$_invtmp" | cut -d' ' -f1)"
     [ "$_inv_rc" -eq 0 ] && [ "$_inv_before" = "$_inv_after" ] \
       && ok "inventory refresh is byte-idempotent when versions are unchanged" \
       || bad "inventory refresh failed or dirtied inventory.local.md on a no-op run"
     INV_FILE="$_invtmp" python3 -c 'import os, pathlib; p=pathlib.Path(os.environ["INV_FILE"]); s=p.read_text(); p.write_text(s.replace("<!-- last refreshed:", "| Bogus Tool | 0.0.0 | x | x |\n<!-- last refreshed:", 1))'
-    INVENTORY_MD="$_invtmp" INVENTORY_SOURCE=verify python3 "$INV_REFRESH" >/dev/null 2>&1 || _inv_rc=$?
+    _inv_run || _inv_rc=$?
     if [ "$_inv_rc" -eq 0 ] && ! grep -q 'Bogus Tool' "$_invtmp"; then
       ok "inventory refresh replaces stale or extra rows exactly"
     else
@@ -2036,25 +1982,14 @@ if [ -f "$INV_REFRESH" ] && INV_REFRESH="$INV_REFRESH" python3 -c 'import os; p=
 else
   bad "updater/refresh-inventory.py missing or invalid"
 fi
-if grep -q 'vendor-dir fallback' "$SETUP" \
-   && grep -q '\.opencode/bin' "$SETUP" \
-   && grep -q 'interactive-guard' "$SETUP"; then
-  ok "SETUP.md documents login PATH then vendor-dir fallback"
+# keep: three scripts must name one lock file, and only the updater's use of it
+# is run (hooks/updater-test.sh). A second path in one of them would not fail there.
+if grep -q '\$UPD_DIR/\.update\.lock' "$AGENTS_HOME/setup.sh" \
+    && grep -q 'update_dir/\.update\.lock' "$AGENTS_HOME/sync.sh" \
+    && grep -q 'LOCK="\$DIR/\.update\.lock"' "$UPD_SRC/update-apps.sh"; then
+  ok "sync.sh, setup.sh, and the updater name the same lock file"
 else
-  bad "SETUP.md missing inventory vendor-dir fallback (Ubuntu .bashrc PATH vs Omarchy mise)"
-fi
-if grep -q 'vendor-dir fallback' "$AGENTS_HOME/docs/DECISIONS.md" \
-   && grep -q 'interactive-guard' "$AGENTS_HOME/docs/DECISIONS.md"; then
-  ok "docs/DECISIONS.md records inventory vendor-dir fallback ADR"
-else
-  bad "docs/DECISIONS.md missing inventory vendor-dir fallback ADR"
-fi
-if grep -q '\.update\.lock' "$AGENTS_HOME/setup.sh" && grep -q 'flock 8' "$AGENTS_HOME/setup.sh" \
-    && grep -q '\.update\.lock' "$AGENTS_HOME/sync.sh" && grep -q 'AGENTS_UPDATE_LOCK_HELD=1' "$AGENTS_HOME/sync.sh" \
-    && grep -q '\.update\.lock' "$UPD_SRC/update-apps.sh" && grep -q 'flock -n 9' "$UPD_SRC/update-apps.sh"; then
-  ok "sync, setup, and updater share serialization lock"
-else
-  bad "sync/setup/updater serialization lock missing or divergent"
+  bad "sync.sh, setup.sh, and the updater do not name the same lock file"
 fi
 
 # --- continue_project parity (SETUP must mention residue check) ------------
@@ -2145,8 +2080,10 @@ if [ -x "$HOOKS/welcome.js" ]; then
     else
       bad "hooks/welcome.js failed --self-test"
     fi
+  elif [ -n "${CI:-}" ]; then
+    bad "hooks/welcome.js --self-test cannot run in CI: node is missing"
   else
-    ok "hooks/welcome.js executable (node not on PATH)"
+    info "hooks/welcome.js --self-test skipped: node is not installed"
   fi
 else
   bad "hooks/welcome.js missing or not executable"
@@ -2286,6 +2223,23 @@ for _k in $_lp_keys; do
     bad "local.json key $_k changes nothing: a promise with no reader"
   fi
 done
+# With autonomy on, no tool gets an ask rule: one would bring the git push
+# prompt back (OpenCode takes the last match, Grok honours a shell ask). With
+# it off, all three get them. Read from what the dry run would write.
+printf '{"bash_without_prompt": false}\n' > "$_epd/off.json"
+_lp_off="$(_lp_dry "$_epd/off.json")"
+# A rule is a quoted list entry or a quoted key. The Cursor rule file in the same
+# diff is prose that names git push, so the match is on the rule's own shape.
+_lp_rule='^\+[[:space:]]*"(Bash\(git push\)"|git push": "ask")'
+# Here-strings, not pipes: under pipefail a `grep -q` that stops early makes the
+# writer die of SIGPIPE, and the whole test then reads as false.
+if [ -n "$_lp_base" ] && ! grep -qE "$_lp_rule" <<<"$_lp_base" \
+   && [ "$(grep -cE '^\+[[:space:]]*"Bash\(git push\)"' <<<"$_lp_off")" -ge 2 ] \
+   && grep -qE '^\+[[:space:]]*"git push": "ask"' <<<"$_lp_off"; then
+  ok "ask rules reach no tool while Bash autonomy is on, and all three when it is off"
+else
+  bad "the ask fan-out is wrong: an ask rule under autonomy, or none without it"
+fi
 if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d["defaults"]["bash_without_prompt"] is True else 1)' "$AGENTS_HOME/permissions.json"; then
   ok "committed bash_without_prompt default is true"
 else
@@ -2545,13 +2499,6 @@ PY
 else
   note "no claude settings.json — skip hook check"
 fi
-if grep -q '2.1.277' "$CANON" && grep -q '2.1.277' "$SETUP" \
-   && grep -q 'load-project-agents.sh' "$CANON" && grep -q 'load-project-agents.sh' "$SETUP" \
-   && grep -q 'native AGENTS.md · hook fallback' "$AGENTS_HOME/setup-infographic.svg"; then
-  ok "Claude native AGENTS.md documented; hook is the fallback"
-else
-  bad "Claude native AGENTS.md docs or figure caption drifted"
-fi
 if grep -q '2.1.219' "$CANON" "$SETUP"; then
   bad "stale Claude 2.1.219 claim still in AGENTS.md or SETUP.md"
 else
@@ -2561,9 +2508,12 @@ LOADER="$HOOKS/load-project-agents.sh"
 hook_case() {
   local label="$1" cwd="$2" expect="$3"
   shift 3
-  local out
-  out="$(cd "$cwd" && env "$@" bash "$LOADER" 2>/dev/null || true)"
-  if [ "$expect" = quiet ]; then
+  local out rc=0
+  # The exit code is kept: a loader that dies prints nothing, and "quiet" would pass.
+  out="$(cd "$cwd" && env "$@" bash "$LOADER" 2>/dev/null)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    bad "$label: the hook exited $rc"
+  elif [ "$expect" = quiet ]; then
     if [ -z "$out" ]; then ok "$label"; else bad "$label printed output"; fi
   elif printf '%s' "$out" | grep -q -- "$expect"; then
     ok "$label"
@@ -2607,21 +2557,25 @@ printf 'HOOK_MARKER_CHILD\n' > "$hook_base/parent/child/AGENTS.md"
 printf 'suppress\n' > "$hook_base/parent/CLAUDE.md"
 hook_case "parent CLAUDE.md makes the hook inject" "$hook_base/parent/child" HOOK_MARKER_CHILD \
   AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
-if [ -d "$HOME/.cache" ]; then
-  hook_home="$(mktemp -d "$HOME/.cache/agents-hook.XXXXXX")"
-  _vtmp_extra+=("$hook_home")
-else
-  hook_home="$(mktemp -d -p "$VTMP")"
-fi
+# A scratch home with the user's own ~/.claude/CLAUDE.md, and a project under it.
+_hook_fakehome="$(mktemp -d -p "$VTMP")"
+mkdir -p "$_hook_fakehome/.claude" "$_hook_fakehome/work/proj"
+printf 'user rules\n' > "$_hook_fakehome/.claude/CLAUDE.md"
+hook_home="$_hook_fakehome/work/proj"
 printf 'HOOK_MARKER_HOME\n' > "$hook_home/AGENTS.md"
 hook_case "user ~/.claude/CLAUDE.md does not suppress" "$hook_home" quiet \
-  AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
-hook_case "real settings, pinned 2.1.295, is quiet" "$hook_base" quiet \
-  AGENTS_CLAUDE_VERSION=2.1.295
+  HOME="$_hook_fakehome" AGENTS_CLAUDE_VERSION=2.1.295 AGENTS_INSTRUCTION_MODE=
+printf '{"instructionMode": "claude-md"}\n' > "$_hook_fakehome/.claude/settings.json"
+hook_case "a settings.json with no known mode key leaves the default: quiet" "$hook_home" quiet \
+  HOME="$_hook_fakehome" AGENTS_CLAUDE_VERSION=2.1.295
+if machine; then
+  hook_case "this machine's settings, pinned 2.1.295, is quiet" "$hook_base" quiet \
+    AGENTS_CLAUDE_VERSION=2.1.295
+fi
 empty="$(mktemp -d -p "$VTMP")"
 hook_case "no AGENTS.md stays quiet on old Claude" "$empty" quiet \
   AGENTS_CLAUDE_VERSION=2.1.200 AGENTS_INSTRUCTION_MODE=
-rm -rf "$hook_base" "$hook_home" "$empty"
+rm -rf "$hook_base" "$_hook_fakehome" "$empty"
 
 # --- claude PreToolUse heredoc-rewrite hook --------------------------------
 echo "[claude heredoc-rewrite hook]"
@@ -2959,21 +2913,6 @@ PY
 fi
 
 echo "[portability]"
-if grep -q 'FAMILY=omarchy' "$AGENTS_HOME/setup.sh" \
-   && grep -q 'ubuntu|debian' "$AGENTS_HOME/setup.sh" \
-   && grep -q 'texlive-full' "$AGENTS_HOME/setup.sh" \
-   && grep -q 'cronie' "$AGENTS_HOME/setup.sh"; then
-  ok "setup.sh detects Omarchy/Arch vs Ubuntu/Debian and prints the install line"
-else
-  bad "setup.sh missing distro detection (Omarchy + Ubuntu)"
-fi
-if grep -q 'user.signingkey' "$HOOKS/gpg-signing-key.sh" \
-   && grep -q 'signing_key' "$HOOKS/gpg-keyring.py" \
-   && ! grep -qE 'GPG_SIGNING_KEY:-95FBA6E0' "$HOOKS/gpg-agent-unlock.sh"; then
-  ok "GPG signing key comes from git config / env, not a hardcoded key id"
-else
-  bad "GPG hooks still hardcode a machine-specific key id"
-fi
 if grep -qi 'omarchy' "$AGENTS_HOME/README.md" \
    && grep -qi 'ubuntu' "$AGENTS_HOME/README.md" \
    && grep -q 'bash_without_prompt' "$AGENTS_HOME/README.md"; then
@@ -2996,14 +2935,6 @@ if grep -q 'git push is not allowlisted and will prompt' "$CANON"; then
   bad "AGENTS.md still claims git push always prompts (OpenCode last-match / autonomy omit-ask)"
 else
   ok "AGENTS.md does not claim git push always prompts"
-fi
-if grep -q 'if not bash_on:' "$AGENTS_HOME/setup.sh" \
-   && grep -q 'bash_patterns("ask")' "$AGENTS_HOME/setup.sh" \
-   && grep -q 'bucket == "ask" and defaults.get("bash_without_prompt")' "$AGENTS_HOME/setup.sh" \
-   && grep -q 'bucket == "ask" and src.get("defaults"' "$AGENTS_HOME/setup.sh"; then
-  ok "setup.sh omits ask fan-out under autonomy (Claude + Grok + OpenCode last-match)"
-else
-  bad "setup.sh missing omit-ask under bash_without_prompt (OpenCode last-match re-prompts git push)"
 fi
 if grep -qi 'omarchy' "$SETUP" && grep -qi 'ubuntu' "$SETUP"; then
   ok "SETUP.md documents Omarchy + Ubuntu"
@@ -3048,6 +2979,7 @@ if [ -f "$AGENTS_HOME/logo.svg" ] && grep -q 'logo.svg' "$AGENTS_HOME/README.md"
 else
   bad "1config ring mark missing from the bar or the README"
 fi
+# keep: QML cannot be run here, so the panel's layout is read. What usage.py prints is in its --self-test.
 if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
    && grep -q 'Style.bar.iconSlot' "$PLUGIN/BarWidget.qml" \
    && grep -q 'Style.bar.iconCanvas' "$PLUGIN/BarWidget.qml" \
@@ -3060,14 +2992,10 @@ if ! grep -q 'text: root.label' "$PLUGIN/BarWidget.qml" \
    && grep -q 'showQuiet' "$PLUGIN/Panel.qml" \
    && grep -q 'showModels' "$PLUGIN/Panel.qml" \
    && grep -q 'By model' "$PLUGIN/Panel.qml" \
-   && grep -q 'zen/go/v1/usage' "$PLUGIN/bin/usage.py" \
-   && grep -q 'Starts on first use' "$PLUGIN/bin/usage.py" \
-   && grep -q 'Not on this machine' "$PLUGIN/bin/usage.py" \
-   && ! grep -q 'Fireworks' "$PLUGIN/bin/usage.py" \
    && ! grep -q 'Fireworks' "$PLUGIN/Panel.qml"; then
-  ok "1config bar is the ring only, spend has no today line or weekday rows, and Go windows are read"
+  ok "1config bar is the ring only, and the spend page has no today line and no weekday rows"
 else
-  bad "1config bar still has a label, or the grid, or a today line, or weekday rows, or no Go usage URL, or no quiet toggle"
+  bad "1config bar still has a label, or the grid, or a today line, or weekday rows, or no quiet toggle"
 fi
 if grep -q "integration_id = 'opencode-go'" "$PLUGIN/bin/usage.py" \
    && grep -q 'Go key expired' "$PLUGIN/bin/usage.py" \
@@ -3192,7 +3120,9 @@ if grep -q 'function refreshAll' "$PLUGIN/Service.qml" \
 else
   bad "1config r does not refresh all or footer shortcuts missing first-letter hotkeys"
 fi
-if [ -d "$HOME/.config/omarchy/plugins" ]; then
+if ! machine; then
+  :
+elif [ -d "$HOME/.config/omarchy/plugins" ]; then
   if diff -rq "$PLUGIN" "$HOME/.config/omarchy/plugins/firstintegral.1config" >/dev/null; then
     ok "installed 1config plugin matches the brain copy"
   else
@@ -3500,7 +3430,9 @@ else
   bad "opencode 2.x asked for a service that was not running"
 fi
 rm -rf "$_oc_fix"
-if command -v opencode >/dev/null 2>&1; then
+if ! machine; then
+  :
+elif command -v opencode >/dev/null 2>&1; then
   # to a file, not $(...): opencode exits before flushing a >64 KB pipe.
   _ocf="$(mktemp -p "$VTMP")"
   _oc_rc=0

@@ -149,4 +149,26 @@ else
   fail "preflight did not name a Grok config that stops setup midway (exit $rc)"
 fi
 
+# --- platform.sh: the package family, and the install line that goes with it ----
+# shellcheck disable=SC1091
+. "$HOOKS/platform.sh"
+plat_case() {
+  local label="$1" body="$2" has_omarchy="$3" want_family="$4" want_hint="$5" f="$T/os-release"
+  printf '%s' "$body" > "$f"
+  platform_detect "$f" "$has_omarchy"
+  if [ "$FAMILY" = "$want_family" ] && printf '%s\n' "$HINT" | grep -qF -- "$want_hint"; then
+    pass "$label"
+  else
+    fail "$label (family $FAMILY, hint: $HINT)"
+  fi
+}
+plat_case "platform: Ubuntu is the debian family and gets the apt line" \
+  $'NAME="Ubuntu"\nID=ubuntu\nID_LIKE=debian\n' 0 debian 'apt-get install'
+plat_case "platform: a Debian derivative is found through ID_LIKE" \
+  $'ID=pop\nID_LIKE="ubuntu debian"\n' 0 debian 'texlive-full'
+plat_case "platform: Arch gets the pacman line" $'ID=arch\n' 0 arch 'pacman -S'
+plat_case "platform: Omarchy wins over the os-release file" $'ID=arch\n' 1 omarchy 'omarchy pkg add'
+plat_case "platform: an unknown system gets the plain list, not another system's command" \
+  $'ID=fedora\n' 0 unknown 'install python3'
+
 [ "$fails" -eq 0 ]

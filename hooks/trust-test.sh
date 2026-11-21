@@ -234,4 +234,63 @@ else
   fail "dots gate: a signed commit was refused (exit $RC: $OUT)"
 fi
 
+# --- the login pull talks only to a URL on BRAIN_REMOTE -------------------------
+r="$(new_brain)"
+commit "$r/seed" "$K1" "signed update"
+git -C "$r/seed" push -q origin main
+printf '%s\n' 'https://example.invalid/someone/else.git' > "$r/brain/BRAIN_REMOTE"
+before="$(head_of "$r")"
+bsync "$r"
+if [ "$RC" -eq 4 ] && [ "$(head_of "$r")" = "$before" ] && printf '%s\n' "$OUT" | grep -q 'not in BRAIN_REMOTE'; then
+  pass "login pull: an origin that BRAIN_REMOTE does not list is refused before any fetch (exit 4)"
+else
+  fail "login pull: pulled from an origin that BRAIN_REMOTE does not list (exit $RC: $OUT)"
+fi
+
+# --- gpg-git.sh: loopback always, and one unlock then one retry for a signature -
+gg="$(mktemp -d -p "$T")"
+mkdir -p "$gg/bin" "$gg/brain/hooks"
+cat > "$gg/bin/gpg" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$STUB_DIR/gpg.calls"
+cat >/dev/null
+if [ -e "$STUB_DIR/unlocked" ]; then exit 0; fi
+exit 2
+STUB
+printf '#!/bin/sh\n: > "%s/unlocked"\n' "$gg" > "$gg/brain/hooks/gpg-agent-unlock.sh"
+chmod +x "$gg/bin/gpg" "$gg/brain/hooks/gpg-agent-unlock.sh"
+RC=0
+printf 'payload' | env PATH="$gg/bin:$PATH" STUB_DIR="$gg" AGENTS_HOME="$gg/brain" \
+  bash "$HOOKS/gpg-git.sh" -bsau KEY >/dev/null 2>&1 || RC=$?
+if [ "$RC" -eq 0 ] && [ "$(wc -l < "$gg/gpg.calls")" -eq 2 ] && [ -e "$gg/unlocked" ] \
+   && ! grep -qv -- '--pinentry-mode loopback' "$gg/gpg.calls"; then
+  pass "gpg-git.sh: a signature that fails runs the unlock once and retries, always in loopback mode"
+else
+  fail "gpg-git.sh: no unlock and retry, or a call without loopback (exit $RC, $(wc -l < "$gg/gpg.calls" 2>/dev/null) call(s))"
+fi
+rm -f "$gg/gpg.calls" "$gg/unlocked"
+RC=0
+printf 'payload' | env PATH="$gg/bin:$PATH" STUB_DIR="$gg" AGENTS_HOME="$gg/brain" \
+  bash "$HOOKS/gpg-git.sh" --verify sig - >/dev/null 2>&1 || RC=$?
+if [ "$RC" -ne 0 ] && [ "$(wc -l < "$gg/gpg.calls")" -eq 1 ] && [ ! -e "$gg/unlocked" ]; then
+  pass "gpg-git.sh: a failed --verify is an answer: no unlock, no retry"
+else
+  fail "gpg-git.sh: a failed --verify ran the unlock or was retried (exit $RC)"
+fi
+
+# --- the signing key is the one this machine is told about, never a built-in id -
+sk="$(mktemp -d -p "$T")"
+: > "$sk/gitconfig"
+got="$(env GPG_SIGNING_KEY=0xAAAA1111 GIT_CONFIG_GLOBAL="$sk/gitconfig" bash "$HOOKS/gpg-signing-key.sh" 2>/dev/null)"
+git config --file "$sk/gitconfig" user.signingkey BBBB2222
+got2="$(env -u GPG_SIGNING_KEY GIT_CONFIG_GLOBAL="$sk/gitconfig" bash "$HOOKS/gpg-signing-key.sh" 2>/dev/null)"
+: > "$sk/empty"
+RC=0
+got3="$(env -u GPG_SIGNING_KEY GIT_CONFIG_GLOBAL="$sk/empty" bash "$HOOKS/gpg-signing-key.sh" 2>/dev/null)" || RC=$?
+if [ "$got" = "AAAA1111" ] && [ "$got2" = "BBBB2222" ] && [ -z "$got3" ] && [ "$RC" -eq 3 ]; then
+  pass "gpg-signing-key.sh: the key is GPG_SIGNING_KEY, else user.signingkey, else none (exit 3)"
+else
+  fail "gpg-signing-key.sh: wrong key source (env '$got', config '$got2', none '$got3' exit $RC)"
+fi
+
 [ "$fails" -eq 0 ]

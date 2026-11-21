@@ -59,22 +59,14 @@ echo "== unified AI setup — $(date) =="
 
 # --- 0 platform + preflight (Omarchy/Arch and Ubuntu/Debian) ----------------
 echo "[0] platform"
-FAMILY=unknown
-HINT="install python3, flock (util-linux), git, cron, gnupg, gnome-keyring"
-if [ -f /etc/os-release ]; then
-  # shellcheck disable=SC1091
-  . /etc/os-release
-fi
+# shellcheck disable=SC1091
+. "$AGENTS_HOME/hooks/platform.sh"
+_has_omarchy=0
 if command -v omarchy >/dev/null 2>&1 || [ -d /usr/share/omarchy ]; then
-  FAMILY=omarchy
-  HINT="omarchy pkg add python util-linux cronie git gnupg gnome-keyring texlive-meta"
-elif echo "${ID:-} ${ID_LIKE:-}" | grep -qiE 'ubuntu|debian'; then
-  FAMILY=debian
-  HINT="sudo apt-get install -y python3 util-linux cron git gnupg gnome-keyring texlive-full"
-elif echo "${ID:-} ${ID_LIKE:-}" | grep -qi arch; then
-  FAMILY=arch
-  HINT="sudo pacman -S --needed python util-linux cronie git gnupg gnome-keyring texlive-meta"
+  _has_omarchy=1
 fi
+platform_detect /etc/os-release "$_has_omarchy"
+ID="$PLATFORM_ID"
 log "family   $FAMILY (${ID:-unknown})"
 
 need_die=0
