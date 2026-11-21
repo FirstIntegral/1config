@@ -146,6 +146,13 @@ run "${LEDGER[@]}" --db "$ROOT/none.db" prior all
 expect_rc 2 no-db
 run "${LEDGER[@]}" prior
 expect_rc 64 usage
+# A column the queries sort by is part of the schema check: its loss is exit 2
+# with the reason, not a traceback.
+cp "$data/orx.db" "$ROOT/sortcol.db"
+python3 -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute('ALTER TABLE local_experiments RENAME COLUMN created_at TO made_at'); c.commit()" "$ROOT/sortcol.db"
+run "${LEDGER[@]}" --db "$ROOT/sortcol.db" prior all
+expect_rc 2 sort-column-renamed
+expect_out "schema changed" sort-column-renamed
 python3 -c "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); c.execute('ALTER TABLE runs RENAME COLUMN commit_sha TO sha'); c.commit()" "$data/orx.db"
 run "${LEDGER[@]}" prior all
 expect_rc 2 schema-changed

@@ -61,8 +61,9 @@ import re, sqlite3, sys, time
 
 db, cmd, target = sys.argv[1], sys.argv[2], sys.argv[3]
 NEED = {
+    # Every column a query below names, the ORDER BY column included.
     "local_experiments": {"id", "project_id", "parent_experiment_id", "title",
-                          "description", "branch_name", "archived"},
+                          "description", "branch_name", "archived", "created_at"},
     "runs": {"id", "experiment_id", "status", "commit_sha", "created_at", "exit_code"},
 }
 try:

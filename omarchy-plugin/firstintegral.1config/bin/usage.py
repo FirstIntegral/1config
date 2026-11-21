@@ -789,6 +789,38 @@ def _cached_go_note(fetched_at: datetime | None, problem: str, now: datetime) ->
     return f"{lead}. Cached {day}."
 
 
+def go_failure_path(home: Path) -> Path:
+    return go_cache_path(home).with_name("opencode-go-failed.json")
+
+
+def read_go_failure(home: Path, now: datetime) -> str:
+    """The problem of the last failed live read, while it is younger than GO_TTL."""
+    try:
+        payload = json.loads(go_failure_path(home).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    failed_at = parse_time(payload.get("failedAt"))
+    problem = payload.get("problem")
+    if failed_at is None or not isinstance(problem, str) or not problem:
+        return ""
+    age = now - as_local(failed_at, now)
+    return problem if timedelta(0) <= age < GO_TTL else ""
+
+
+def write_go_failure(home: Path, now: datetime, problem: str) -> None:
+    path = go_failure_path(home)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"failedAt": now.isoformat(timespec="seconds"), "problem": problem}) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        return
+
+
 def go_limits(home: Path, now: datetime, *, force: bool, fetch=None) -> tuple[list[dict], str]:
     fetch = fetch_go_usage if fetch is None else fetch
     cached, fetched_at = read_go_cache(home)
@@ -798,14 +830,23 @@ def go_limits(home: Path, now: datetime, *, force: bool, fetch=None) -> tuple[li
         fresh = timedelta(0) <= age < GO_TTL
     if cached is not None and fresh and not force:
         return go_windows(cached), ""
-    problem = ""
-    for key in go_keys(home):
-        fetched, problem = fetch(key)
-        if isinstance(fetched, dict):
-            write_go_cache(home, now, fetched)
-            return go_windows(fetched), ""
-        if not isinstance(problem, str) or not problem:
-            problem = "unreachable"
+    # The panel re-reads on a timer. A key that was refused, or a host that did
+    # not answer, is not asked again until GO_TTL has passed. A forced read asks.
+    problem = "" if force else read_go_failure(home, now)
+    if not problem:
+        for key in go_keys(home):
+            fetched, problem = fetch(key)
+            if isinstance(fetched, dict):
+                write_go_cache(home, now, fetched)
+                try:
+                    go_failure_path(home).unlink()
+                except OSError:
+                    pass
+                return go_windows(fetched), ""
+            if not isinstance(problem, str) or not problem:
+                problem = "unreachable"
+        if problem:
+            write_go_failure(home, now, problem)
     if cached is not None:
         return go_windows(cached), _cached_go_note(fetched_at, problem, now)
     if problem == "api_key_expired":
@@ -1573,6 +1614,21 @@ def attach_go(card: dict, home: Path, now: datetime, *, force: bool) -> dict:
     return card
 
 
+def _guarded(agent_id: str, read) -> dict:
+    """Run one source's reader. A fault in it gives that card a status line.
+
+    Each reader parses files another program writes. One row it did not expect
+    must cost one card, not the whole panel.
+    """
+    try:
+        return read()
+    except Exception:  # noqa: BLE001 - any fault in one reader stays in its card
+        name = next((label for ident, label, _bins, _rels in ROSTER if ident == agent_id), agent_id)
+        agent = _blank_agent(agent_id, name)
+        agent["status"] = f"{name} data could not be read"
+        return agent
+
+
 def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, which=None) -> dict:
     now = now or datetime.now().astimezone()
     finder = shutil.which if which is None else which
@@ -1581,15 +1637,20 @@ def collect(home: Path, now: datetime | None = None, *, force_go: bool = False, 
     usage_dir = home / ".local" / "state" / "omarchy" / "agents" / "usage"
     if usage_dir.is_dir():
         for path in sorted(usage_dir.glob("*.json")):
-            agent = omarchy_agent(path, now)
+            try:
+                agent = omarchy_agent(path, now)
+            except Exception:  # noqa: BLE001 - one bad record file is skipped
+                continue
             if agent is None or agent["id"] not in ROSTER_IDS:
                 continue
             by_id[agent["id"]] = agent
             loaded.add(agent["id"])
-    by_id["x"] = x_plan_agent(home, now)
-    by_id["grok"] = grok_agent(home, now)
-    by_id["grokbot"] = grokbot_agent(home, now)
-    by_id["opencode"] = attach_go(opencode_agent(home, now), home, now, force=force_go)
+    by_id["x"] = _guarded("x", lambda: x_plan_agent(home, now))
+    by_id["grok"] = _guarded("grok", lambda: grok_agent(home, now))
+    by_id["grokbot"] = _guarded("grokbot", lambda: grokbot_agent(home, now))
+    by_id["opencode"] = _guarded(
+        "opencode", lambda: attach_go(opencode_agent(home, now), home, now, force=force_go)
+    )
     roster: list[dict] = []
     for agent_id, name, bins, rels in ROSTER:
         agent = by_id.get(agent_id) or _blank_agent(agent_id, name)
@@ -2164,6 +2225,40 @@ def _assert_go_key_source() -> None:
         stale, note = go_limits(home, now, force=True, fetch=dead)
         assert [item["usedPct"] for item in stale] == [0.0, 21.0, 51.0], stale
         assert note == "Go key expired. Cached 2026-10-01.", note
+        # A failed live read is not asked again on the next timer tick. It is
+        # asked again after GO_TTL, and at once when the read is forced.
+        asked: list[str] = []
+
+        def counting(key: str):
+            asked.append(key)
+            return None, "api_key_expired"
+
+        again, note_again = go_limits(home, now, force=False, fetch=counting)
+        assert asked == [], asked
+        assert [item["usedPct"] for item in again] == [0.0, 21.0, 51.0], again
+        assert note_again == "Go key expired. Cached 2026-10-01.", note_again
+        go_limits(home, now + GO_TTL + timedelta(seconds=1), force=False, fetch=counting)
+        assert len(asked) >= 1, asked
+        before_force = len(asked)
+        go_limits(home, now + GO_TTL + timedelta(seconds=2), force=True, fetch=counting)
+        assert len(asked) > before_force, asked
+        # One row this reader did not expect costs the OpenCode card, not the panel.
+        with tempfile.TemporaryDirectory() as bad_tmp:
+            bad_home = Path(bad_tmp)
+            bad_share = bad_home / ".local" / "share" / "opencode"
+            bad_share.mkdir(parents=True)
+            bad_db = sqlite3.connect(bad_share / "opencode.db")
+            bad_db.execute("create table part (time_created, message_id, data)")
+            bad_db.execute(
+                "insert into part values ('not a time', 'm', ?)",
+                (json.dumps({"type": "step-finish", "tokens": {"total": 5}}),),
+            )
+            bad_db.commit()
+            bad_db.close()
+            survived = collect(bad_home, now, which=lambda _name: None)
+            cards = {item["id"]: item for item in survived["agents"]}
+            assert cards["opencode"]["status"] == "OpenCode data could not be read", cards["opencode"]
+            assert "grok" in cards and "x" in cards, sorted(cards)
         connection = sqlite3.connect(share / "opencode.db")
         connection.execute("delete from credential")
         connection.commit()

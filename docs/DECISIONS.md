@@ -1,5 +1,16 @@
 # Brain decisions
 
+## 2026-11-21 — The panel survives one bad source, and two limits are written down
+
+**Policy:** deny_rules=exact-text-limit-stated
+**Policy:** autonomy_off_allowlist=interpreters-stay-limit-stated
+
+**Decision:** `usage.py` runs each source's reader through one guard: a fault gives that card "data could not be read" and the other cards stay. A failed OpenCode Go read is recorded and not tried again for ten minutes unless the read is forced. `orx-ledger.sh` checks the `created_at` column it sorts by. `SECURITY.md` says the deny rules match exact text, and it names the allowlisted commands that can run any other command while Bash autonomy is off. `verify.sh` fails when an interpreter is on the allowlist and not in that sentence.
+
+**Why:** Only `sqlite3.Error` was caught around the OpenCode reader, so one row with a text timestamp raised `ValueError` and the panel printed nothing. An expired Go key was asked again at every timer tick, eight seconds each. A renamed sort column gave a traceback where the script promises exit 2. The owner's answers 2 and 3 of 2026-11-21: no list of deny spellings, and `python3`, `find`, `sed`, `awk` stay on the allowlist, both stated in `SECURITY.md`.
+
+**Rejected:** Catching `Exception` inside each reader: one guard at the call site covers a reader added later. A deny list with common spellings: it is never complete. Moving interpreters to `ask`: the person who turns autonomy off would be prompted on most turns.
+
 ## 2026-11-21 — Digit refuse checks year-shaped numbers, and widths are not measurements
 
 **Policy:** digit_refuse_years=checked-allow-year-line

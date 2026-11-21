@@ -3882,6 +3882,29 @@ then
 else
   bad "SECURITY.md deny list differs from permissions.json"
 fi
+# With autonomy off the allowlist still runs commands that can start any other
+# command. SECURITY.md says which. An interpreter added to the allowlist must
+# show up there, or the "autonomy off" promise grows quietly.
+if SEC="$_sec" PERMS="$AGENTS_HOME/permissions.json" python3 - <<'PY' 2>/dev/null
+import json
+import os
+import re
+import sys
+
+RUNS_ANYTHING = {"bash", "sh", "zsh", "source", "env", "command", "python", "python3", "node", "deno",
+                 "bun", "uv", "pytest", "find", "sed", "awk", "perl", "ruby", "xargs", "make", "npm",
+                 "npx", "crontab", "eval", "exec"}
+sec = open(os.environ["SEC"], encoding="utf-8").read()
+allow = json.load(open(os.environ["PERMS"], encoding="utf-8"))["permissions"]["allow"]
+names = {m.group(1) for a in allow for m in [re.match(r"Bash\(([^ )]+)", a)] if m}
+missing = sorted(n for n in names & RUNS_ANYTHING if f"`{n}`" not in sec)
+sys.exit(1 if missing else 0)
+PY
+then
+  ok "SECURITY.md names every allowlisted command that can run any other command"
+else
+  bad "SECURITY.md does not name an allowlisted interpreter (see 'Autonomy off is fewer prompts')"
+fi
 
 # --- summary ---------------------------------------------------------------
 _slip() {
