@@ -292,7 +292,7 @@ const PAGES = [
     sentences: [
       '1config enables bash_without_prompt and edit_without_prompt by default (reversible via gitignored local.json) with a PreToolUse heredoc-rewrite.py hook for Claude, while Red Lines (destructive acts or anything leaving the machine) still wait for an explicit yes.',
       'Never post a GitHub reply until the user approves the draft shown in the chat. A draft is not a yes.',
-      'Every commit is GPG-signed without GUI popups or AI co-author lines: gpg-git.sh signs in loopback mode using a dedicated gpg-signing keyring collection, and gpg-keyring.py (via vendored jeepney) scans raw *.keyring files on disk if D-Bus breaks.',
+      'Every commit is GPG-signed with no AI co-author line. git calls gpg itself: nothing stores or types a passphrase, so an agent can sign only with a key that needs no prompt. hooks/gpg-sign-check.sh says whether this machine can.',
       'updater/ (boot-check.sh, update-apps.sh, on-resume.sh, system-sleep-shim.sh, refresh-inventory.py) upgrades grok/claude/opencode at login and suspend-resume (skipping mise-managed shims) and writes live versions to gitignored inventory.local.md.',
       'Detached jobs must be armed same-turn with watch-stale.sh <pid> <log> (cries STALE only when both log growth and /proc/<pid>/stat fields 14-17, summed over the pid and its children, use <1s CPU across 10m; idle preview servers are excluded), while Caveman mode stays always on (full).',
       'Caveman keeps not, never, no, and only, caps each sentence at 20 words, and quotes code, paths, and errors exactly.',
@@ -303,7 +303,7 @@ const PAGES = [
     ],
     snippetTitle: 'Under-the-hood hooks & daemons (~/.agents/)',
     snippetItems: [
-      { key: 'gpg-git.sh / gpg-keyring.py', val: 'Loopback GPG signing + direct on-disk keyring recovery via jeepney, zero AI attribution' },
+      { key: 'gpg-sign-check.sh', val: 'Exit 0 signs with no prompt, 1 the key needs its passphrase, 3 no key; signing is never bypassed' },
       { key: 'updater/ + inventory.local', val: 'Login & suspend-resume CLI updater; writes live versions to gitignored inventory.local.md' },
       { key: 'verify-incoming / secret-scan', val: 'Login pull takes BRAIN_SIGNERS-signed commits only; a token shape stops a commit' },
       { key: 'watch-stale.sh / Herd wall', val: '10m dual-signal (log + CPU) job monitor; flock-locked multi-wave wall for agent herds' },

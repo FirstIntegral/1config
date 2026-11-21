@@ -284,7 +284,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md present" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh guards-test.sh config-test.sh trust-test.sh updater-test.sh platform.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-signing-key.sh gpg-sign-check.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh guards-test.sh config-test.sh trust-test.sh updater-test.sh platform.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -1663,9 +1663,9 @@ fi
 
 # --- gpg unlock hooks --------------------------------------------------------
 echo "[gpg hooks]"
-# Where this machine stands on the move to a signing key with no passphrase
+# Whether the signing key on this machine is stored under a passphrase
 # (docs/DECISIONS.md, "Signing: the same key, with no passphrase"). A key that
-# still has one is an INFO, not a fault: the unlock hooks below exist for it.
+# has one is an INFO, not a fault: gpg then asks for it, and nothing here stores it.
 # Field 8 of KEYINFO is P (under a passphrase) or C (in the clear). A test
 # signature cannot tell the two apart, because a cached passphrase signs too.
 if machine && command -v gpg-connect-agent >/dev/null 2>&1; then
@@ -1687,85 +1687,48 @@ if machine && command -v gpg-connect-agent >/dev/null 2>&1; then
   elif [ "$_sk_any" = 1 ] && [ "$_sk_clear" = 1 ]; then
     ok "the signing key on this machine has no passphrase: it signs with no unlock step"
   elif [ "$_sk_any" = 1 ]; then
-    info "the signing key here is under a passphrase: the unlock hooks are still needed on this machine"
+    info "the signing key here is under a passphrase: gpg asks for it at a commit, unless gpg-agent holds it"
   fi
 fi
-if [ -x "$HOOKS/gpg-agent-unlock.sh" ] && [ -x "$HOOKS/gpg-store-passphrase.sh" ] && [ -x "$HOOKS/gpg-signing-key.sh" ]; then
-  ok "gpg hooks present + executable"
+if [ -x "$HOOKS/gpg-signing-key.sh" ] && [ -x "$HOOKS/gpg-sign-check.sh" ]; then
+  ok "gpg-signing-key.sh and gpg-sign-check.sh present + executable"
 else
-  bad "gpg unlock hooks missing (run setup.sh)"
+  bad "a signing helper is missing or not executable (run setup.sh)"
 fi
-if [ -f "$HOOKS/gpg-keyring.py" ]; then
-  ok "hooks/gpg-keyring.py present"
-  if python3 -m py_compile "$HOOKS/gpg-keyring.py" 2>/dev/null; then
-    ok "hooks/gpg-keyring.py compiles"
-  else
-    bad "hooks/gpg-keyring.py SYNTAX ERROR"
-  fi
-  if python3 "$HOOKS/gpg-keyring.py" self-test >/dev/null; then
-    ok "gpg-keyring.py self-test (bricked-file scan + SearchItems tuple + unlock target)"
-  else
-    bad "gpg-keyring.py self-test failed"
-  fi
+# The unlock machinery (four hooks and a vendored D-Bus library) was removed on
+# 2026-11-21. It must not come back by a restore or a merge, and no file that an
+# agent or a person follows may still send them to it. setup.sh, uninstall.sh,
+# and the panel name the old wrapper only to undo it on a machine that has it,
+# and the stranger install test names it to rehearse that undo.
+_retired_left=""
+for _rf in hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py hooks/gpg-git.sh vendor; do
+  [ -e "$AGENTS_HOME/$_rf" ] && _retired_left="$_retired_left $_rf"
+done
+if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+  _retired_named="$(git -C "$AGENTS_HOME" grep -l -e 'gpg-agent-unlock' -e 'gpg-store-passphrase' -e 'gpg-keyring\.py' -e 'gpg-git\.sh' -e 'jeepney' -- . \
+    ':!docs' ':!verify.sh' ':!setup.sh' ':!uninstall.sh' ':!SETUP.md' ':!omarchy-plugin/firstintegral.1config/bin/usage.py' \
+    ':!omarchy-plugin/firstintegral.1config/README.md' ':!hooks/stranger-install-test.sh' 2>/dev/null | tr '\n' ' ' || true)"
 else
-  bad "hooks/gpg-keyring.py missing"
+  _retired_named=""
 fi
-if grep -q 'SearchItems' "$HOOKS/gpg-keyring.py" && grep -q '_pick_item' "$HOOKS/gpg-keyring.py"; then
-  ok "gpg-keyring.py uses SearchItems (unlocked, locked) tuple"
+if [ -z "$_retired_left" ] && [ -z "$_retired_named" ]; then
+  ok "the retired unlock hooks and vendor/ are gone, and no rule or script still names them"
 else
-  bad "gpg-keyring.py does not handle SearchItems locked items"
-fi
-if grep -q 'def _unlock_target' "$HOOKS/gpg-keyring.py" \
-   && grep -q 'count("/") >= 6' "$HOOKS/gpg-keyring.py"; then
-  ok "gpg unlock trims item paths only (>= 6 slashes)"
-else
-  bad "gpg unlock still trims collection paths (want count >= 6)"
-fi
-if grep -q 'COLLECTION_LABEL = "gpg-signing"' "$HOOKS/gpg-keyring.py" \
-   && grep -q 'CreateWithMasterPassword' "$HOOKS/gpg-keyring.py"; then
-  ok "gpg passphrase stored in dedicated gpg-signing collection"
-else
-  bad "gpg-keyring.py does not isolate a dedicated collection"
-fi
-if grep -q 'gpg-keyring.py' "$HOOKS/gpg-agent-unlock.sh" \
-   && grep -q 'gpg-keyring.py' "$HOOKS/gpg-store-passphrase.sh"; then
-  ok "unlock + store scripts call gpg-keyring.py"
-else
-  bad "unlock/store scripts do not call gpg-keyring.py"
-fi
-if [ -d "$AGENTS_HOME/vendor/jeepney" ] && [ -f "$AGENTS_HOME/vendor/jeepney/__init__.py" ]; then
-  ok "vendored jeepney present (gpg keyring access)"
-else
-  bad "vendor/jeepney missing — gpg keyring hooks cannot run"
-fi
-# Vendored code keeps its license text and says which release it is, like a skill.
-_jv="$(sed -n "s/^__version__ = '\(.*\)'$/\1/p" "$AGENTS_HOME/vendor/jeepney/__init__.py" 2>/dev/null | head -n 1)"
-if [ -f "$AGENTS_HOME/vendor/jeepney/LICENSE" ] \
-   && grep -q 'MIT License' "$AGENTS_HOME/vendor/jeepney/LICENSE" \
-   && grep -q 'Thomas Kluyver' "$AGENTS_HOME/vendor/jeepney/LICENSE" \
-   && [ -n "$_jv" ] \
-   && grep -qF -- "- Version: $_jv," "$AGENTS_HOME/vendor/jeepney/UPSTREAM.md" 2>/dev/null; then
-  ok "vendored jeepney $_jv ships its MIT license and names its release"
-else
-  bad "vendor/jeepney is missing LICENSE, or UPSTREAM.md does not name release ${_jv:-?}"
-fi
-if [ -d "$BD" ] && grep -q 'gpg-agent-unlock' "$BD/dashboard.sh" 2>/dev/null; then
-  ok "boot dashboard runs gpg unlock"
-else
-  note "boot dashboard does not reference gpg-agent-unlock"
-fi
-if [ -d "$BD" ] && grep -q 'no stored passphrase' "$BD/dashboard.sh" 2>/dev/null; then
-  ok "boot dashboard distinguishes unlock exit 3 (nothing stored)"
-else
-  bad "boot dashboard still lumps all gpg failures as keyring locked/empty"
+  bad "the retired unlock machinery is back, or still named:${_retired_left} ${_retired_named}"
 fi
 if machine; then
 _gp="$(git config --global --get gpg.program 2>/dev/null || true)"
-if [ "$_gp" = "$HOOKS/gpg-git.sh" ]; then
-  ok "git gpg.program → hooks/gpg-git.sh"
-else
-  bad "git gpg.program is '${_gp:-unset}' (run setup.sh)"
-fi
+case "$_gp" in
+  *gpg-git.sh) bad "git gpg.program still points at the retired hooks/gpg-git.sh: commits cannot be signed (run setup.sh)" ;;
+  *) ok "git gpg.program is not the retired wrapper (${_gp:-unset: git calls gpg itself})" ;;
+esac
+_sc_rc=0
+bash "$HOOKS/gpg-sign-check.sh" >/dev/null 2>&1 || _sc_rc=$?
+case "$_sc_rc" in
+  0) ok "a commit signs here with no prompt" ;;
+  1) info "the signing key needs its passphrase: gpg will ask at the next commit" ;;
+  *) info "no signing key on this machine yet (the preflight names the fix)" ;;
+esac
 fi  # machine
 _wf="$HOOKS/github-web-flow.asc"
 _wf_fpr="968479A1AFF927E37D1A566BB5690EEEBB952194"

@@ -83,6 +83,14 @@ elif [ "$have_keyring" = 0 ] || ! gpg --batch --list-secret-keys "$key" >/dev/nu
   miss "the secret key for user.signingkey=$key is not in this machine's keyring" \
        "import it, or point user.signingkey at a key this machine holds"
 fi
+# git signs and checks signatures through gpg.program when one is set. A setting
+# that names a program which is not there breaks both, and the error git prints
+# does not say so.
+gp="$(git config --get gpg.program 2>/dev/null || true)"
+if [ -n "$gp" ] && ! command -v "$gp" >/dev/null 2>&1; then
+  miss "git's gpg.program is '$gp', and there is no such program" \
+       "git config --global --unset gpg.program    # git then calls gpg itself"
+fi
 [ "$(git -C "$ROOT" config --bool commit.gpgsign 2>/dev/null || true)" = true ] \
   || miss "commit.gpgsign is not true" "git config --global commit.gpgsign true"
 

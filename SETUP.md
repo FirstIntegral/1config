@@ -156,20 +156,13 @@ Cursor Code (the editor Agent and the `cursor-agent` CLI) reads the same rules t
 - **Skills / memory** — tracked `~/.agents/skills` are not linked into Cursor, and Cursor's `~/.cursor/skills-cursor/` is Cursor's own. Recorded per the parity rule.
 - **Vitals** — `usage.py` counts Cursor in the links check (4 symlinks) and the agent-tools check (`claude`, `grok`, `opencode`, `cursor-agent`), and the spend roster keeps a Cursor card (`cursor-agent` presence; `~/.cursor/ai-tracking/ai-code-tracking.db` has no usage rows on this machine, so the card says there is no usage record and notes it is covered by the unified X plan).
 
-### GPG signing unlock (Secret Service keyring)
+### GPG signing
 
-- Passphrase lives in a **dedicated** gnome-keyring collection labelled `gpg-signing`, empty master (autologin has no PAM password, so a login-locked collection would never open). Isolated from the default collection on purpose.
-- **Why dedicated (verified 2026-08-29, this machine):** gnome-keyring 50 cannot reload an unencrypted `.keyring` file after any item's `secret=` contains a raw newline (Proton JSON via Python keyring, etc.) — journal: `keyring was in an invalid or unrecognized format`. SearchItems then returns empty even though the GPG item is still in the file. A one-item collection does not pick up those secrets, so it survives reboot. Unlock scans bricked files and restocks the dedicated collection when the live daemon has nothing.
-- `hooks/gpg-keyring.py` — jeepney helper: SearchItems uses **both** `(unlocked, locked)` arrays; never `Service.Unlock` (that GUI-prompts); empty-master via `CreateWithMasterPassword` / `UnlockWithMasterPassword`. Unlock trims an item path (6 slashes) to its collection and leaves a collection path (5 slashes) unchanged. `fetch` / `store` / `self-test`.
-- `hooks/gpg-agent-unlock.sh` — test-sign; on miss, `gpg-keyring.py fetch` + `--pinentry-mode loopback`. Boot dashboard runs this **first** at graphical login (before tool-update / verify). Exit `0` cached-or-unlocked · `1` passphrase rejected · `2` dbus · `3` nothing stored.
-- `hooks/gpg-git.sh` — git's `gpg.program`. Loopback only; on cache miss runs unlock and retries. `setup.sh` points `git config --global gpg.program` here so commits never open `pinentry-gnome3`. git also calls it to check a signature (`--verify`); a failed check returns as it is, with no unlock attempt, because an unsigned or unknown commit is an answer and not a locked key.
-- `vendor/jeepney/` carries its `LICENSE` (MIT, Thomas Kluyver) and an `UPSTREAM.md` that names the release. `verify.sh` checks both against `__version__`.
-- `hooks/gpg-store-passphrase.sh` — one-time store into the dedicated collection (prompts once). Re-run after a passphrase change.
-- **gnome-keyring 50.x API quirk (verified 2026-08):** `CreateItem` lives on the **Collection** interface (not Service), `GetSecret` on the **Item** interface, and the Secret struct signature is `(oayays)` with a single `ay` parameters field. The plain-session handle marshals correctly only via the **vendored `jeepney`** (`~/.agents/vendor/jeepney`, MIT, pure python — dbus-python/GLib validate object paths and fail). No system packages needed.
-- `~/.gnupg/gpg-agent.conf` already: `allow-loopback-pinentry`, `default-cache-ttl 31536000`, `max-cache-ttl 31536000` (1-year cache after first unlock).
-- Signing key id: `$GPG_SIGNING_KEY` or `git config --global user.signingkey`. Never a hardcoded key from another machine.
-- GitHub web-flow public keys live in `hooks/github-web-flow.asc`. `setup.sh` imports them and does not set ownertrust. The live fingerprint is `968479A1AFF927E37D1A566BB5690EEEBB952194` (`GitHub <noreply@github.com>`). `verify.sh` requires that fingerprint in the file and in the keyring, so a web commit's `%G?` is `U` instead of `E`. A key rotation is a brain edit of that file.
-- Fallback: re-run the store script, or manual unlock in a real terminal (see canonical `AGENTS.md`).
+- git calls `gpg` itself. 1config sets no `gpg.program`, stores no passphrase, and vendors no library for it.
+- `hooks/gpg-signing-key.sh` prints the key git signs with: `$GPG_SIGNING_KEY`, otherwise `git config --global user.signingkey`. Exit `3` when neither is set.
+- `hooks/gpg-sign-check.sh` makes one test signature with `--pinentry-mode error`, so it never asks and never stores. Exit `0` a commit signs with no prompt · `1` the key needs a passphrase that gpg-agent does not hold · `3` no key set, no gpg, or the secret key is not in this keyring. The boot dashboard's signing row and `verify.sh` call it.
+- An agent commits with nobody at the keyboard, so the key has to sign without a prompt. The owner's key has no passphrase (`docs/DECISIONS.md`, "Signing: the same key, with no passphrase"). A key under a passphrase works once gpg-agent holds it: sign once in a real terminal, and the agent's cache time decides how long that lasts.
+- **History.** Until 2026-11-21 the passphrase sat in a dedicated gnome-keyring collection with an empty master password, and four hooks plus a vendored D-Bus library fetched it: an unlock script at login, a store script, a keyring reader, and a wrapper that was git's `gpg.program`. `setup.sh` now unsets a `gpg.program` that still points at that wrapper, because the file is gone and git could not sign through it. The old keyring file `~/.local/share/keyrings/gpg-signing.keyring` is not touched by any script; the owner deletes it.
 
 ### §4b `hooks/checkpoint.sh` — the git half of `checkpoint_project`
 
@@ -611,7 +604,7 @@ This is the Omarchy surface of 1config. Claude, Grok, and OpenCode do not each g
 7. Install/refresh claude-memory-guard (§6b/§7b) — copied from `hooks/check-claude-memory.sh`.
 8. Install/refresh tool updater (§7c) — user scripts copied from `updater/`; install the root resume shim with the `sudo install` command above and repeat after shim changes.
 9. Scheduler for guards + updater (§7.0): `bash ~/.agents/hooks/scheduler.sh install` — systemd user units, or cron, and other crontab lines are preserved.
-10. GPG keyring unlock hooks — `chmod +x hooks/gpg-agent-unlock.sh hooks/gpg-store-passphrase.sh hooks/gpg-keyring.py hooks/gpg-signing-key.sh hooks/gpg-git.sh`. Point `git config --global gpg.program` at `hooks/gpg-git.sh`. Set `git config --global user.signingkey` to **this** machine's key, then run the store script once (see §4 GPG). Dedicated `gpg-signing` collection, not default.
+10. Signing helpers — `chmod +x hooks/gpg-signing-key.sh hooks/gpg-sign-check.sh`. Set `git config --global user.signingkey` to **this** machine's key and `commit.gpgsign true`. `setup.sh` unsets a `gpg.program` that still points at the retired `hooks/gpg-git.sh`. Check with `bash ~/.agents/hooks/gpg-sign-check.sh`.
 11. `checkpoint.sh` — `chmod +x hooks/checkpoint.sh` + `bash -n` syntax gate (§4b).
 12. `watch-stale.sh` — `chmod +x hooks/watch-stale.sh` + `bash -n` syntax gate (§4d).
 13. Optional Lean: `bash ~/.agents/hooks/install-elan.sh` if the setup probe said `MISSING elan`. Not in the distro pkg line. `setup.sh` never downloads it.
@@ -637,7 +630,7 @@ bash ~/.agents/uninstall.sh --yes                    # remove
 bash ~/.agents/uninstall.sh --yes --restore-configs  # also put the oldest saved tool configs back
 ```
 
-A plan is the default, because an uninstall typed by mistake should cost nothing. `--yes` is a red line for an agent. Each thing is removed only while it is still ours: a rules link that resolves to the canonical file, the generated Cursor rule (matched by its description line), the four local rules, a Claude skill link that points into `skills/`, the two Claude hook entries (the settings file is copied to `backups/uninstall-<ts>/` first), the schedule (`hooks/scheduler.sh remove`; other crontab lines stay), the installed script copies under `~/cron-jobs/`, the autostart entry, the `1config` link, and `gpg.program` when it still points at `hooks/gpg-git.sh`. A real file at a rules path, a skill that is not ours, and a hook that is not ours are left alone.
+A plan is the default, because an uninstall typed by mistake should cost nothing. `--yes` is a red line for an agent. Each thing is removed only while it is still ours: a rules link that resolves to the canonical file, the generated Cursor rule (matched by its description line), the four local rules, a Claude skill link that points into `skills/`, the two Claude hook entries (the settings file is copied to `backups/uninstall-<ts>/` first), the schedule (`hooks/scheduler.sh remove`; other crontab lines stay), the installed script copies under `~/cron-jobs/`, the autostart entry, the `1config` link, and `gpg.program` when it still points at the retired `hooks/gpg-git.sh` (an install older than 2026-11-21). A real file at a rules path, a skill that is not ours, and a hook that is not ours are left alone.
 
 Left in place and named at the end: the permission lists and modes in the three tool configs, the Grok memory and compat switches, the bar plugin, logs and flags under `~/cron-jobs/`, the machine-notes clone, the keyring, and this checkout with `backups/`. `--restore-configs` copies back the oldest file `setup.sh` saved under `backups/setup-*/` for each tool config, after it saves the current one. A tool config that did not exist when `setup.sh` first ran has a `<name>.absent` marker in that run's directory instead of a copy; `--restore-configs` then removes the config, after saving it under `backups/uninstall-<ts>-restore/`. A rules file that step 1 replaced with a link is put back once the link is gone. Without it, a tool keeps running Bash without a prompt if `setup.sh` turned that on; the plan says so.
 
@@ -699,7 +692,7 @@ systemctl --user list-timers 1config-guards.timer  # when status is timers
 cmp -s ~/.agents/hooks/check-links.sh ~/cron-jobs/agents-symlink-guard/check-links.sh && echo LINKS-SYNC-OK
 cmp -s ~/.agents/hooks/check-claude-memory.sh ~/cron-jobs/claude-memory-guard/check-memory.sh && echo MEM-SYNC-OK
 cmp -s ~/.agents/updater/update-apps.sh ~/cron-jobs/ai-terminal-tools-update-on-boot/update-apps.sh && echo UPD-SYNC-OK
-bash ~/.agents/hooks/gpg-agent-unlock.sh && echo GPG-CACHED-OK || echo GPG-UNLOCK-NEEDED
+bash ~/.agents/hooks/gpg-sign-check.sh && echo SIGNS-WITH-NO-PROMPT || echo SIGNING-NEEDS-A-PERSON
 ```
 
 Expected: `verify.sh` exit 0; 4× OK symlinks; guards + updater byte-identical to sources.

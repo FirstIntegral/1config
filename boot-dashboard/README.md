@@ -27,7 +27,7 @@ On login: opens a **normal-size** terminal (not fullscreen), runs health checks,
 | **machine notes** | Every login. Runs `notes-sync.sh setup` when `~/.local/share/machine-notes` has no `.git`. Ok when the clone is already there. A failed clone is a warn (offline or key not loaded) and the next login retries. Does not create the GitHub repo. |
 | **ecosystem** | `verify.sh` PASS (after tool updates, and after setup on a fast-forward — avoids grading the pre-pull install). A run that prints `FAIL` lines is `verify FAIL (n)`. A run that dies before any `FAIL` line (no `== PASS` either) is `verify aborted`, with the exit code and the last output line — not `verify FAIL (0)`. |
 | **tool versions** | grok / claude / opencode on PATH |
-| **signing** | Runs **first**, before tool-update / verify. Unlocks the GPG signing key from the dedicated `gpg-signing` collection (key from `git config user.signingkey` / `$GPG_SIGNING_KEY`; migrates out of bricked default `.keyring` files). Warn: nothing stored / dbus down / passphrase rejected — not a generic "locked". Git commits themselves go through `hooks/gpg-git.sh` (loopback, no pinentry GUI). |
+| **signing** | Runs **first**, before tool-update / verify. `hooks/gpg-sign-check.sh` makes one test signature with pinentry off. OK: commits sign with no prompt. Warn: the key needs its passphrase (gpg will ask at the next commit), or no signing key is set. Nothing is unlocked and nothing is stored. |
 
 ## Window size
 
@@ -61,8 +61,8 @@ BOOT_DASHBOARD_COLS=100 BOOT_DASHBOARD_ROWS=36 bash ~/.agents/boot-dashboard/lau
 
 Partial fail (e.g. `claude update TIMED OUT`) is a **warn**, not a hard fail — other tools may have updated fine.
 
-3. **signing — no stored passphrase / dbus failed / passphrase rejected**  
-   Dedicated `gpg-signing` collection missing, gnome-keyring down, or the passphrase changed. One-time: `bash ~/.agents/hooks/gpg-store-passphrase.sh`. Unlock also migrates the item out of bricked default `.keyring` files (multiline secrets make gnome-keyring refuse the whole file).
+3. **signing — the key needs its passphrase / no signing key**  
+   The key is under a passphrase that gpg-agent does not hold, or `user.signingkey` is not set. Sign once in a real terminal so the agent holds it, or use a key with no passphrase. `bash ~/.agents/hooks/gpg-sign-check.sh; echo $?` shows the state (`0`, `1`, or `3`).
 
 4. **setup — exit N after a fast-forward**  
    The pull installed nothing until this row. `setup.sh` failed, so cron copies, the 1config plugin, or the Claude skill links may still be the old tree. The row carries the last `ERROR:` or `== FAIL` from that run. Fix that, then `bash ~/.agents/setup.sh`. A quiet boot has no setup row.

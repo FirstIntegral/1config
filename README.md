@@ -56,7 +56,6 @@ bash ~/.agents/setup.sh
 # 6. Publish your fork's first commit, and the rest of the machine-local setup
 gh auth login                                       # so sync.sh can fetch/push
 bash ~/.agents/sync.sh -m "First install"           # verify, signed commit, push to your fork
-bash ~/.agents/hooks/gpg-store-passphrase.sh        # only when your key has a passphrase: dedicated gnome-keyring collection
 
 # 7. Optional: resume-from-suspend updater (needs root once)
 sudo install -o root -g root -m 0755 ~/.agents/updater/system-sleep-shim.sh \
@@ -161,7 +160,6 @@ Run `bash ~/.agents/setup.sh --dry-run` first: it prints all of this for your ma
 | Permission lists in Claude Code, Grok, and OpenCode, **including your own deny rules** | Replaced by the lists in `permissions.json`. Your rules do not survive; add them to `permissions.json` in your fork. Comments in `opencode.jsonc` are dropped. | `claude-settings*.json`, `grok-config-perms.toml`, `opencode-perms.jsonc` |
 | Claude auto-memory under `~/.claude/projects/*/memory/` | Each directory is emptied down to a short "disabled" stub, after its copy in the backup compares equal. A `memory` that is a symlink is replaced by a real directory; the folder it pointed at is not touched. A daily guard does the same to anything that reappears. | `claude-memory-<project>/` |
 | `~/.grok/memory/` | Deleted after its copy in the backup compares equal, and Grok memory is switched off. | `grok-memory/` |
-| `git config --global gpg.program` | Set to `hooks/gpg-git.sh` for every repo on the machine. | not saved; `uninstall.sh` unsets it |
 | Login | A status terminal opens at graphical login. Scheduled guards and a tool updater run daily. At login the checkout fast-forwards to signed commits on the remote in `BRAIN_REMOTE` and installs them. | removed by `uninstall.sh` |
 
 ## What `setup.sh` does *not* do
@@ -170,10 +168,9 @@ Run `bash ~/.agents/setup.sh --dry-run` first: it prints all of this for your ma
 - No CLI download for grok/claude/opencode.
 - No elan/Lean download (`hooks/install-elan.sh` is the install path; setup only probes).
 - No Android SDK download. When a project needs one, the only root is `$HOME/Android/Sdk`. If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.
-- No GPG key generation and no passphrase prompt (that's `gpg-store-passphrase.sh`).
+- No GPG key generation, no passphrase prompt, and no stored passphrase. git calls `gpg` itself. Agents commit with nobody at the keyboard, so use a signing key with no passphrase, or one that gpg-agent already holds; `bash ~/.agents/hooks/gpg-sign-check.sh` says which state the machine is in.
 - No `gh auth login`.
 - No rewrite of *your* git `user.signingkey`.
-- **Does** set `git config --global gpg.program` to `hooks/gpg-git.sh` (loopback, no pinentry GUI).
 
 ## Layout
 

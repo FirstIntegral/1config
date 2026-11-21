@@ -997,16 +997,11 @@ if [ "$staged" -eq 1 ]; then
     commit_ok=1
   elif git -C "$NOTES" commit -q -m "$subject" -m "$body"; then
     commit_ok=1
-  else
-    bash "$HOME_DIR/.agents/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
-    if git -C "$NOTES" commit -q -m "$subject" -m "$body"; then
-      commit_ok=1
-    fi
   fi
   if [ "$commit_ok" -ne 1 ]; then
     abort_stage
     restore_merge_write
-    echo "notes: sign failed. Run bash ~/.agents/hooks/gpg-agent-unlock.sh" >&2
+    echo "notes: sign failed. Check: bash ~/.agents/hooks/gpg-sign-check.sh" >&2
     exit 1
   fi
   while IFS=$'\t' read -r notes_rel rel oid src; do

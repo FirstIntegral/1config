@@ -200,15 +200,14 @@ if [ "$dry_run" = 1 ]; then
   exit 0
 fi
 
-# 4. commit (signed; gpg agent is unlocked from the keyring, never bypassed)
+# 4. commit (signed, never bypassed)
 echo "[sync 4/5] commit"
 if [ -n "$(git status --porcelain)" ]; then
   [ -n "$msg" ] || msg="Update brain: $(git status --porcelain | awk '{print $NF}' | xargs -n99 echo | cut -c1-60)"
-  [ -x "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" ] && bash "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
   git add -A
   if ! git commit -S -q -m "$msg"; then
-    echo "sync.sh: commit failed (signing key locked?). Fix it — do NOT disable signing." >&2
-    echo "  try: bash $AGENTS_HOME/hooks/gpg-agent-unlock.sh" >&2
+    echo "sync.sh: commit failed (could the key sign?). Fix it — do NOT disable signing." >&2
+    echo "  check: bash $AGENTS_HOME/hooks/gpg-sign-check.sh; echo \$?   (1: the key needs its passphrase · 3: no key here)" >&2
     exit 1
   fi
   git log -1 --format='  committed %h %s'

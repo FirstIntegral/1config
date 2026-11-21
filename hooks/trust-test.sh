@@ -4,7 +4,7 @@
 #   bash hooks/trust-test.sh
 #
 # hooks/brain-sync.sh, sync.sh (its first step only), hooks/verify-incoming.sh,
-# hooks/gpg-git.sh, and the dots gate of boot-dashboard/dashboard.sh, against
+# hooks/gpg-sign-check.sh, and the dots gate of boot-dashboard/dashboard.sh, against
 # scratch repositories whose commits are signed for real by throwaway keys.
 # One line per case: `ok <what>` or `FAIL <what>`. Exit 1 when any case fails.
 # verify.sh replays the lines. No network, and no key of this machine is used.
@@ -194,18 +194,6 @@ else
   fail "the gate: this machine's own signature was refused (exit $RC)"
 fi
 
-# --- gpg-git.sh hands back gpg's own exit code ----------------------------------
-stub="$(mktemp -d -p "$T")"
-printf '#!/bin/sh\nexit 1\n' > "$stub/gpg"
-chmod +x "$stub/gpg"
-RC=0
-printf 'x' | env PATH="$stub:$PATH" AGENTS_HOME="$T/no-brain" bash "$HOOKS/gpg-git.sh" --verify sig - >/dev/null 2>&1 || RC=$?
-if [ "$RC" -eq 1 ]; then
-  pass "gpg-git.sh: a failed --verify comes back as a failure"
-else
-  fail "gpg-git.sh: a failed --verify came back as exit $RC"
-fi
-
 # --- the dots gate does not open when its fetch fails ---------------------------
 d="$(mktemp -d -p "$T")"
 git init -q --bare -b main "$d/origin.git"
@@ -258,35 +246,36 @@ else
   fail "login pull: pulled from an origin that BRAIN_REMOTE does not list (exit $RC: $OUT)"
 fi
 
-# --- gpg-git.sh: loopback always, and one unlock then one retry for a signature -
-gg="$(mktemp -d -p "$T")"
-mkdir -p "$gg/bin" "$gg/brain/hooks"
-cat > "$gg/bin/gpg" <<'STUB'
-#!/bin/sh
-printf '%s\n' "$*" >> "$STUB_DIR/gpg.calls"
-cat >/dev/null
-if [ -e "$STUB_DIR/unlocked" ]; then exit 0; fi
-exit 2
-STUB
-printf '#!/bin/sh\n: > "%s/unlocked"\n' "$gg" > "$gg/brain/hooks/gpg-agent-unlock.sh"
-chmod +x "$gg/bin/gpg" "$gg/brain/hooks/gpg-agent-unlock.sh"
+# --- gpg-sign-check.sh: can a commit be signed with nobody at the keyboard --------
+: > "$T/empty-gitconfig"
 RC=0
-printf 'payload' | env PATH="$gg/bin:$PATH" STUB_DIR="$gg" AGENTS_HOME="$gg/brain" \
-  bash "$HOOKS/gpg-git.sh" -bsau KEY >/dev/null 2>&1 || RC=$?
-if [ "$RC" -eq 0 ] && [ "$(wc -l < "$gg/gpg.calls")" -eq 2 ] && [ -e "$gg/unlocked" ] \
-   && ! grep -qv -- '--pinentry-mode loopback' "$gg/gpg.calls"; then
-  pass "gpg-git.sh: a signature that fails runs the unlock once and retries, always in loopback mode"
+env GNUPGHOME="$GH" GPG_SIGNING_KEY="$K1" bash "$HOOKS/gpg-sign-check.sh" >/dev/null 2>&1 || RC=$?
+if [ "$RC" -eq 0 ]; then
+  pass "gpg-sign-check.sh: a key with no passphrase signs with no prompt (exit 0)"
 else
-  fail "gpg-git.sh: no unlock and retry, or a call without loopback (exit $RC, $(wc -l < "$gg/gpg.calls" 2>/dev/null) call(s))"
+  fail "gpg-sign-check.sh: a key with no passphrase was reported as not ready (exit $RC)"
 fi
-rm -f "$gg/gpg.calls" "$gg/unlocked"
+GHP="$T/gnupg-locked"
+mkdir -m 700 "$GHP"
+GNUPGHOME="$GHP" gpg --batch --quiet --pinentry-mode loopback --passphrase 'a passphrase' \
+  --quick-generate-key 'locked <locked@fixture.invalid>' ed25519 sign never >/dev/null 2>&1 || true
+LOCKED="$(GNUPGHOME="$GHP" gpg --batch --list-secret-keys --with-colons locked@fixture.invalid 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')"
+gpgconf --homedir "$GHP" --kill gpg-agent >/dev/null 2>&1
 RC=0
-printf 'payload' | env PATH="$gg/bin:$PATH" STUB_DIR="$gg" AGENTS_HOME="$gg/brain" \
-  bash "$HOOKS/gpg-git.sh" --verify sig - >/dev/null 2>&1 || RC=$?
-if [ "$RC" -ne 0 ] && [ "$(wc -l < "$gg/gpg.calls")" -eq 1 ] && [ ! -e "$gg/unlocked" ]; then
-  pass "gpg-git.sh: a failed --verify is an answer: no unlock, no retry"
+env GNUPGHOME="$GHP" GPG_SIGNING_KEY="$LOCKED" bash "$HOOKS/gpg-sign-check.sh" >/dev/null 2>&1 || RC=$?
+if [ -n "$LOCKED" ] && [ "$RC" -eq 1 ]; then
+  pass "gpg-sign-check.sh: a key under a passphrase the agent does not hold is exit 1, and nothing is asked"
 else
-  fail "gpg-git.sh: a failed --verify ran the unlock or was retried (exit $RC)"
+  fail "gpg-sign-check.sh: a locked key was reported as exit $RC (wanted 1)"
+fi
+RC=0
+env -u GPG_SIGNING_KEY GNUPGHOME="$GH" GIT_CONFIG_GLOBAL="$T/empty-gitconfig" bash "$HOOKS/gpg-sign-check.sh" >/dev/null 2>&1 || RC=$?
+RC2=0
+env GNUPGHOME="$GH" GPG_SIGNING_KEY=0000000000000000000000000000000000000000 bash "$HOOKS/gpg-sign-check.sh" >/dev/null 2>&1 || RC2=$?
+if [ "$RC" -eq 3 ] && [ "$RC2" -eq 3 ]; then
+  pass "gpg-sign-check.sh: no signing key, or a key this keyring does not hold, is exit 3"
+else
+  fail "gpg-sign-check.sh: a missing key gave exit $RC and an unknown key exit $RC2 (wanted 3 and 3)"
 fi
 
 # --- the signing key is the one this machine is told about, never a built-in id -

@@ -172,11 +172,17 @@ bash "$A/bin/1config" fork-init >"$OUT/fork-again.out" 2>&1 && grep -q 'Nothing 
 ok "four owner files and the repo name in AGENTS.md, one signed commit, a second run is a no-op"
 
 say "setup.sh: install, and its verify.sh must pass with no warnings"
+# A machine that installed before 2026-11-21 has git's gpg.program set to a
+# wrapper script that no longer exists. git then cannot sign or check anything.
+# setup.sh has to clear that itself, before its own preflight asks git about HEAD.
+git config --global gpg.program "$A/hooks/gpg-git.sh"
 LAST="$OUT/setup.out"; rc=0
 bash "$A/setup.sh" >"$LAST" 2>&1 || rc=$?
 [ "$rc" -eq 0 ] || fail "setup.sh exited $rc"
 grep -q '^== PASS (warnings=0) ==' "$LAST" || fail "verify.sh did not end in PASS (warnings=0)"
 [ "$(readlink -f "$HOME/.claude/CLAUDE.md")" = "$A/AGENTS.md" ] || fail "~/.claude/CLAUDE.md is not the link"
+[ -z "$(git config --global --get gpg.program 2>/dev/null || true)" ] \
+  || fail "setup.sh set git's gpg.program; git must call gpg itself"
 ok "installed, verify PASS (warnings=0)"
 
 say "what they had was saved before it was replaced"

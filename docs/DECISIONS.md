@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — The GPG unlock machinery is removed; git calls gpg itself
+
+**Policy:** gpg_program=plain-gpg
+
+**Decision:** `hooks/gpg-agent-unlock.sh`, `hooks/gpg-store-passphrase.sh`, `hooks/gpg-keyring.py`, `hooks/gpg-git.sh`, and `vendor/` (jeepney) are deleted. `setup.sh` no longer sets `gpg.program`, and it unsets one that still points at the old wrapper. `sync.sh`, `checkpoint.sh`, and `notes-sync.sh` make one signing attempt and stop on a failure; none of them retries after an unlock. `hooks/gpg-sign-check.sh` is new: one test signature with pinentry off, exit 0, 1, or 3. The boot dashboard's signing row, `verify.sh`, and the panel's signing tile use that state. `verify.sh` fails when a deleted file is back or a rule or script still names one. This follows "2026-11-21 — Signing: the same key, with no passphrase" and ends "2026-08-29 — Dedicated `gpg-signing` keyring collection" and "2026-09-02 — Git signs via `gpg-git.sh`, never pinentry GUI".
+
+**Why:** The owner removed the passphrase from the key on both machines, so there is nothing left to unlock. The machinery was 576 lines of hooks and 3,474 lines of vendored library, a login step, and a keyring file that broke five times in six weeks. With `gpg.program` set to a file that no longer exists, git cannot sign at all, which is why `setup.sh` unsets it and the login that pulls this change runs `setup.sh` before anything commits. The unset is step `0a`, ahead of the preflight: the preflight asks git for the signature of HEAD, and through a missing program git answers "unsigned", so the first version of this change stopped itself before it could repair the setting. `hooks/preflight.sh` now names any `gpg.program` that points at a program that does not exist.
+
+**Rejected:** Keeping the wrapper for a fork whose key has a passphrase: it would keep the library and the keyring code alive for a case the owner does not run, and plain gpg already asks such a person once per agent session of gpg-agent. Opening pinentry from a script on a failed signature: an agent has nobody to type. Deleting the old `gpg-signing.keyring` file from a script: it holds a passphrase, and removing a keyring file is the owner's step.
+
 ## 2026-11-21 — Signing: the same key, with no passphrase
 
 **Policy:** signing=key-no-passphrase

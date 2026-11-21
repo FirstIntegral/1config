@@ -263,30 +263,23 @@ check_versions() {
 }
 
 check_gpg_sign() {
-  # Attempts unlock through Secret Service + bricked-file migrate.
-  # Exit 3 = nothing stored, 2 = dbus, 1 = passphrase rejected — not all "locked".
-  if [ ! -x "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" ]; then
-    row warn "signing" "unlock hook missing"
+  # One test signature with pinentry off: does a commit sign with nobody at the keyboard?
+  local chk="$AGENTS_HOME/hooks/gpg-sign-check.sh" rc=0
+  if [ ! -f "$chk" ]; then
+    row warn "signing" "hooks/gpg-sign-check.sh missing"
     return 1
   fi
-  "$AGENTS_HOME/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1
-  local rc=$?
+  bash "$chk" >/dev/null 2>&1 || rc=$?
   case "$rc" in
     0)
-      row ok "signing" "gpg key unlocked (commits silent)"
+      row ok "signing" "commits sign with no prompt"
       return 0
       ;;
-    3)
-      row warn "signing" "no stored passphrase — bash ~/.agents/hooks/gpg-store-passphrase.sh"
-      ;;
-    2)
-      row warn "signing" "keyring dbus failed (gnome-keyring running?)"
-      ;;
     1)
-      row warn "signing" "passphrase rejected — re-run gpg-store-passphrase.sh"
+      row warn "signing" "the key needs its passphrase — gpg will ask at the next commit"
       ;;
     *)
-      row warn "signing" "unlock failed (exit $rc)"
+      row warn "signing" "no signing key on this machine — git config --global user.signingkey"
       ;;
   esac
   return 1
@@ -630,13 +623,13 @@ slip_selftest() {
   fi
 
   slip_lines=()
-  row warn "signing" "no stored passphrase" >/dev/null
+  row warn "signing" "the key needs its passphrase" >/dev/null
   row fail "network" "offline" >/dev/null
   row warn "tool updates" "partial fail" >/dev/null
   row warn "brain sync" $'line one\nline two' >/dev/null
   write_close_slip
   printf '%s\n' \
-    "warn  signing  no stored passphrase" \
+    "warn  signing  the key needs its passphrase" \
     "fail  network  offline" \
     "warn  brain sync  line one line two" >"$want"
   if ! cmp -s "$want" "$dest"; then

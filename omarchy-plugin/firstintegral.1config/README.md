@@ -41,7 +41,7 @@ Vitals is the checkout, not a diagram of it. Each tile is one check and one shor
 | Three tools | `claude`, `grok`, and `opencode` are on `PATH` |
 | TeX | `latexmk` or `pdflatex` is on `PATH` |
 | Lean | `lean` is on `PATH`, or `~/.elan/bin/lean` exists |
-| Commit signing | global git config has signing on, `gpg.program` ends in `gpg-git.sh`, and a signing key is set |
+| Commit signing | global git config has signing on and a signing key is set. A `gpg.program` that still names the retired `gpg-git.sh` is a warn: run `setup.sh` |
 | Plugin copy | the installed plugin matches this directory. No Omarchy plugins directory reads "no shell", which is clear |
 
 The header still shows the short commit, the branch, the dirty bit, the link count, and the tool count. The bar dot pulses on a usage limit at 80% or on a vital fault. A warn does not pulse the bar. Hover starts with `brain clear`, `brain warn`, or `brain fault`.

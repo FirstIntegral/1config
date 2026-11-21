@@ -341,23 +341,11 @@ merge_theirs() {
       printf '%s\n' "$out" | sed 's/^/           /'
       finish 24
     fi
-    echo "  sync     merge failed; attempting gpg unlock then one retry"
-    printf '%s\n' "$out" | sed 's/^/           /'
+    # Not a conflict: most likely the merge commit could not be signed.
     git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
-    bash "$HOME/.agents/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
-    out="$(GIT_MERGE_AUTOEDIT=no git -C "$PROJECT" merge --no-edit "$ref" 2>&1)"; rc=$?
-    if [ "$rc" -ne 0 ]; then
-      if [ -n "$(git -C "$PROJECT" diff --name-only --diff-filter=U 2>/dev/null)" ]; then
-        git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
-        echo "  sync     conflict with $ref — merge aborted, local commits kept, not pushed"
-        printf '%s\n' "$out" | sed 's/^/           /'
-        finish 24
-      fi
-      git -C "$PROJECT" merge --abort >/dev/null 2>&1 || true
-      echo "  sync     merge FAILED — not forcing, not rebasing"
-      printf '%s\n' "$out" | sed 's/^/           /'
-      finish 21
-    fi
+    echo "  sync     merge FAILED — not forcing, not rebasing, not bypassing signing"
+    printf '%s\n' "$out" | sed 's/^/           /'
+    finish 21
   fi
   TOOK_REMOTE=1
   echo "  sync     took $ref"
@@ -733,13 +721,9 @@ else
 run git -C "$PROJECT" add -A
 if [ "$DRY" != 1 ]; then
   if ! git -C "$PROJECT" commit -q -m "$SUBJECT"; then
-    # Most likely a locked gpg key. Unlock and retry once -- never --no-gpg-sign.
-    echo "  commit   failed; attempting gpg unlock then one retry"
-    bash "$HOME/.agents/hooks/gpg-agent-unlock.sh" >/dev/null 2>&1 || true
-    git -C "$PROJECT" commit -q -m "$SUBJECT" || {
-      echo "  commit   FAILED — not bypassing signing. Unlock the key and re-run."
-      finish 21
-    }
+    # Most likely the key could not sign. One attempt, and never --no-gpg-sign.
+    echo "  commit   FAILED — not bypassing signing. Check: bash $ROOT/hooks/gpg-sign-check.sh, then re-run."
+    finish 21
   fi
   HASH="$(git -C "$PROJECT" rev-parse --short HEAD)"
   SIG="$(git -C "$PROJECT" log -1 --format='%G?')"

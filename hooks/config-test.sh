@@ -182,4 +182,16 @@ plat_case "platform: Omarchy wins over the os-release file" $'ID=arch\n' 1 omarc
 plat_case "platform: an unknown system gets the plain list, not another system's command" \
   $'ID=fedora\n' 0 unknown 'install python3'
 
+# A gpg.program that names a file which is not there: git cannot sign or check
+# anything, and its own error does not say why. The preflight names the fix.
+h="$(mktemp -d -p "$T")"
+printf '[gpg]\n\tprogram = %s/no-such-wrapper.sh\n' "$h" > "$h/gitconfig"
+rc=0; HOME="$h" GIT_CONFIG_GLOBAL="$h/gitconfig" bash "$HOOKS/preflight.sh" >"$T/pf2.out" 2>&1 || rc=$?
+if [ "$rc" -eq 1 ] && grep -q "gpg.program is '$h/no-such-wrapper.sh'" "$T/pf2.out" \
+   && grep -q 'unset gpg.program' "$T/pf2.out"; then
+  pass "preflight names a gpg.program that points at a program which does not exist"
+else
+  fail "preflight did not name a gpg.program that points nowhere (exit $rc)"
+fi
+
 [ "$fails" -eq 0 ]

@@ -113,13 +113,38 @@ fi
 
 [ -f "$CANON" ] || die "canonical $CANON not found — copy ~/.agents first"
 
+# --- 0a a gpg.program that points at the retired wrapper ----------------------
+# Until 2026-11-21 git's gpg.program was hooks/gpg-git.sh. That file is gone, and
+# git can neither sign nor check a signature through a program that is not
+# there. The preflight below asks git about HEAD's signature, so this has to be
+# cleared first. It is the one write that comes before the preflight, and it
+# only removes a pointer to a file this repo deleted. A dry run and --preflight
+# write nothing: they hand git the plain program for the length of the check.
+_stale_gpg=0
+if command -v git >/dev/null \
+   && [ "$(git config --global --get gpg.program 2>/dev/null || true)" = "$AGENTS_HOME/hooks/gpg-git.sh" ]; then
+  _stale_gpg=1
+  if live && [ "$PREFLIGHT_ONLY" != 1 ]; then
+    git config --global --unset gpg.program
+    _stale_gpg=0
+    log "git     gpg.program unset (it pointed at the retired hooks/gpg-git.sh; git calls gpg itself)"
+  else
+    log "note     git's gpg.program points at the retired hooks/gpg-git.sh; a real run unsets it first"
+  fi
+fi
+
 # --- 0b preflight: everything verify.sh will ask for, before anything is written ---
 # The last step of this script is verify.sh. Without commit signing, a listed
 # origin, and a HEAD this machine can check, it fails there, after the tool
 # configs, the rules links, and the schedule are already replaced. Ask first.
 echo "[0b] preflight"
 _pf_rc=0
-bash "$AGENTS_HOME/hooks/preflight.sh" || _pf_rc=$?
+if [ "$_stale_gpg" = 1 ]; then
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=gpg.program GIT_CONFIG_VALUE_0=gpg \
+    bash "$AGENTS_HOME/hooks/preflight.sh" || _pf_rc=$?
+else
+  bash "$AGENTS_HOME/hooks/preflight.sh" || _pf_rc=$?
+fi
 if [ "$PREFLIGHT_ONLY" = 1 ]; then
   exit "$_pf_rc"
 fi
@@ -764,9 +789,7 @@ if ! live; then
   log "copy     $_n of 7 guard and updater script(s) into ~/cron-jobs (the rest are current)"
   log "schedule currently $(bash "$AGENTS_HOME/hooks/scheduler.sh" status 2>/dev/null || echo unknown); setup installs systemd user units, or cron where no user manager runs"
   if [ "$(git config --global --get gpg.program 2>/dev/null || true)" = "$AGENTS_HOME/hooks/gpg-git.sh" ]; then
-    log "keep     git config --global gpg.program"
-  else
-    log "set      git config --global gpg.program → hooks/gpg-git.sh"
+    log "unset    git config --global gpg.program (it points at the retired hooks/gpg-git.sh)"
   fi
   log "import   GitHub's web-flow public key into the gpg keyring (no ownertrust)"
   [ -e "$HOME/.local/share/machine-notes/.git" ] || log "clone    the private machine-notes repo named in NOTES_REMOTE"
@@ -867,8 +890,8 @@ else
 fi
 
 # --- gpg hooks (direct-reference from ~/.agents, like the claude hook) -------
-echo "[gpg] unlock hooks (dedicated gpg-signing collection, nothing installed elsewhere)"
-for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py gpg-signing-key.sh gpg-git.sh; do
+echo "[gpg] signing helpers"
+for h in gpg-signing-key.sh gpg-sign-check.sh; do
   if [ -f "$AGENTS_HOME/hooks/$h" ]; then
     chmod +x "$AGENTS_HOME/hooks/$h"
     log "ready   hooks/$h"
@@ -876,10 +899,6 @@ for h in gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-keyring.py gpg-signing-
     log "WARNING: hooks/$h missing"
   fi
 done
-if command -v git >/dev/null && [ -x "$AGENTS_HOME/hooks/gpg-git.sh" ]; then
-  git config --global gpg.program "$AGENTS_HOME/hooks/gpg-git.sh"
-  log "git     gpg.program → hooks/gpg-git.sh (loopback, no pinentry GUI)"
-fi
 # The signers' own public keys, subkeys included. A second machine needs them
 # before it can check a commit that a new subkey signed. No ownertrust is set.
 SIGNERS_ASC="$AGENTS_HOME/BRAIN_SIGNERS.asc"

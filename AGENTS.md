@@ -48,7 +48,7 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 - Do NOT use `--no-gpg-sign`, `-c commit.gpgsign=false`, or any other bypass.
 - If signing fails (locked key, no pinentry), STOP and unlock, then commit. Never work around it.
 - History rewrites (rebase, filter-repo, amend) must leave commits re-signed before any push.
-- When signing fails, read `~/.agents/playbooks/signing.md`: the unlock is automatic, and that file says what to run when it is not.
+- When signing fails, read `~/.agents/playbooks/signing.md`: it says how to find out why, and what the person has to do.
 
 ---
 

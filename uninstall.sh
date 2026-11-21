@@ -233,7 +233,7 @@ say "$AGENTS_HOME (this checkout, with backups/)"
 [ -e "$HOME/.local/share/machine-notes/.git" ] && say "~/.local/share/machine-notes (private notes clone)"
 [ -f /usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh ] \
   && say "/usr/lib/systemd/system-sleep/ai-terminal-tools-update-resume.sh (root; remove with sudo rm)"
-say "the gpg-signing keyring collection and GitHub's web-flow public key"
+say "GitHub's web-flow public key and the signers' public keys in the gpg keyring, and an old gpg-signing keyring collection if this machine had one"
 
 echo
 if [ "$DO" = 1 ]; then

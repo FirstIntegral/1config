@@ -349,4 +349,25 @@ else
   fail "a notes failure after a good push (exit $RC, wanted 21)"
 fi
 
+# --- a commit that cannot be signed is not made another way ---------------------
+w="$(new_work)"
+ours="$(new_bare "$w" "$OURS")"
+git -C "$w" remote add origin "$OURS"
+git -C "$w" push -qu origin main 2>/dev/null
+git -C "$w" config commit.gpgsign true
+git -C "$w" config user.signingkey 0000000000000000000000000000000000000000
+echo two > "$w/b.txt"
+before="$(git -C "$w" rev-parse HEAD)"
+nokeys="$(mktemp -d -p "$T")"
+chmod 700 "$nokeys"
+RC=0
+OUT="$(GNUPGHOME="$nokeys" bash "$CP" "$w" -m unsigned 2>&1)" || RC=$?
+gpgconf --homedir "$nokeys" --kill all >/dev/null 2>&1
+if [ "$RC" -eq 21 ] && [ "$(git -C "$w" rev-parse HEAD)" = "$before" ] && [ "$(commits "$ours")" -eq 1 ] \
+   && printf '%s\n' "$OUT" | has 'not bypassing signing'; then
+  pass "a commit that cannot be signed is not made, and nothing is pushed (exit 21)"
+else
+  fail "checkpoint made or pushed a commit it could not sign (exit $RC)"
+fi
+
 [ "$fails" -eq 0 ]

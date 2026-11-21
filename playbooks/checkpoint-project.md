@@ -89,7 +89,7 @@ git commit -m "checkpoint: <YYYY-MM-DD> <what moved today>"
 git push                        # -u origin <branch> if the branch has no upstream
 ```
 
-- **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → `bash ~/.agents/hooks/gpg-agent-unlock.sh`, retry. Never bypass.
+- **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → read `~/.agents/playbooks/signing.md`. Never bypass.
 - **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
 - **`git push` prompts only when the effective `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the effective flag is true, setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
 - **Clean, fetch succeeded, already current** → exit `3`. Clean with commits the remote lacks → skip the commit but still push. Clean and strictly behind → fast-forward, exit `0`.

@@ -1242,14 +1242,16 @@ def _signing_vital(home: Path) -> dict:
         return _vital("signing", "machine", "Commit signing", "fail", "unset")
     signed = values.get("commit.gpgsign", "").lower() in {"true", "yes", "on", "1"}
     program = values.get("gpg.program", "").replace("\\", "/").rstrip("/")
-    wrapper = program.endswith("gpg-git.sh")
+    # The wrapper script was removed on 2026-11-21. A config that still names
+    # it cannot sign until setup.sh has unset it.
+    stale = program.endswith("gpg-git.sh")
     key_set = bool(values.get("user.signingkey", "").strip())
-    if signed and wrapper and key_set:
-        return _vital("signing", "machine", "Commit signing", "ok", "wrapper")
-    if signed and wrapper:
-        return _vital("signing", "machine", "Commit signing", "warn", "no key")
+    if signed and stale:
+        return _vital("signing", "machine", "Commit signing", "warn", "run setup.sh")
+    if signed and key_set:
+        return _vital("signing", "machine", "Commit signing", "ok", "on")
     if signed:
-        return _vital("signing", "machine", "Commit signing", "warn", "other program")
+        return _vital("signing", "machine", "Commit signing", "warn", "no key")
     return _vital("signing", "machine", "Commit signing", "fail", "unsigned")
 
 
@@ -1394,8 +1396,8 @@ def _slip_state(root: Path) -> tuple[str, str, list[str]]:
 
 CHECKOUT_FILES = ("setup.sh", "verify.sh", "sync.sh", "AGENTS.md")
 HOOK_FILES = (
-    "hooks/gpg-git.sh",
-    "hooks/gpg-agent-unlock.sh",
+    "hooks/gpg-signing-key.sh",
+    "hooks/gpg-sign-check.sh",
     "hooks/check-links.sh",
     "hooks/check-claude-memory.sh",
     "hooks/watch-stale.sh",
@@ -2075,7 +2077,7 @@ def self_test() -> None:
             link.parent.mkdir(parents=True, exist_ok=True)
             link.symlink_to(target)
         (healthy / ".gitconfig").write_text(
-            "[commit]\ngpgsign = true\n[gpg]\nprogram = gpg-git.sh\n[user]\nsigningkey = TESTKEY\n",
+            "[commit]\ngpgsign = true\n[user]\nsigningkey = TESTKEY\n",
             encoding="utf-8",
         )
 
