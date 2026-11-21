@@ -251,7 +251,7 @@ else
 fi
 [ -f "$AGENTS_HOME/README.md" ] && ok "README.md (fresh-machine + opinionated defaults)" || bad "README.md missing"
 [ -f "$AGENTS_HOME/docs/DECISIONS.md" ] && ok "docs/DECISIONS.md (brain ADRs)" || bad "docs/DECISIONS.md missing"
-for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh opencode-skill-list.sh; do
+for f in check-links.sh link-rules.sh preflight.sh fork-init.sh stranger-install-test.sh check-claude-memory.sh load-project-agents.sh gpg-agent-unlock.sh gpg-store-passphrase.sh gpg-signing-key.sh gpg-git.sh merge-strays.sh checkpoint.sh notes-sync.sh rule-oracles.sh watch-stale.sh heredoc-rewrite.sh brain-sync.sh brain-remote.sh git-url.sh tool-path.sh verify-incoming.sh secret-scan.sh scheduler.sh install-elan.sh digit-refuse.sh digit-refuse-test.sh checkpoint-test.sh notes-sync-test.sh opencode-skill-list.sh; do
   [ -f "$HOOKS/$f" ] && ok "hooks/$f" || bad "hooks/$f missing"
   [ -x "$HOOKS/$f" ] || note "hooks/$f not executable"
   # A hook that does not parse is worse than a missing one: it fails halfway through.
@@ -828,7 +828,6 @@ else
   bad "infographic missing private machine-notes"
 fi
 if grep -qF 'session_transcript=retired' "$AGENTS_HOME/docs/DECISIONS.md" \
-   && grep -qF 'session_transcript.md) return 0' "$HOOKS/notes-sync.sh" \
    && ! grep -qF 'for rel in session_compact.md session_transcript.md' "$HOOKS/notes-sync.sh" \
    && grep -qF 'Do not create `session_transcript.md`' "$CANON" \
    && ! grep -q 'session_transcript.md — HUMAN ONLY' "$AGENTS_HOME/setup-infographic.svg"; then
@@ -1234,6 +1233,7 @@ rm -rf "$_ns" "$_nbare" "$_np" "$_np2" "$_np3"
 rm -f "$VTMP/notes-warn.txt" "$VTMP/notes-div.out" "$VTMP/notes-div.err" "$VTMP/notes-dry.out" "$VTMP/notes-live.out"
 
 fixture_env_off
+run_fixtures "$HOOKS/notes-sync-test.sh"
 
 echo "[rule oracles]"
 if [ -x "$HOOKS/rule-oracles.sh" ]; then

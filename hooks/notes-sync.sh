@@ -18,10 +18,17 @@
 # Exit 23 merge refused (delete versus edit, binary, or a non-markdown conflict); nothing written
 # Exit 1  fetch, sign, or push failed, or setup could not clone. A project commit is not rolled back.
 #         A pull that cannot fetch is not this: it prints notes: skipped and says why on stderr.
+#         Also: a commit on the notes remote is not signed by a listed key. Nothing is taken.
 # A markdown conflict is merged and pushed in both push and pull. Stdout is notes: merged.
 # A dirty notes clone is an interrupted run. It is parked with git stash, never discarded.
 #
-# NOTES_SYNC_TEST_ROOT and NOTES_REMOTE_FILE are for verify.sh only.
+# What the fetch brought is checked by hooks/verify-incoming.sh before any of it
+# is used: the same signer list as the brain pull. A commit made on this machine
+# that never reached the remote, while the other machine pushed, is set aside
+# under refs/notes-sync/parked/ and redone from the project files.
+#
+# NOTES_SYNC_TEST_ROOT and NOTES_REMOTE_FILE are for verify.sh only. A test root
+# runs the signature gate only with NOTES_SYNC_TEST_GATE=1.
 # checkpoint.sh unsets the former. A test root that points at the real clone is refused.
 # The real clone is $passwd_home/.local/share/machine-notes.
 set -uo pipefail
@@ -71,6 +78,23 @@ origin_key() {
   printf '%s/%s/%s\n' "$host" "$owner" "$repo"
 }
 
+# A key is three path parts under the notes clone. A part that is a dot name, or
+# that holds anything but a-z 0-9 . _ -, would write somewhere else.
+# shortcut: an IPv6 host has colons and is skipped, upgrade when such a remote needs notes
+key_safe() {
+  local part n=0
+  local IFS=/
+  # shellcheck disable=SC2086
+  set -- $1
+  for part in "$@"; do
+    n=$((n + 1))
+    case "$part" in
+      ''|.|..|.git|*[!a-z0-9._-]*) return 1 ;;
+    esac
+  done
+  [ "$n" -eq 3 ]
+}
+
 trim() {
   local s="$1"
   s="${s%$'\r'}"
@@ -79,17 +103,22 @@ trim() {
   printf '%s\n' "$s"
 }
 
+# Names that never ride, at any depth: sub/explain/ and pkg/session_transcript.md
+# are the same private material as the ones in the project root.
 blocked_rel() {
-  case "$1" in
-    claude_memory_import.md|docs/SESSION.md|session_transcript.md) return 0 ;;
-    explain|explain/*) return 0 ;;
-    docs/session-archive|docs/session-archive/*) return 0 ;;
-    docs/session-flushes|docs/session-flushes/*) return 0 ;;
+  case "/$1/" in
+    */session_transcript.md/*|*/claude_memory_import.md/*|*/explain/*) return 0 ;;
+    /docs/SESSION.md/*|*/docs/session-archive/*|*/docs/session-flushes/*) return 0 ;;
   esac
   return 1
 }
 
+# shellcheck disable=SC1091
+. "$(cd "$(dirname "$0")" && pwd -P)/secret-scan.sh"
+# A name that says secret. secret-scan.sh holds the list a checkpoint uses
+# (key files, .netrc, *.p12); the names below are the ones only notes refuse.
 denied_base() {
+  secret_name_hit "$1" && return 0
   case "$1" in
     local.properties|keystore.properties) return 0 ;;
     .env|.env.*) return 0 ;;
@@ -319,6 +348,10 @@ KEY="$(origin_key "$RAW")"
 if [ -z "$KEY" ]; then
   skip_line
 fi
+if ! key_safe "$KEY"; then
+  echo "notes: origin does not give a usable key ($KEY)" >&2
+  skip_line
+fi
 
 if [ -e "$PROJECT/notes.allow" ]; then
   if git -C "$PROJECT" ls-files --error-unmatch -- notes.allow >/dev/null 2>&1 \
@@ -362,10 +395,57 @@ if [ -z "$BRANCH" ]; then
   echo "notes: notes clone is detached" >&2
   exit 1
 fi
+BASE="$NOTES/.git/notes-base"
+
+# Commits made here that never reached the remote, while the remote moved on.
+# A fast-forward is impossible and this script does not force. The local
+# commits stay reachable under refs/notes-sync/parked/. Each base row that
+# points at a blob only those commits hold goes back to what both sides last
+# shared, so the run below merges this machine's project file with the remote
+# copy. Another project's files in those commits are redone at its next run.
+set_aside_local_commits() {
+  local mb ref cid path oid shared tmp only
+  mb="$(git -C "$NOTES" merge-base HEAD "origin/$BRANCH" 2>/dev/null || true)"
+  [ -n "$mb" ] || return 1
+  ref="refs/notes-sync/parked/$(date +%Y%m%d-%H%M%S)-$(git -C "$NOTES" rev-parse --short HEAD)"
+  git -C "$NOTES" update-ref "$ref" HEAD || return 1
+  if [ -f "$BASE" ]; then
+    only="$(mktemp)"
+    tmp="$(mktemp)"
+    git -C "$NOTES" rev-list --objects HEAD --not "origin/$BRANCH" | awk '{ print $1 }' > "$only"
+    while IFS=$'\t' read -r cid path oid; do
+      [ -n "$path" ] || continue
+      if grep -qxF -- "$oid" "$only"; then
+        shared="$(git -C "$NOTES" rev-parse -q --verify "$mb:$path" 2>/dev/null || true)"
+        [ -n "$shared" ] && printf '%s\t%s\t%s\n' "$cid" "$path" "$shared" >> "$tmp"
+      else
+        printf '%s\t%s\t%s\n' "$cid" "$path" "$oid" >> "$tmp"
+      fi
+    done < "$BASE"
+    mv "$tmp" "$BASE"
+    rm -f "$only"
+  fi
+  git -C "$NOTES" reset -q --hard "origin/$BRANCH" || return 1
+  echo "notes: commits that never left this machine were set aside ($ref) and are redone from the project files" >&2
+}
+
 if git -C "$NOTES" rev-parse -q --verify "origin/$BRANCH" >/dev/null 2>&1; then
-  if ! git -C "$NOTES" merge -q --ff-only "origin/$BRANCH"; then
-    echo "notes: fetch is not a fast-forward" >&2
-    exit 1
+  # A push credential alone must not be enough to plant notes: an agent reads
+  # session_compact.md first and acts on it. Same gate as the brain pull.
+  if [ -z "${NOTES_SYNC_TEST_ROOT:-}" ] || [ "${NOTES_SYNC_TEST_GATE:-0}" = 1 ]; then
+    gate_rc=0
+    gate_why="$(bash "$BRAIN_DIR/hooks/verify-incoming.sh" "$NOTES" HEAD "origin/$BRANCH" 2>&1)" || gate_rc=$?
+    if [ "$gate_rc" -ne 0 ]; then
+      echo "notes: refused — $gate_why. Nothing was taken from the notes repository." >&2
+      echo "notes: if that commit is yours, pull it by hand: git -C $NOTES merge --ff-only origin/$BRANCH" >&2
+      exit 1
+    fi
+  fi
+  if ! git -C "$NOTES" merge -q --ff-only "origin/$BRANCH" 2>/dev/null; then
+    if ! set_aside_local_commits; then
+      echo "notes: fetch is not a fast-forward" >&2
+      exit 1
+    fi
   fi
 fi
 if [ -n "$(git -C "$NOTES" status --porcelain)" ]; then
@@ -373,7 +453,6 @@ if [ -n "$(git -C "$NOTES" status --porcelain)" ]; then
   exit 1
 fi
 
-BASE="$NOTES/.git/notes-base"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 : > "$WORK/files"
@@ -389,11 +468,46 @@ is_tracked() {
   git -C "$PROJECT" ls-files --error-unmatch -- "$1" >/dev/null 2>&1
 }
 
+# One notes clone serves every checkout. The base is per checkout, or a second
+# worktree of the same origin looks like a delete and never installs. A checkout
+# is its git directory, not its path: a project cloned again at the same path
+# has no id file, so it starts with no base and gets its notes installed.
+GITDIR="$(git -C "$PROJECT" rev-parse --absolute-git-dir 2>/dev/null || true)"
+[ -n "$GITDIR" ] && [ -d "$GITDIR" ] || { echo "notes: no git directory for $PROJECT" >&2; exit 1; }
+CID=""
+if [ -s "$GITDIR/notes-sync-id" ]; then
+  IFS= read -r CID < "$GITDIR/notes-sync-id" || true
+  case "$CID" in
+    id:*[!0-9a-f]*|id:) CID="" ;;
+    id:*) ;;
+    *) CID="" ;;
+  esac
+fi
+if [ -z "$CID" ]; then
+  CID="id:$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  printf '%s\n' "$CID" > "$GITDIR/notes-sync-id" || { echo "notes: cannot write $GITDIR/notes-sync-id" >&2; exit 1; }
+  # Rows written before ids existed are keyed by path. They belong to this
+  # checkout only if one of their files is still here. A fresh clone has none.
+  if [ -f "$BASE" ]; then
+    _adopt=0
+    while IFS=$'\t' read -r _c _p _o; do
+      [ "$_c" = "$PROJECT" ] || continue
+      if [ -e "$PROJECT/${_p#"$KEY"/}" ]; then
+        _adopt=1
+        break
+      fi
+    done < "$BASE"
+    _tmp="$(mktemp)"
+    awk -F '\t' -v OFS='\t' -v proj="$PROJECT" -v cid="$CID" -v adopt="$_adopt" '
+      $1 == proj { if (adopt == 1) { $1 = cid; print } next }
+      { print }' "$BASE" > "$_tmp"
+    mv "$_tmp" "$BASE"
+  fi
+fi
+
 base_get() {
-  # One notes clone serves every checkout. The base is per checkout, or a
-  # second worktree of the same origin looks like a delete and never installs.
   [ -f "$BASE" ] || return 0
-  awk -F '\t' -v proj="$PROJECT" -v path="$1" '$1 == proj && $2 == path { print $3; exit }' "$BASE"
+  awk -F '\t' -v proj="$CID" -v path="$1" '$1 == proj && $2 == path { print $3; exit }' "$BASE"
 }
 
 hash_file() {
@@ -453,11 +567,6 @@ def aligned_contains(hay, needle):
         if left_ok and right_ok:
             return True
         start = i + 1
-
-if aligned_contains(local, remote):
-    emit(local)
-if aligned_contains(remote, local):
-    emit(remote)
 
 name = rel.rsplit("/", 1)[-1]
 if name in ("DECISIONS.md", "notes.allow"):
@@ -529,15 +638,28 @@ def clean_merge():
         return None
     return proc.stdout
 
+# Order matters. With a shared base, the 3-way merge speaks first: it knows
+# which side removed a line. "One copy holds the other, take the longer one"
+# is only safe when nobody removed anything, which is when the shorter copy
+# still holds the base. With no base there is nothing else to go by.
+merged = clean_merge()
+if merged is not None:
+    emit(merged)
+if aligned_contains(local, remote):
+    shorter, longer = remote, local
+elif aligned_contains(remote, local):
+    shorter, longer = local, remote
+else:
+    shorter = longer = None
+if longer is not None and (base is None or aligned_contains(shorter, base)):
+    emit(longer)
+
 if kind == "log":
     if base is not None and local.startswith(base) and remote.startswith(base):
         emit(join_parts(base, local[len(base):], remote[len(base):]))
     n = common_prefix(local, remote)
     emit(join_parts(local[:n], local[n:], remote[n:]))
 
-merged = clean_merge()
-if merged is not None:
-    emit(merged)
 if kind == "prose":
     emit(labeled(local, remote, oid_l, oid_r))
 fail()
@@ -545,7 +667,7 @@ PY
 }
 
 add_file() {
-  local rel="$1" quiet="${2:-}" real base
+  local rel="$1" quiet="${2:-}" real base trel
   safe_rel "$rel" || { warn "bad path $rel"; return 0; }
   blocked_rel "$rel" && { warn "blocked $rel"; return 0; }
   base="$(basename "$rel")"
@@ -573,6 +695,15 @@ add_file() {
   fi
   real="$(realpath "$PROJECT/$rel")" || { warn "unresolved $rel"; return 0; }
   inside_project "$real" || { warn "escapes $rel"; return 0; }
+  # The bytes copied are the link target's. Its name decides too, or a link
+  # called notes.md that points at .env would carry the secret out.
+  if [ -L "$PROJECT/$rel" ]; then
+    trel="${real#"$PROJECT"/}"
+    if blocked_rel "$trel" || denied_base "$(basename "$real")"; then
+      warn "denied $rel (a link to $trel)"
+      return 0
+    fi
+  fi
   if is_tracked "$rel"; then
     [ -z "$quiet" ] && warn "tracked $rel"
     return 0
@@ -837,9 +968,9 @@ update_base() {
   [ -n "$path" ] && [ -n "$oid" ] || return 0
   tmp="$(mktemp)"
   if [ -f "$BASE" ]; then
-    awk -F '\t' -v proj="$PROJECT" -v p="$path" '!($1 == proj && $2 == p) { print }' "$BASE" > "$tmp"
+    awk -F '\t' -v proj="$CID" -v p="$path" '!($1 == proj && $2 == p) { print }' "$BASE" > "$tmp"
   fi
-  printf '%s\t%s\t%s\n' "$PROJECT" "$path" "$oid" >> "$tmp"
+  printf '%s\t%s\t%s\n' "$CID" "$path" "$oid" >> "$tmp"
   mv "$tmp" "$BASE"
 }
 

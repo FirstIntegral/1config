@@ -1,5 +1,16 @@
 # Brain decisions
 
+## 2026-11-21 — Notes: a signature gate, a checkout id, and a way out of a failed push
+
+**Policy:** notes_incoming=signed-by-listed-key
+**Policy:** notes_base_key=checkout-id
+
+**Decision:** `notes-sync.sh` runs `hooks/verify-incoming.sh` on what it fetched before it uses any of it. A base row is keyed by a random id in the checkout's git directory, not by the checkout's path. Local notes commits that cannot fast-forward are moved to `refs/notes-sync/parked/`, their base rows go back to the last shared blob, and the clone is reset to the remote branch. The 3-way merge runs before the "one copy holds the other" shortcut, and the shortcut needs the shorter copy to still hold the base. A notes key part that is `..`, `.git`, or holds a character outside `a-z 0-9 . _ -` is skipped. The blocked names match at any depth, the denied names include the list in `hooks/secret-scan.sh`, and a symlink is judged by its target's name.
+
+**Why:** `SECURITY.md` said a push credential alone cannot change what a machine runs, and the notes pull installed any commit: an agent reads `session_compact.md` first and acts on it. With the base keyed by path, a project cloned again at the same path looked like a local delete, never got its notes back, and exited 23 once the other machine edited. A push that failed left a local commit, and after the other machine pushed, every later run exited 1. The shortcut took the longer copy before the 3-way merge ran, so a finished item that one machine had removed came back. An origin of `https://github.com/../../x` wrote outside the notes clone. `sub/session_transcript.md`, `id_rsa`, `.netrc`, a `.p12` file, and a link to `.env` all rode. `hooks/notes-sync-test.sh` reproduced each one first.
+
+**Rejected:** `git merge` or a rebase in the notes clone for the failed-push case: a conflict there needs the same per-file merge this script already has, so the commits are redone from the project files in one path. Dropping the local commits without a ref: the script's rule is that nothing is discarded. Signing every existing notes fixture to run the gate everywhere: the gate has its own fixtures, and a test root can never be the real clone. Refusing every file whose name starts with a dot in the key: `.github` is a real repository name.
+
 ## 2026-11-21 — Checkpoint exit 16, and "current" means the push remote
 
 **Policy:** checkpoint_not_ready=exit-16
