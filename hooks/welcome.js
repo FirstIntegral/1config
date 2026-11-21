@@ -164,7 +164,7 @@ const PAGES = [
     borderColor: ANSI.violet,
     accentColor: ANSI.violet,
     sentences: [
-      'Global ~/.agents/AGENTS.md stays lean (~1.4% of a 1M-token window, well under the 3% ceiling) and holds cross-project rules, workflow triggers, and machine toolchains.',
+      'Global ~/.agents/AGENTS.md is what every session loads: the hard rules and one table of triggers, about 17 KB, capped at 24 KB by verify.sh. Each trigger body is a file under ~/.agents/playbooks/ that the agent reads when that trigger fires.',
       'Each repository has its own <repo>/AGENTS.md for project conventions and docs/DECISIONS.md for architecture decisions enforced by single-active Policy keys (superseded entries carry superseded-by).',
       'Project CLAUDE.md files are forbidden because they hide AGENTS.md from Claude Code 2.1.277+ native loading; hooks/load-project-agents.sh checks version, instruction mode, and parent suppressors so AGENTS.md (capped at 20KB) is never double-injected into context.',
       'Tool-internal memory stores (~/.grok/memory and Claude topic files) are disabled and wiped by the daily guards (a systemd user timer, or cron where no user manager runs) that stage residue into PENDING.md; if a tool replaces a rules symlink with its own file, the guard keeps that file under backups/strays, restores the link, and flags it for you; no script or model merges it into the rules.',

@@ -67,6 +67,14 @@ fixture_env_off() {
 # Run a fixture file. It prints `ok <what>` or `FAIL <what>` per case and exits
 # nonzero when a case failed. Each line becomes a check here. A file that dies
 # without a FAIL line, or that ran no case, is a failure: a crash is not green.
+# The name a check prints for a document. The scratch file is the rules as a whole.
+_docname() {
+  case "$1" in
+    "$RULES") echo "AGENTS.md + playbooks/" ;;
+    *) basename "$1" ;;
+  esac
+}
+
 run_fixtures() {
   local f="$1" out rc=0 line n=0 nbad=0
   if [ ! -f "$f" ]; then
@@ -86,6 +94,14 @@ run_fixtures() {
     bad "${f##*/} ran no case"
   fi
 }
+
+# The rules an agent follows are AGENTS.md (loaded every session) and the
+# playbooks it names (read when a trigger fires). A check that asks "is this rule
+# written down" reads both, as one file. A check about the loaded file itself
+# (its links, its size, the Cursor copy) still reads $CANON.
+PLAYBOOKS="$AGENTS_HOME/playbooks"
+RULES="$VTMP/rules-all.md"
+cat "$CANON" "$PLAYBOOKS"/*.md > "$RULES" 2>/dev/null || cp "$CANON" "$RULES" 2>/dev/null || : > "$RULES"
 
 echo "== ~/.agents verify — $(date) =="
 machine || echo "scope: repo (machine state is not checked)"
@@ -818,7 +834,7 @@ else
 fi
 if grep -qF 'session_transcript=retired' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -qF 'for rel in session_compact.md session_transcript.md' "$HOOKS/notes-sync.sh" \
-   && grep -qF 'Do not create `session_transcript.md`' "$CANON" \
+   && grep -qF 'Do not create `session_transcript.md`' "$RULES" \
    && ! grep -q 'session_transcript.md — HUMAN ONLY' "$AGENTS_HOME/setup-infographic.svg"; then
   ok "the retired session_transcript is named as retired in DECISIONS.md, AGENTS.md, and the figure"
 else
@@ -827,7 +843,7 @@ fi
 if [ -f "$AGENTS_HOME/NOTES_REMOTE" ] \
    && grep -q 'NOTES_REMOTE' "$HOOKS/notes-sync.sh" \
    && grep -q 'setup)' "$HOOKS/notes-sync.sh" \
-   && grep -q 'notes-sync.sh setup' "$CANON" \
+   && grep -q 'notes-sync.sh setup' "$RULES" \
    && grep -q 'notes-sync.sh setup' "$SETUP" \
    && grep -q 'no machine-notes clone' "$HOOKS/notes-sync.sh"; then
   ok "notes-sync setup path present in hook, NOTES_REMOTE, AGENTS.md, SETUP.md"
@@ -1222,6 +1238,57 @@ rm -f "$VTMP/notes-warn.txt" "$VTMP/notes-div.out" "$VTMP/notes-div.err" "$VTMP/
 fixture_env_off
 run_fixtures "$HOOKS/notes-sync-test.sh"
 
+echo "[playbooks]"
+# Every playbook has one row in the table in AGENTS.md, every row has its file,
+# and each file starts the way an agent is told to expect: a title, then when to read it.
+_pb_out="$(CANON="$CANON" PB="$PLAYBOOKS" python3 - <<'PYPB' 2>&1
+import os
+import re
+import sys
+
+text = open(os.environ["CANON"], encoding="utf-8").read()
+m = re.search(r"^## Playbooks — read before you act\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+rows = re.findall(r"`~/\.agents/playbooks/([a-z0-9-]+\.md)`", m.group(1)) if m else []
+pb = os.environ["PB"]
+files = sorted(f for f in os.listdir(pb) if f.endswith(".md")) if os.path.isdir(pb) else []
+why = []
+if not m:
+    why.append("AGENTS.md has no '## Playbooks — read before you act' section")
+if sorted(rows) != files:
+    why.append("the table and playbooks/ differ: " + " ".join(sorted(set(rows) ^ set(files))))
+if len(rows) != len(set(rows)):
+    why.append("a playbook is listed twice")
+for f in files:
+    lines = [l for l in open(os.path.join(pb, f), encoding="utf-8").read().splitlines() if l.strip()]
+    if len(lines) < 3 or not lines[0].startswith("# ") or not lines[1].startswith("Read when: "):
+        why.append(f"{f}: line 1 must be '# Title', and the next line 'Read when: ...'")
+# A path named anywhere in the rules must be a file that exists.
+for name in set(re.findall(r"~/\.agents/playbooks/([a-z0-9-]+\.md)", text)):
+    if name not in files:
+        why.append(f"AGENTS.md names playbooks/{name}, which does not exist")
+for f in files:
+    body = open(os.path.join(pb, f), encoding="utf-8").read()
+    for name in set(re.findall(r"~/\.agents/playbooks/([a-z0-9-]+\.md)", body)):
+        if name not in files:
+            why.append(f"{f} names playbooks/{name}, which does not exist")
+print("; ".join(why))
+sys.exit(1 if why else 0)
+PYPB
+)" && ok "every playbook has one row in AGENTS.md, every row has its file, and each file says when to read it" \
+   || bad "playbooks and the table in AGENTS.md disagree: $_pb_out"
+# AGENTS.md loads into every session of every tool. A body that grows back into
+# it is paid for on every turn, so the size is a check and not a hope.
+_canon_bytes="$(wc -c < "$CANON")"
+if [ "$_canon_bytes" -le 24000 ]; then
+  ok "AGENTS.md is $_canon_bytes bytes, under the 24000 cap"
+else
+  bad "AGENTS.md is $_canon_bytes bytes; the cap is 24000. Move a body to playbooks/ and add its row"
+fi
+if git -C "$AGENTS_HOME" rev-parse --git-dir >/dev/null 2>&1; then
+  _pb_untracked="$(git -C "$AGENTS_HOME" ls-files --others --exclude-standard -- playbooks | head -n 3 | tr '\n' ' ')"
+  [ -z "$_pb_untracked" ] && ok "every playbook is tracked" || bad "untracked playbook(s): $_pb_untracked"
+fi
+
 echo "[rule oracles]"
 if [ -x "$HOOKS/rule-oracles.sh" ]; then
   if bash "$HOOKS/rule-oracles.sh"; then
@@ -1232,7 +1299,7 @@ if [ -x "$HOOKS/rule-oracles.sh" ]; then
 else
   bad "hooks/rule-oracles.sh not executable"
 fi
-if grep -q 'rule-oracles.sh' "$CANON" && grep -q 'rule-oracles.sh' "$SETUP"; then
+if grep -q 'rule-oracles.sh' "$RULES" && grep -q 'rule-oracles.sh' "$SETUP"; then
   ok "rule-oracles documented in AGENTS.md and SETUP.md"
 else
   bad "rule-oracles missing from AGENTS.md or SETUP.md"
@@ -1313,7 +1380,7 @@ if [ -f "$_killdeny" ]; then
         ''|'#'*) continue ;;
       esac
       _tok="${_tok%$'\r'}"
-      for _kf in "$CANON" "$AGENTS_HOME/README.md" \
+      for _kf in "$CANON" "$PLAYBOOKS"/*.md "$AGENTS_HOME/README.md" \
                  "$TEMPLATE/AGENTS.md" "$TEMPLATE/session_compact.md" \
                  "$TEMPLATE/session_transcript.md" "$TEMPLATE/docs/DECISIONS.md"; do
         [ -f "$_kf" ] || continue
@@ -1909,17 +1976,17 @@ echo "[flag names]"
 for pair in \
   "$HOOKS/check-links.sh:NEEDS-SYMLINK-MERGE" \
   "$HOOKS/check-claude-memory.sh:NEEDS-MEMORY-MERGE" \
-  "$CANON:NEEDS-SYMLINK-MERGE" \
-  "$CANON:NEEDS-MEMORY-MERGE" \
+  "$RULES:NEEDS-SYMLINK-MERGE" \
+  "$RULES:NEEDS-MEMORY-MERGE" \
   "$SETUP:NEEDS-SYMLINK-MERGE" \
   "$SETUP:NEEDS-MEMORY-MERGE"
 do
   file="${pair%%:*}"
   needle="${pair##*:}"
   if grep -qF "$needle" "$file" 2>/dev/null; then
-    ok "$needle present in $(basename "$file")"
+    ok "$needle present in $(_docname "$file")"
   else
-    bad "$needle missing from $file"
+    bad "$needle missing from $(_docname "$file")"
   fi
 done
 # Live FLAG= assignment must use the new names (legacy migration lines may still say NEEDS-MERGE)
@@ -1999,38 +2066,38 @@ if grep -q 'NEEDS-MEMORY-MERGE' "$SETUP" && grep -q 'continue_project' "$SETUP";
 else
   bad "SETUP.md missing continue_project / NEEDS-MEMORY-MERGE (drift from AGENTS.md)"
 fi
-if grep -qF 'GitHub is the news' "$CANON" && grep -qF 'GitHub is the news' "$SETUP" \
-   && grep -qF 'Do not comment, react, post, push, or fast-forward during this fetch' "$CANON" \
+if grep -qF 'GitHub is the news' "$RULES" && grep -qF 'GitHub is the news' "$SETUP" \
+   && grep -qF 'Do not comment, react, post, push, or fast-forward during this fetch' "$RULES" \
    && grep -qF 'Do not comment, react, post, push, or fast-forward during this fetch' "$SETUP"; then
   ok "continue_project fetches live GitHub issues and pull requests"
 else
   bad "continue_project live GitHub fetch missing from AGENTS.md or SETUP.md"
 fi
-if grep -qF 'A close or a comment by someone other than the logged-in user is a reply.' "$CANON" \
+if grep -qF 'A close or a comment by someone other than the logged-in user is a reply.' "$RULES" \
    && grep -qF 'A close or a comment by someone other than the logged-in user is a reply.' "$SETUP" \
-   && grep -qF 'N more replies in session_compact.md' "$CANON" \
+   && grep -qF 'N more replies in session_compact.md' "$RULES" \
    && grep -qF 'N more replies in session_compact.md' "$SETUP" \
-   && grep -qF 'Append `heard` only when the user said that number is heard.' "$CANON" \
+   && grep -qF 'Append `heard` only when the user said that number is heard.' "$RULES" \
    && grep -qF 'Append `heard` only when the user said that number is heard.' "$SETUP"; then
   ok "continue_project speaks maintainer replies"
 else
   bad "continue_project reply rule missing from AGENTS.md or SETUP.md"
 fi
-if grep -qF 'Never reply on GitHub until the user has approved the draft in front of them.' "$CANON" \
+if grep -qF 'Never reply on GitHub until the user has approved the draft in front of them.' "$RULES" \
    && grep -qF 'Never reply on GitHub until the user has approved the draft in front of them.' "$SETUP" \
-   && grep -qF 'A maintainer merge that asks nothing stays quiet until the user asks.' "$CANON" \
+   && grep -qF 'A maintainer merge that asks nothing stays quiet until the user asks.' "$RULES" \
    && grep -qF 'A maintainer merge that asks nothing stays quiet until the user asks.' "$SETUP"; then
   ok "GitHub replies wait for an approved draft"
 else
   bad "draft-first GitHub reply rule missing from AGENTS.md or SETUP.md"
 fi
-if grep -qF '### Status card' "$CANON" \
+if grep -qF '### Status card' "$RULES" \
    && grep -qF '### Status card' "$SETUP" \
-   && grep -qF 'Do not read the rest of the compact aloud.' "$CANON" \
+   && grep -qF 'Do not read the rest of the compact aloud.' "$RULES" \
    && grep -qF 'Do not read the rest of the compact aloud.' "$SETUP" \
-   && grep -qF 'Speak every line under `## Left to do`' "$CANON" \
+   && grep -qF 'Speak every line under `## Left to do`' "$RULES" \
    && grep -qF '**Left to do** is every line under that heading, in order.' "$SETUP" \
-   && ! grep -qF 'Speak at most 5 lines' "$CANON" \
+   && ! grep -qF 'Speak at most 5 lines' "$RULES" \
    && ! grep -qF 'at most 5 lines' "$SETUP" \
    && grep -qF '## How things are' "$TEMPLATE/session_compact.md" \
    && grep -qF '## Left to do' "$TEMPLATE/session_compact.md" \
@@ -2038,17 +2105,17 @@ if grep -qF '### Status card' "$CANON" \
    && grep -qF '## Left to do' "$SETUP" \
    && grep -qF 'status_card=how-left-full-replies' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -qF '## Open issues / blockers' "$TEMPLATE/session_compact.md" \
-   && ! grep -qF 'brief status (current state' "$CANON" \
+   && ! grep -qF 'brief status (current state' "$RULES" \
    && ! grep -qF 'brief status (current state' "$SETUP"; then
   ok "continue and checkpoint speak the status card"
 else
   bad "status card missing from AGENTS.md, SETUP.md, the compact template, or the ADR"
 fi
-if grep -qF '$HOME/Android/Sdk' "$CANON" && grep -qF '$HOME/Android/Sdk' "$SETUP" \
+if grep -qF '$HOME/Android/Sdk' "$RULES" && grep -qF '$HOME/Android/Sdk' "$SETUP" \
    && grep -qF '$HOME/Android/Sdk' "$AGENTS_HOME/README.md" \
-   && grep -qF 'Never `$HOME/android-sdk`' "$CANON" \
+   && grep -qF 'Never `$HOME/android-sdk`' "$RULES" \
    && grep -qF 'android_sdk_root=HOME-Android-Sdk' "$AGENTS_HOME/docs/DECISIONS.md" \
-   && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$CANON" \
+   && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$RULES" \
    && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$SETUP" \
    && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$AGENTS_HOME/README.md" \
    && grep -qF 'If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms.' "$AGENTS_HOME/docs/DECISIONS.md" \
@@ -2064,12 +2131,12 @@ if grep -q 'only agrees is noise' "$AGENTS_HOME/docs/DECISIONS.md" \
 else
   bad "docs/DECISIONS.md missing the OpenClaw habit ADR"
 fi
-for f in "$CANON" "$SETUP"; do
+for f in "$RULES" "$SETUP"; do
   for needle in checkpoint_project writepaper_project explain_thing global_brain_update create_project '~/Projects/<name>' 'Tool parity' watch-stale.sh 'Preview / dev servers are not jobs' 'lake build' 'install-elan.sh' 'welcome.js' 'Herd boards' 'only agrees is noise' 'look for a maintained one' 'do not invent its contents' 'SOUL.md' 'daily diary' 'personal heartbeat' 'Red lines' 'Leaves the machine' 'opinionated default is on' 'BRAIN_REMOTE' 'local.json' 'This tree is **1config**' 'setup.sh --dry-run' 'uninstall.sh' 'verify.sh --repo' 'SECURITY.md'; do
     if grep -qF "$needle" "$f"; then
-      ok "$needle present in $(basename "$f")"
+      ok "$needle present in $(_docname "$f")"
     else
-      bad "$needle missing from $f"
+      bad "$needle missing from $(_docname "$f")"
     fi
   done
 done
@@ -2104,8 +2171,8 @@ if grep -qE '\[[0-9]+[a-z]?/[0-9]+\]' "$AGENTS_HOME/setup.sh"; then
 else
   ok "setup.sh stage banners make no stale total-count claim"
 fi
-if grep -q 'user.name' "$CANON" && grep -q 'user.email' "$CANON" \
-   && ! grep -qF 'math@brwsk.xyz' "$CANON" \
+if grep -q 'user.name' "$RULES" && grep -q 'user.email' "$RULES" \
+   && ! grep -qF 'math@brwsk.xyz' "$RULES" \
    && ! grep -qF 'math@brwsk.xyz' "$AGENTS_HOME/paper-template/main.tex"; then
   ok "paper author comes from git config, not a pinned personal email"
 else
@@ -2172,7 +2239,7 @@ if [ -f "$_lr" ] && python3 -m py_compile "$_lr" 2>/dev/null; then
 else
   bad "hooks/local-rules.py missing or does not compile — local.json caveman is not applied"
 fi
-if grep -q 'local-rules.py' "$AGENTS_HOME/setup.sh" && grep -qF '1config-local' "$CANON" && grep -qF '1config-local' "$SETUP"; then
+if grep -q 'local-rules.py' "$AGENTS_HOME/setup.sh" && grep -qF '1config-local' "$RULES" && grep -qF '1config-local' "$SETUP"; then
   ok "local.json caveman fan-out is wired in setup.sh and documented"
 else
   bad "local.json caveman fan-out missing from setup.sh, AGENTS.md, or SETUP.md"
@@ -2245,7 +2312,7 @@ if python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d[
 else
   bad "permissions.json bash_without_prompt is not the opinionated true default"
 fi
-if grep -q 'Residue / conflict check' "$SETUP" || grep -q 'Residue / conflict check' "$CANON"; then
+if grep -q 'Residue / conflict check' "$SETUP" || grep -q 'Residue / conflict check' "$RULES"; then
   ok "residue/conflict check wording present"
 else
   note "residue/conflict check heading not found (rename?)"
@@ -2499,7 +2566,7 @@ PY
 else
   note "no claude settings.json — skip hook check"
 fi
-if grep -q '2.1.219' "$CANON" "$SETUP"; then
+if grep -q '2.1.219' "$RULES" "$SETUP"; then
   bad "stale Claude 2.1.219 claim still in AGENTS.md or SETUP.md"
 else
   ok "stale Claude 2.1.219 claim is gone"
@@ -2926,12 +2993,12 @@ if grep -q 'bash_without_prompt' "$AGENTS_HOME/docs/DECISIONS.md" \
 else
   bad "docs/DECISIONS.md missing autonomy or distro ADR"
 fi
-if grep -q 'opinionated default is on' "$CANON" && grep -q 'ALWAYS ON' "$CANON"; then
+if grep -q 'opinionated default is on' "$RULES" && grep -q 'ALWAYS ON' "$RULES"; then
   ok "AGENTS.md ships autonomy and caveman on"
 else
   bad "AGENTS.md missing the opinionated autonomy or caveman default"
 fi
-if grep -q 'git push is not allowlisted and will prompt' "$CANON"; then
+if grep -q 'git push is not allowlisted and will prompt' "$RULES"; then
   bad "AGENTS.md still claims git push always prompts (OpenCode last-match / autonomy omit-ask)"
 else
   ok "AGENTS.md does not claim git push always prompts"
@@ -3185,7 +3252,7 @@ else
 fi
 
 echo "[lean toolchain]"
-if grep -q 'figures/`, `lean/`' "$CANON" && grep -q 'figures/`, `lean/`' "$SETUP"; then
+if grep -q 'figures/`, `lean/`' "$RULES" && grep -q 'figures/`, `lean/`' "$SETUP"; then
   ok "writepaper first scaffold copies lean/ by default"
 else
   bad "AGENTS.md/SETUP.md first scaffold list missing lean/"
@@ -3292,9 +3359,9 @@ _exskill="$AGENTS_HOME/skills/explain-thing/SKILL.md"
 if [ -f "$_exskill" ] \
    && grep -qF 'not an ASD product' "$_exskill" \
    && grep -qF 'Voice: 80% STE. Chat stays caveman. This file is not an ASD compliance claim.' "$_exskill" \
-   && grep -qF 'explain/brief.md' "$CANON" \
-   && grep -qF 'explain/diagram.svg' "$CANON" \
-   && grep -qF 'explain/page.html' "$CANON" \
+   && grep -qF 'explain/brief.md' "$RULES" \
+   && grep -qF 'explain/diagram.svg' "$RULES" \
+   && grep -qF 'explain/page.html' "$RULES" \
    && grep -qF 'explain/' "$AGENTS_HOME/.gitignore" \
    && grep -qF 'explain/' "$TEMPLATE/.gitignore" \
    && ! find "$AGENTS_HOME/skills/explain-thing" \( -iname '*dictionary*' -o -iname '*word-list*' -o -iname '*wordlist*' \) | grep -q .; then

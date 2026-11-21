@@ -11,7 +11,7 @@ Edit here (or via any of those paths — same bytes). Applies to Grok, OpenCode,
 
 Project-level: `<repo>/AGENTS.md` is the ONLY project rules file. Grok and OpenCode read it natively. Claude Code 2.1.277 and later also reads it, unless a `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` sits in the project or a parent directory. `~/.claude/CLAUDE.md` is the user file and does not count. `hooks/load-project-agents.sh` prints the project file only when that native read will not happen (older Claude, instruction mode `claude-md` or `managed-only`, or one of those three files is present). **Never create a project CLAUDE.md** — it hides `AGENTS.md` from Claude's native reader.
 
-Fresh machine (Omarchy or Ubuntu): clone your fork to `~/.agents/`, set commit signing, and run `bash ~/.agents/setup.sh` — recreates symlinks, tool configs, and the cron guards (idempotent). It stops before any write when signing, origin, or HEAD is not ready; `--preflight` runs only that check. A new fork runs `bash ~/.agents/bin/1config fork-init --yes` once, before setup. Existing box: `bash ~/.agents/hooks/brain-sync.sh && bash ~/.agents/setup.sh`. A bare `git pull` skips the signature gate. `bash ~/.agents/setup.sh --dry-run` prints the config diffs and changes nothing. `bash ~/.agents/uninstall.sh` prints a removal plan; `--yes` removes, and that is a red line. Human report + opinionated defaults: `README.md`. Full spec: `SETUP.md`. Threat model: `SECURITY.md`. Runtime archives land under `~/.agents/backups/` only when needed — do not treat that folder as source of truth.
+---
 
 ## Name
 
@@ -19,24 +19,14 @@ This tree is **1config**. The GitHub repo is `FirstIntegral/1config` (`git@githu
 
 ### After any edit under `~/.agents/` (HARD RULE)
 
-Hooks, guards, SETUP, template, and this file are one system. Changing one file can leave installed copies / docs / cron stale.
-
-**Same turn after any change under `~/.agents/`:**
+Read `~/.agents/playbooks/brain-update.md` before the edit. Then, in the same turn:
 
 ```bash
-bash ~/.agents/setup.sh                 # re-copy hooks → cron-jobs, fix symlinks/config, refresh inventory
-bash ~/.agents/sync.sh -m "<subject>"   # setup + verify + signed commit + push to the origin in BRAIN_REMOTE
+bash ~/.agents/setup.sh                 # install, then verify
+bash ~/.agents/sync.sh -m "<subject>"   # verify, signed commit, push
 ```
 
-Do not end a turn that edited `~/.agents/**` without running **both**. `verify.sh` alone is check-only (does not install); `sync.sh` re-runs `setup.sh` itself and refuses to commit if verify fails. It fetches first: a brain that is behind is fast-forwarded over signed commits only, and a diverged one stops before anything is installed. It also refuses to commit a token-shaped string (`hooks/secret-scan.sh`; a fixture line carries `gitleaks:allow`). The brain is a git repo — a local-only edit is an unfinished edit (see `global_brain_update`).
-
-CI (`.github/workflows/ci.yml`) runs `verify.sh --repo`, ShellCheck at error severity, and the skill fixtures on every pull request and every push to `main`. `--repo` is what a clone carries. A new check that reads this machine's state goes behind `machine` in `verify.sh`. A fixture does not touch the network or this machine's git config.
-
-Same-turn also means **the figure**: if the edit alters what `setup-infographic.svg` depicts (components, flows, toolchain, repo list), regenerate `setup-infographic.svg` in the same turn, before `sync.sh`. The figure is part of the spec surface; a brain change that leaves it stale is unfinished. (This repeats `global_brain_update` step 2b on purpose — it applies to every brain edit, trigger typed or not.)
-
-Same-turn also means **the welcome walkthrough (`hooks/welcome.js`)**: when a brain change adds, retires, or changes a user-facing trigger, rule, hook, or workflow, the AI must decide in the same turn whether it belongs in the 8-page walkthrough (`hooks/welcome.js`) and update the relevant page and snippet box if so (internal refactors, minor bugfixes, or test-only tweaks stay out so the 8 pages remain high-signal).
-
-**Boot dashboard:** `~/.agents/boot-dashboard/` — on graphical login opens a status terminal through cross-desktop XDG autostart (Wayland or X11). Not project code; machine health only. At login it also runs **brain self-sync** (`hooks/brain-sync.sh`): fetch `origin/main` and, whenever the local `~/.agents` checkout is **behind** the remote listed in `BRAIN_REMOTE`, fast-forward it to match that remote. The pull is fast-forward only, against those URLs only, and never runs over local edits or unpushed commits — local always follows the repo; a divergence or dirty tree is surfaced as a warn, never silently resolved. It takes only commits signed by a key in `BRAIN_SIGNERS` or by this machine's signing key (`hooks/verify-incoming.sh`). A commit made on github.com is a warn that names the manual pull. An unsigned or unlisted one is a fail. Neither is installed. When that fast-forward happens, the dashboard runs `bash ~/.agents/setup.sh` after the tool-updater wait and before `verify.sh`. An up-to-date checkout, a dirty tree, unpushed commits, and a divergence do not run it. A setup failure is its own row. The dashboard does not run `sync.sh`. Every login clones machine-notes when `~/.local/share/machine-notes` has no `.git` (`notes-sync.sh setup`; a failure is a warn and the next login retries; it never creates the GitHub repo). `setup.sh` tries the same clone, including the fast-forward boot that installs the change. On exit it overwrites gitignored `boot-dashboard/close-slip.txt` with one line per warn or fail other than tool updates, or the word `CLEAN`; a missing file means no exit since that slip existed. A later `verify.sh` rewrites only the `ecosystem` row (drops it on pass, replaces it on fail). A later `setup.sh` that finishes drops the `setup` row and the `ecosystem` row. Other rows stay until the next dashboard exit. The 1config panel re-reads the file on its 120s timer.
+Run both, every time. An edit that is only local is not finished. When the edit changes what `setup-infographic.svg` or `hooks/welcome.js` shows, update that file in the same turn.
 
 ---
 
@@ -57,12 +47,8 @@ NEVER bypass commit signing. If a repo (or global git config) has `commit.gpgsig
 
 - Do NOT use `--no-gpg-sign`, `-c commit.gpgsign=false`, or any other bypass.
 - If signing fails (locked key, no pinentry), STOP and unlock, then commit. Never work around it.
-- **Unlock is attempted automatically** — passphrase lives in a dedicated gnome-keyring collection labelled `gpg-signing` (empty master so autologin can read it; **not** the default collection). Default unencrypted keyrings get bricked across reboot when another app stores a multiline secret (gnome-keyring then logs `invalid or unrecognized format` and Secret Service is empty). `~/.agents/hooks/gpg-agent-unlock.sh` test-signs; if the agent is empty it fetches over D-Bus (unlocked **and** locked items), and if the live daemon has nothing it scans on-disk `*.keyring` files and restocks the dedicated collection. Then `--pinentry-mode loopback`. Boot dashboard runs this **first** at graphical login (before slow tool-update waits).
-- **Git never pops pinentry.** `setup.sh` sets `git config --global gpg.program` to `~/.agents/hooks/gpg-git.sh`. That wrapper signs with `--pinentry-mode loopback`; on cache miss it runs the unlock hook and retries. A cold agent must fail closed and restock, not open `pinentry-gnome3`.
-- One-time setup on a fresh machine (prompts once): `bash ~/.agents/hooks/gpg-store-passphrase.sh`
-- If automated unlock still fails (nothing stored, passphrase changed): re-run the store script, or manual fallback in a real terminal: `export GPG_TTY=$(tty); echo x | gpg --pinentry-mode loopback -u "$(git config --global --get user.signingkey)" --clearsign -o /dev/null` (prompts, caches). Then retry the commit. Signing key is `$GPG_SIGNING_KEY` or `git config --global user.signingkey` — never another machine's key id.
 - History rewrites (rebase, filter-repo, amend) must leave commits re-signed before any push.
-- A commit made on github.com is signed by `GitHub <noreply@github.com>` with key `968479A1AFF927E37D1A566BB5690EEEBB952194`. `setup.sh` imports `hooks/github-web-flow.asc` and does not set ownertrust, so a good signature stays `%G?` = `U`. Leave that commit in place.
+- When signing fails, read `~/.agents/playbooks/signing.md`: the unlock is automatic, and that file says what to run when it is not.
 
 ---
 
@@ -84,47 +70,11 @@ A comment that praises our work, offers help, or offers us credit gets a draft i
 
 ---
 
-## Permission policy — canonical file
+## Permission policy
 
-Global permission policy lives in **`~/.agents/permissions.json`**. `setup.sh` fans it out to every tool that has a persistent permission config, deduped and idempotent. Canonical permission buckets and modes win so revocations propagate; unrelated non-permission config survives:
-
-| Step | Tool | Lands in | Form |
-|------|------|----------|------|
-| `5b` | Claude Code | `~/.claude/settings.json` → `permissions.allow` / `.ask` / `.deny` | rules verbatim |
-| `5c` | Grok | `~/.grok/config.toml` → `[permission] allow` / `ask` / `deny` | rules verbatim (Grok speaks the same `Bash(...)` syntax) |
-| `5d` | OpenCode | `~/.config/opencode/opencode.jsonc` → `permission.bash` + `permission.external_directory` | `Bash(X)` → `"X": "allow"` / `"ask"` / `"deny"`; `external_directory` follows `bash_without_prompt` |
-
-- Add or remove a rule → edit `~/.agents/permissions.json`, then `bash ~/.agents/setup.sh`. `verify.sh` fails if any of the three drifts.
-- **Never hand-edit the per-tool copies** (`~/.claude/settings.json`, `[permission]` in `config.toml`, `permission.bash`) — they would drift from canonical and survive only until someone re-reads the source.
-- **Cursor Code has no persistent permission file.** Its command autonomy is per-invocation (`cursor-agent --force` / `--yolo` / `--sandbox`), so the policy does not fan out to it. The rules file still applies (see Tool parity).
-- Grok and OpenCode get enforceable `Bash(...)` rules only; `Skill(...)` is Claude-only. OpenCode's managed `"*"` catch-all is `"ask"` when Bash autonomy is off and `"allow"` when on; `permission.external_directory` (any file access outside the project cwd, e.g. `/tmp` scratch work) follows the same switch — OpenCode-only, Claude and Grok cover out-of-tree access with their autonomy modes. Canonical allow, then (if autonomy off) ask, then deny follow it — OpenCode uses **last match**, so a later `"git push": "ask"` beats `"*": "allow"`. **While `bash_without_prompt` is true, setup omits ask fan-out** for all three tools (OpenCode last-match; Grok always-approve still honors shell ask; Claude can still prompt on an explicit ask rule). Deny still fans out after `*` so last-match deny holds.
-- **The opinionated default is on.** `permissions.json` ships `bash_without_prompt` true. A fresh clone gets Claude `bypassPermissions`, Grok `always-approve`, OpenCode bash `"*" = allow`, and no ask rules. Generic `git push` does not prompt. Deny still applies. Red lines still wait for a yes. Gitignored `local.json` may set the key false; `setup.sh` merges that into the live tools only. Missing `local.json` means the committed true.
-- `allow` runs without a prompt, `ask` always requests approval, and `deny` blocks. With autonomy off, generic `git push` has explicit `ask` rules; `bash ~/.agents/sync.sh` is the narrow, verified exception.
-- Deny `rm -rf` is exact `/`, `~`, `$HOME` only. Never `rm -rf /*` / `~/*` / `$HOME/*`: `*` is a glob in Claude, Grok, and OpenCode, so those rules match every recursive delete under `/` or home. Vigil's rm-root classifier owns wiping `/` or `$HOME` including a trailing `/*`.
-- Allowlist still lists common safe commands so that if `bash_without_prompt` is flipped off, day-to-day work stays quiet. Per-project one-offs remain project-local; global generated permission buckets are replaced from canonical on setup.
-
-### `defaults.edit_without_prompt` + `defaults.bash_without_prompt`
-
-Same canonical file, `defaults` block. `edit_without_prompt` is **true**. `bash_without_prompt` is **true**. The opinionated default is on. A gitignored `local.json` may turn either flag off. A value is `true` or `false` without quotes; `setup.sh` stops on anything else. `setup.sh` fans the effective value out in steps 5b/5c/5d; `verify.sh` checks the live tools against that merge. See `README.md`.
-
-| Flag | Claude Code | Grok | OpenCode |
-|------|-------------|------|----------|
-| `edit_without_prompt` | `defaultMode = "acceptEdits"` (only if Bash flag false) | `[ui] permission_mode = "acceptEdits"` | `permission.edit = "allow"` |
-| `bash_without_prompt` | `defaultMode = "bypassPermissions"` (**wins** over acceptEdits) | `[ui] permission_mode = "always-approve"` | `permission.bash["*"] = "allow"` (ask omitted) + `permission.external_directory = "allow"` |
-
-**Why the Bash flag exists:** Claude's allowlist cannot remove some hard-coded safety prompts. `bypassPermissions` kills those prompts, but also kills the generic-push review gate. This repo ships the flag **true**. That is the direction. `local.json` is only an opt-out.
-
-With the effective flag true, setup does **not** copy ask rules into any tool — that is what makes generic `git push` prompt-free (an explicit ask rule can still prompt in Claude, in Grok always-approve, and through OpenCode last-match). Deny still copies. Claude deny rules block in every mode, `bypassPermissions` included. Red lines above still wait for a yes.
-
-### Compound commands (when bash_without_prompt is false)
-
-A pipeline or `;`/`&&`/`||` chain is approved only if **each** segment matches a rule. One unlisted segment prompts the whole line. Fix: allowlist the missing segment, or split the probe.
-
-### Prompts an allowlist cannot remove (Claude)
-
-Even with a full allowlist, Claude still prompts for: obfuscation/parse verdicts (heredoc f-strings — mitigated by PreToolUse `heredoc-rewrite` hook), exec wrappers (`watch`, `setsid`, `find -exec`), env runners (`npx`, `docker exec`), and hard-coded compound safety (cd+write, cd+git). **`bash_without_prompt → bypassPermissions` is the fix for those.** Prefer script files over heredocs regardless — reusable, no parse-verdict class.
-
-Wrappers stripped before matching: `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, bare `xargs`. Interpreter **paths** are not normalized — venv paths need their own rules (in the canonical file).
+- The policy is `~/.agents/permissions.json`. Change a rule there, then run `bash ~/.agents/setup.sh`.
+- Never hand-edit a tool's own copy (`~/.claude/settings.json`, `[permission]` in `~/.grok/config.toml`, `permission.bash` in `opencode.jsonc`).
+- Autonomy skips prompts. It does not skip the red lines above. Detail: `~/.agents/playbooks/permissions.md`.
 
 ---
 
@@ -137,31 +87,17 @@ Whenever anything is added to or changed in this setup:
 1. **Land it in all four, in the same turn.** Canonical source stays single (`~/.agents/…`); `setup.sh` fans it out per tool. Never write a per-tool copy by hand.
 2. **If a tool has no native mechanism**, implement the closest equivalent (hook, config key, translated rule syntax) and record what differs — SETUP.md §4, one line. "Claude-only" is acceptable ONLY when the other three physically cannot do it, and only when written down.
 3. **`setup.sh` installs it for all four; `verify.sh` checks all four.** A feature with no verify check does not count as installed.
-4. **Rules and triggers live in the canonical `AGENTS.md`** (all four read it via the symlinks), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, `explain_thing`, `global_brain_update`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
-5. Same for memory: shared markdown only, identical for all four (see Memory policy). Tool-internal stores stay disabled everywhere.
-
-Known per-tool wiring (keep in sync): global rules → symlinks (§3 of SETUP.md); project `AGENTS.md` → native in Grok, OpenCode, Claude Code 2.1.277+, and Cursor Code (project root and subdirectories); permissions → `permissions.json` fan-out (above); skills → `~/.agents/skills` (Grok, OpenCode native; Claude per-skill symlink, setup `1b`). Cursor Code's global mechanism is the generated user rule `~/.cursor/rules/1config.mdc` (alwaysApply) plus the `~/.cursor/AGENTS.md` link; its command autonomy is per-invocation flags (`--force` / `--yolo` / `--sandbox`), so permissions.json does not fan out to it, and tracked skills are not linked into Cursor — both recorded in SETUP.md §4.
+4. **Rules live in the canonical `AGENTS.md`, and a trigger's body in `~/.agents/playbooks/`** (all four read `AGENTS.md` via the symlinks and a playbook by its path), never in a tool-specific file — so every trigger (`create_project`, `continue_project`, `checkpoint_project`, `writepaper_project`, `explain_thing`, `global_brain_update`, caveman mode, memory policy, herd boards, kept out) fires identically everywhere.
+5. Same for memory: shared markdown only, identical for all four (Memory policy, below). Tool-internal stores stay disabled everywhere.
 
 ---
 
-## Machine toolchains (this machine)
+## Machine toolchains
 
-- **TeX: `texlive-full` / `texlive-meta` installed** (Ubuntu/Debian pkg `texlive-full`; Omarchy/Arch `texlive-meta`). Full scheme — every CTAN package, every engine, all fonts. Write scientific papers, posters, TikZ/PGFPlots, beamer, bibliographies directly; **never** ask the user to install a LaTeX package, and never fall back to a Markdown-only deliverable for lack of TeX.
-  - Engines: `pdflatex`, `xelatex`, `lualatex`, `tex` · build: `latexmk` (preferred, handles reruns) · bib: `biber`, `bibtex` · index: `makeindex` · also `texcount`, `latexdiff`.
-  - `tectonic` also installed (`~/.local/bin`) — self-contained one-shot builds; use when a project's build script already calls it.
-  - All of the above are allowlisted (no prompt). Package installs (`tlmgr install`) are not — and with `texlive-full` should never be needed.
-- **Lean 4: `elan` → `lean` + `lake`** (user-space, `~/.elan`). Not a distro package. Per-project pin via `docs/paper/lean/lean-toolchain`. Kernel-checks Lean encodings of paper theorems; **never** ask the user to install Lean by hand — if `elan` is missing, run `bash ~/.agents/hooks/install-elan.sh` (download-then-run, no root, does not edit shell rc). Never AUR `elan-lean`, never distro `lean4`, never `curl | sh`.
-  - Manager: `elan` · compiler: `lean` · build: `lake` (`lake build`). Mathlib is **opt-in per paper**, never in the brain template. `lake exe cache get` only when that paper's lakefile requires Mathlib; cache miss → fail closed, never compile Mathlib from source in a paper turn.
-  - Pin: exact `leanprover/lean4:vX.Y.Z`. Never `stable`/`nightly`.
-  - PATH: `~/.elan/bin`. Paper `build.sh` prepends it. Do not symlink into `~/.local/bin`.
-  - Allowlisted. The install hook is the only install path. `leanlab` (PyPI) is unrelated — do not install it.
-- **Android SDK, when a project needs one:** `$HOME/Android/Sdk` only. Never `$HOME/android-sdk`, never a second tree, never inside a repo. `local.properties` `sdk.dir` is the absolute path of that directory and stays gitignored. A project build sets `ANDROID_HOME` to the same directory. Look there before installing anything. If `$HOME/Android/Sdk` is absent, stop and name the path. Do not `mkdir` it. Do not run `sdkmanager`. Do not download command-line tools or platforms. A missing SDK is normal. `setup.sh` does not download it, and a missing tree is not a verify failure or a vitals fault.
-
-## Omarchy plugin — `firstintegral.1config`
-
-1config's own Omarchy bar widget lives at `omarchy-plugin/firstintegral.1config/`. On a machine with `~/.config/omarchy/plugins/`, `setup.sh` copies it there (Omarchy rejects symlinks inside a plugin) and adds the id to `bar.layout.right` in `~/.config/omarchy/shell.json` when it is missing. Ubuntu has no such directory, so setup skips the copy. The same rules file is what all four tools read; the widget is the Omarchy surface. The bar id also ships in the omarchy-dots pack (`omarchy/shell.json`). That pack does not install the plugin files. `setup.sh` does.
-
-The bar face is the ring mark alone, drawn at the bar's icon size. Hover still says the hottest plan, such as `Grok 42%`. Open drops a card from that icon, on vitals. Spend is the other page, key `s`. Each footer shortcut uses its first letter as its hotkey (`r` re-read, `f` fix, `s` spend, `v` vitals, `l` limits, `q` quiet, `m` models; legacy `g`, `u`, and `a` aliases still work), and every footer chip is clickable. The vitals page does not show limits, model rows, or the quiet toggle. The card is about 760 by 820. `v` opens vitals (`g` does the same): live checks that the checkout, the work tree, the listed remote, the local `origin/main` match, the four rules symlinks, permissions, hooks, scaffolds, the boot slip, both cron guards, boot autostart, the machine-notes clone (a warn named `not cloned` until a clone exists; `setup.sh` and login try), the four agent tools, TeX, Lean, commit signing, and the installed plugin copy are actually correct. A fault pulses the bar dot. A tile with detail (`›`) — the boot slip's warn/fail lines, a dirty work tree's uncommitted files — opens them on click; `esc` goes back. A fail line in the slip is a fault, not a warn. `f`, the footer chip, and the Fix with Grok button on that detail open a terminal running `grok` in `~/.agents` with those lines as the prompt. A slip that is only warns still shows the button. The ring on that page is a small mark beside the verdict. Short rays run only while that view is open. Spend words use the proportional face. Numbers stay monospace. Each used tool is a light box. Inside it: each limit and each model as a lighter box. A tool with local token numbers shows one usage line under its name — today and 7-day tokens, monospace — so a Grok card whose limits moved to the X plan still shows what it used; X, Grok Bot, Claude, and Codex have no local token ledger and show their meters instead. No today total. No box per weekday. Those boxes use the vitals tile colours: a foreground wash and an accent edge. Spend does not draw the accent pip. A limit at 80% uses the stronger edge. An error uses urgent. "By model" sits beside the quiet toggle and starts off. `m` is the same switch. The roster is X, Claude, Grok, Grok Bot, OpenAI, OpenCode, Codex, and Cursor. Used tools come first. Tools with no usage stay hidden until `q` (`a` as alias, or the button) shows them at the end. OpenAI is not installed here, so that card says it is not on the machine. Cursor may have `cursor-agent` and still no ledger, so that card says there is no usage record. Neither invents a figure. Omarchy records other than Claude and Codex, including fireworks, are not listed. Claude and Codex come from Omarchy's usage records, including per-model buckets when the file has them. Grok comes from `~/.grok/sessions/**/usage.json` plus the last credits snapshot Grok already wrote. When that snapshot is a unified billing user, an X card leads the spend page with the single plan meter — one plan for X, Grok Build, Grok Bot, and Cursor, tier on the note — and the Grok, Grok Bot, and Cursor cards say they are covered by the X plan instead of each carrying its own copy of the meter; a non-unified snapshot keeps the old per-Grok Credits box. Grok Bot is a separate weekly meter: the newest `weekly-usage.cache` slice in `~/.config/Grok Bot/sand-client-persistence`. `percentUsed` is already a percent on 0–100. An expired cache is not shown, and neither is a reading whose `nextResetMs` is already in the past — the week it measures ended, so an old 100% from before the reset must not stick. OpenCode model rows still come from local `step-finish` rows. The spend card does not show a today total. The OpenCode Go plan (rolling, weekly, monthly, the same figures as the console) comes from `GET https://opencode.ai/zen/go/v1/usage` with the active `opencode-go` key in `opencode.db` (`auth.json` only when that row is absent). That response is cached for ten minutes and the key is not written out. A failed live read keeps the cached windows and says the read failed. It is not tried again for ten minutes, unless `r` or `l` forces it. A source that cannot be read shows that on its own card; the other cards stay. The prepaid credit balance on the console is a different wallet and has no key endpoint. Panel key `r` (and right-clicking the bar icon) refreshes everything: it immediately re-reads local files and OpenCode Go (`--refresh-go`) and runs `omarchy-agent-usage-update --limits-only` followed by another fresh read; panel key `l` (`u` as alias) runs `omarchy-agent-usage-update --limits-only` and forces a fresh Go read. This is not a vendored copy of NixFred's Burn Bar or Infomarchy.
+- TeX is installed in full. Never ask the user to install a LaTeX package, and never fall back to Markdown for lack of TeX.
+- Lean 4 comes from `elan` in user space. If it is missing, run `bash ~/.agents/hooks/install-elan.sh`. Never a distro package, never `curl | sh`.
+- The Android SDK is `$HOME/Android/Sdk` only. If it is absent, stop and name the path. Do not create or download it.
+- Detail: `~/.agents/playbooks/toolchains.md`.
 
 ---
 
@@ -176,42 +112,7 @@ report on it only when asked.
 bash ~/.agents/hooks/watch-stale.sh <pid> <logfile|-> [interval_seconds]   # default 600
 ```
 
-One line per interval on stdout, so it feeds a monitor directly (each line = one notification);
-it ends by itself when the pid is gone. Exit `0` watched process exited · `2` usage · `3` no such pid.
-
-- **Watch the worker pid when you can.** Resolve it against the interpreter and script
-  (`pgrep -af 'bin/python -u path/to/script.py args'`). The watch sums CPU over that pid and its
-  descendants, so a `bash -c` wrapper no longer reads as a hang. `EXITED` is still about the pid
-  it was given.
-- **Stale means BOTH signals flat** — no log growth *and* effectively no CPU across a whole
-  interval. Either alone is a normal working run: a job grinding through one expensive step is
-  silent, and a job blocked on I/O still writes. Alerting on one signal produces false hangs, which
-  is how a watch gets ignored.
-- **Silence is not success and it is not failure either.** The watch reports what it measured
-  (`alive` / `STALE` / `EXITED`) every interval, including when nothing changed. A monitor that
-  only speaks on bad news is indistinguishable from a monitor that died.
-- **A staleness watch is not a completion watch.** It says whether the job is moving, never whether
-  it did the right thing. Pair it with something that fires once on exit and reports the tail of the
-  log, and read the actual output before believing the run.
-- Applies to detached/long-running **jobs** only (builds, sweeps, training). A foreground command
-  that returns in a second cannot go stale, and wrapping one in a watch is noise.
-
-### Preview / dev servers are not jobs
-
-A local `http.server` / `npm start` / similar, launched so a screenshot or the user can hit a URL,
-is **idle-by-design**. Do **not** wrap it in `watch-stale.sh` — no log growth + no CPU is the
-healthy state, and the watch would cry `STALE` forever.
-
-Grok's TUI keeps `◎ 1 command still running` for as long as that background task lives, **even
-after the turn that started it has finished**. That is the TUI working, not a hang. An unexplained
-status line after "done" looks like a leak.
-
-Policy:
-
-1. **During the turn** — fine. Name the URL.
-2. **End of turn** — kill the preview unless the user still needs it. Closing line says either
-   "preview killed" or "still running: `<cmd>` on :<port> — stop with X".
-3. Never leave an unnamed background command.
+Stale means both signals flat: no log growth and no CPU. A preview or dev server is not a job: no watch, and the turn ends with it killed or named. Detail: `~/.agents/playbooks/detached-runs.md`.
 
 ---
 
@@ -245,37 +146,6 @@ From DietrichGebert/ponytail (MIT, Copyright (c) 2026 DietrichGebert). Levels, `
 
 ---
 
-## Herd boards — many agents, one wall
-
-When the user asks for a crowd of agents that should talk (tens or hundreds), use this. Cross-project. The bar, the closed ideas, and the opponent stay in the project files.
-
-A parallel blast is not a conversation. Seats that start together cannot read each other. Later waves, or a queue whose later seats are told to read the wall first, are how talk happens. Do not raise the live cap so every mouth starts on an empty wall.
-
-What these seats do when the wall is set up this way:
-
-- They talk by appending to one file. The private return message is not the conversation.
-- They answer named seats. They recant in a new post. They do not edit old lines.
-- A fixed last line is how a vote gets counted. The body stays free.
-- They will run code and kill their own idea when a switch they wrote beforehand fires.
-- Blunt correction of a false claim is the useful rudeness. Personal abuse is noise. An invented number, path, or quote is the failure.
-- They will measure the official seeds during the argument if the prompt allows it. The later table is then a reproduction, not a held-out test.
-- A character cap truncates a post. The next post restores the tail. Tell them that.
-
-Parent, every herd:
-
-1. One append-only wall. Exclusive lock. The only legal write is the post script.
-2. Waves with a barrier between them. Say the seat ranges in the prompt.
-3. Honesty is required. Correct a wrong claim in public. `NO-PROPOSAL` beats a costume. An empty lock is a legal result.
-4. Every post ends with a token the tally can parse. Name the tokens before launch.
-5. Argument seats do not edit project source. One hands seat may code, and only after a mechanical lock written before anyone saw the official table.
-6. Argument waves do not run the official measurement seeds.
-7. Cap posts (about 3) and length. A cut post is restored by a new post.
-8. Seats must open the project files that hold the bar and the graveyard. The prompt is not a substitute.
-9. A post that only agrees is noise. Say nothing. A recant, a kill, or a new measurement is a post.
-10. If a required file is missing, the post says that file is missing; do not invent its contents.
-
----
-
 ## Kept out
 
 These three stay out.
@@ -286,270 +156,29 @@ These three stay out.
 
 ---
 
-## `create_project` trigger
+## Playbooks — read before you act
 
-When the user says **`create_project`** (starting a new project), always set up the standard layout. Resolve the target before editing: `create_project <name>` with a simple name means `~/Projects/<name>`; an explicit absolute or relative path containing `/` is used after resolution; a missing name requires a question. Never use the current working directory as the default for a simple name. `verify.sh` runs `hooks/rule-oracles.sh`: `foo` → `~/Projects/foo`, a name containing `/` is not moved under `~/Projects`, an empty name exits 30 (ask). That fixture also fails if a hook reads `session_transcript.md`. Fast path: `cp -r ~/.agents/project-template/. <project-dir>/` then fill in names; or create the files manually:
+When a row's condition is true, read that file in full before you act. Do not act from memory of it. The file is the rule; this table only says when.
 
-| File | Audience | Maintenance |
-|------|----------|-------------|
-| `AGENTS.md` | all AI tools | Project rules/conventions, plus a `## Repo` line recording the remote (or `none (local only)`). Canonical and ONLY project rules file (Claude Code 2.1.277+ reads it natively — never create a project CLAUDE.md). Committed by default — **except** `~/Projects/sites/*` (see Sites rule). |
-| `session_compact.md` | **AI handoff** | Top is the status card (`## How things are`, `## Left to do`). Below that: model + effort, decisions, pointers. **Rewrite** (not append) at end of session / major milestone / before context compaction. Every rewrite keeps the card at the top. |
-| `docs/DECISIONS.md` | all AI tools | ADR log: decision + why + rejected alternatives, appended in the same turn a choice is made. Versioned (committed in repos). |
-| `.gitignore` | git | Must ignore session files (`session_compact.md`, `claude_memory_import.md`, a leftover `session_transcript.md`, + legacy session paths) and `explain/`. Comes from the template; if project already has a `.gitignore`, **merge** those lines in (do not overwrite the whole file). Under `~/Projects/sites/*` also ignore `AGENTS.md` and `CLAUDE.md`. |
-
-Rules:
-
-1. **Session start in any project:** if `session_compact.md` exists, read it FIRST to restore where we left off — before doing other work.
-2. **During work:** do not write `session_transcript.md`. ADRs go to `docs/DECISIONS.md` in the same turn.
-3. **End of session / milestone / before compaction:** rewrite `session_compact.md` to reflect the latest state. It must always be accurate enough for a fresh AI session to resume work from it alone.
-4. `session_compact.md` lives in the project root. **Never commit it unless the user explicitly says otherwise.** The template `.gitignore` enforces this, and it still names a leftover `session_transcript.md`. If copying files by hand (no template), add the same ignore lines. Do not create `session_transcript.md`.
-5. **`create_project` never creates a git repo or a remote.** Whether a project goes to GitHub is the user's call, made explicitly. Fill the `## Repo` line with `none (local only)` and leave it; update it the same turn a remote is actually added, so `checkpoint.sh`'s cross-check stays meaningful. It does not create `machine-notes` and does not invent a notes key. No origin means a later notes sync skips.
-6. **Model tracking:** at `create_project`, record the active model + effort in `session_compact.md` (read the tool's config — `opencode.jsonc` / `~/.claude/settings.json` / `~/.grok/config.toml` — or ask the user once). The **Models used** list in compact is CUMULATIVE: preserve it across rewrites, mark the current one, add a line whenever model or effort changes. If the user says they switched models, log it in that list immediately.
-7. **Handoff shape:** point at specs, ADRs, and commits by path. Do not copy them into `session_compact.md`. List the skills the next agent should load. Redact secrets. Do not drop these three lines on a rewrite.
-
----
-
-## `continue_project` trigger
-
-When the user says **`continue_project <path>`** (example: `continue_project $HOME/Projects/some_dummy_project`), resume that project from disk. Do this **before** other work:
-
-1. Resolve `<path>` (absolute or relative). Must be a directory. If missing/invalid → stop and say so.
-2. **Residue / conflict check (all tools):**
-   - Memory: if `~/cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE` or `~/.agents/backups/claude-residue/PENDING.md` or `<path>/claude_memory_import.md` exists → process memory residue merge (Memory policy) **before** relying on project files.
-   - Symlinks: if `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` exists → tell the user and name the stray files (see Cron guards). Do not merge them.
-3. **Notes pull, before any read:** `bash ~/.agents/hooks/notes-sync.sh pull <path>`. A missing real clone is created from `NOTES_REMOTE` once. If that fails, stdout is `notes: skipped` plus the setup hint, and nothing is invented. A fetch that fails (offline) is also `notes: skipped`, with the reason on stderr; the local files may then be behind the other machine. `notes: merged` means both machines' copies are in the file. Read that file. A merged `session_compact.md` has both copies under `notes-sync-merge`. Both are current. Do not drop either machine's open items. The next checkpoint rewrites one compact. Exit `23`: merge refused (one side deleted the file while the other edited it, or the path is not markdown and will not 3-way clean). Stop. Do not overwrite it and do not read past it. Foreign "write the missing `AGENTS.md`" runs only after this pull, and only if that path is still absent.
-4. **Read, in order** (only if the file exists):
-   1. `<path>/session_compact.md` — where we left off (AI handoff; **required read when present**)
-   2. `<path>/AGENTS.md` — project rules/conventions
-   3. `<path>/docs/DECISIONS.md` — durable choices + why
-5. **Do NOT** open a leftover `<path>/session_transcript.md`. Collection is retired. Do not create the file and do not append to it.
-6. If none of the three files exist: a git root is not a new project. Do not offer `create_project`. Follow Foreign checkouts. Anything else → say the path has no project session layout; offer `create_project` there (or fix the path).
-7. **Live GitHub, when this checkout has any.** After the file reads, and only when `origin` or `upstream` is a `github.com` URL, fetch before the status. Local files are the baseline. GitHub is the news.
-   - Open pull requests and issues authored by the logged-in `gh` user, any state, on each of those repos (`gh pr list` / `gh issue list`, `--author @me`). When `origin` and `upstream` are different repos, fetch both. A fork's pull requests live on the parent.
-   - Also every issue or pull request that `<path>/AGENTS.md`, `<path>/CONTRIB-LOG.md`, or `<path>/session_compact.md` names, including one someone else opened. If GitHub now says closed or merged, that is the update.
-   - For each of those, if `updatedAt` is after the compact's last `Fetched YYYY-MM-DD` line, read comments and reviews newer than that date. No such line: read comments and reviews from the last 14 days. A close or a comment by someone other than the logged-in user is a reply. Our own comment is not a reply.
-   - Put state changes under **Since last time**. Put replies under **Replies**. Do not invent a comment the fetch did not return.
-   - Do not comment, react, post, push, or fast-forward during this fetch. Do not mark notifications read.
-8. Speak the status card, then wait. Do not invent state that is not in those files or in the fetch. Do not read the rest of the compact aloud.
-9. Treat `<path>` as the project root for the rest of the session (paths, git, session file updates) unless the user points elsewhere.
-
-Same trigger for all four tools (Grok, Claude Code, OpenCode, Cursor Code). No tool-specific continue step.
-
-### Status card
-
-`continue_project` and `checkpoint_project` speak this card and then stop. It is the whole status. Do not read the rest of the compact aloud.
-
-**How things are** — one sentence, at most 20 words. What this project is, and where it stands: working, stuck, or waiting.
-
-**Left to do** — Speak every line under `## Left to do` in `session_compact.md`, in that order. Item 1 is the next action. Each line is one action, at most 20 words.
-
-**Replies** — `continue_project` only. Speak each reply the fetch found, and each `## Replies` line in `session_compact.md` that does not contain `heard`. At most 3 lines. When more remain, the last spoken line is `N more replies in session_compact.md`. Each line is who, the number, and the outcome, at most 20 words. No replies: omit this heading.
-
-**Since last time** — `continue_project` only, and only when the GitHub fetch runs. One line, `nothing new`, or at most 3 change lines (who, and what moved). No GitHub remote: omit this heading. A reply is not one of these lines.
-
-Say nothing that is not already in `session_compact.md`, `docs/DECISIONS.md`, or that fetch. A `notes-sync-merge` compact keeps both machines' open items under `## Left to do`. Speak every one of those lines.
-
-Every rewrite of `session_compact.md` puts `## How things are` and `## Left to do` at the top, above `## Models used`. Keep `## Replies` under `## Left to do` when any line lacks `heard`. Add a line for each maintainer reply fetched this session. Append `heard` only when the user said that number is heard. When a GitHub fetch ran, record `Fetched YYYY-MM-DD`. Fold `## Current state`, `## Where we left off`, and `## Open issues / blockers` into those two headings. Keep every open item. Continue speaks the card and does not rewrite the file. After the checkpoint card, one line: `Checkpoint saved — next step: <item 1>`, plus the pushed hash or the script's exact non-push reason. An early stop (missing path, notes exit 23, no session layout) speaks the stop reason and skips the card.
-
----
-
-## `checkpoint_project` trigger
-
-When the user says **`checkpoint_project`** (done for the day — leave and resume later), apply to the **current** project (cwd walk-up to nearest project root, stopping before `$HOME`):
-
-1. Resolve the project root. No session layout there (no `session_compact.md` / `AGENTS.md`) → say so. A git root is not a `create_project`. Follow Foreign checkouts. Anything else → offer `create_project`.
-2. Read `session_compact.md` (state restore). Do not open a leftover `session_transcript.md`.
-3. Rewrite `session_compact.md` so a fresh AI session can resume from it alone. The top is the status card. Below it: key decisions and the cumulative **Models used** list (current marked). Keep the handoff lines: pointers instead of copies, skills for the next agent, secrets redacted.
-4. Do not append to `session_transcript.md`. Collection is retired.
-5. Backfill `docs/DECISIONS.md` with any meaningful choices from this session not yet logged (same-turn ADR rule).
-6. **Commit and push** (see below). Half-finished work is expected and fine — the point is that the machine is not the only copy.
-7. Speak the status card. Then one line: `Checkpoint saved — next step: <item 1>`, plus the pushed commit hash (or one line saying why nothing was pushed).
-
-Same for all four tools. Formalizes the existing "End of session / milestone" rule as an explicit trigger.
-
-### Step 6 in detail — run the script, do not hand-roll git
-
-```sh
-bash ~/.agents/hooks/checkpoint.sh <project-root> -m "checkpoint: <YYYY-MM-DD> <what moved>"
-```
-
-**Do not open-code these git commands.** Step 6 is mechanical and has exactly one correct answer per project state; hand-running it produced inconsistent behaviour on consecutive checkpoints of the same project. The script is the behaviour; the prose below documents what it does, and `verify.sh` exercises the refusals for real on every run.
-
-Read its exit code and report accordingly:
-
-| exit | meaning | what happened |
-|---|---|---|
-| `0` | remote backup completed | fetched; took commits this checkout lacked; committed and/or pushed. A fast-forward with nothing local to push is also `0` |
-| `3` | clean tree after a successful fetch, already current | no project commit to push. Notes sync still runs. `--dry-run` does not fetch |
-| `23` | **notes diverge** — merge refused (delete versus edit, or not a clean text merge) | notes repo unchanged. Project commit is not rolled back |
-| `10` | **not a git repo** | nothing done, no `git init` |
-| `11` | project is inside another repo, not its root | nothing done |
-| `12` | no remote | committed locally, not pushed |
-| `13` | remote configured but unreachable | fetch failed. Committed if there was local work. Not pushed, **not created** |
-| `14` | push URL owner is not ours | committed if needed, not pushed, not retargeted |
-| `16` | **refused** — detached HEAD, or a merge, rebase, cherry-pick, or revert in progress | nothing committed, nothing pushed; finish or abort it, then re-run |
-| `15` | **refused** — a fork listed in `fork-parents.txt`, `AGENTS.md` or `docs/DECISIONS.md` already tracked | nothing committed |
-| `20` | **refused** — session files, `explain/`, a site's `AGENTS.md` or `CLAUDE.md`, an untracked secret-named or oversized file, or a token-shaped string would be published. Also when the secret scan did not run, or the foreign exclude block could not be written | nothing committed; fix `.gitignore` or that line and re-run |
-| `21` | commit or push failed | any commit made is safe; not retried, not forced |
-| `22` | **refused** — this checkout is the brain | nothing done; publish with `sync.sh` |
-| `24` | **merge conflict** | the merge is aborted. Local commits stay. Nothing is pushed |
-| `2` | usage: an unknown flag, a missing value, or a path that is not a directory | nothing done |
-
-`--dry-run` prints the plan and changes nothing. It returns before any notes stat. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
-
-Exits `0`, `3`, `12`, `13`, `14`, `16`, `21`, and `24` run `hooks/notes-sync.sh push` after the project half. Exits `2`, `10`, `11`, `15`, `20`, and `22` do not. A missing real notes clone is created from `NOTES_REMOTE` once. If that fails, stdout is `notes: skipped`, stderr keeps the setup hint, and the checkpoint exit stays. A markdown file both machines changed is merged (`notes: merged`) and pushed. Exit `23` is the notes half: the merge was refused, nothing in the notes repo was written. A notes failure does not roll back a project commit. A notes sync that fails for another reason turns a `0` or a `3` into `21`. Any other exit stays, so an unreachable remote is still `13`.
-
-Exit `3` happens only after `git fetch --prune` of the push remote succeeds and that branch has no commit this checkout lacks. A clean tree with commits absent from the push remote still pushes, also when another remote has them, and also when the server no longer has the branch. `--dry-run` does not fetch, so its exit `3` is local refs only. Exit `14` does not fetch: the owner veto stays in front of the network.
-
-The brain checkout exits 22 before any git command. That is the directory `checkpoint.sh` lives in, and a worktree whose `origin` is listed in its `BRAIN_REMOTE` and which contains `setup.sh` and `verify.sh`. `checkpoint_project` stops there. `sync.sh` is the publisher.
-
-**Gate the script applies, before touching git at all:**
-
-| project is | do |
+| When | Read |
 |---|---|
-| **the brain checkout** | **nothing.** Exit 22. Say `sync.sh` is the publisher. |
-| **not a git repo** | **nothing.** No commit, no push, no `git init`. Say "not a git repo — nothing pushed" and finish the checkpoint normally. |
-| a repo with **no remote** | commit locally, **do not push**, do not add a remote. Say "committed locally, no remote". |
-| a repo with a remote | fetch, take commits this checkout lacks, commit, and push. No asking |
-
-**HARD RULE: a checkpoint never creates a repo, never adds a remote, never creates a GitHub repo.** A project without a repo is a deliberate state — scratch work, a scaffold, something not meant to be published — and a checkpoint is a note-taking action that must not silently change it. Publishing something the user never chose to publish is not recoverable by deleting it afterwards. If a project looks like it wants a repo, say so and let them decide next session.
-
-Also check the **root**, not just "somewhere in a repo": `git rev-parse --show-toplevel` walks *up*, so it succeeds for any subdirectory. A toplevel differing from the project root means the project sits inside someone else's repo (or a parent worktree), and committing there would sweep unrelated work into the checkpoint. Do not commit in that case — say so and skip.
-
-**Which projects get a remote is a manual decision, and stays one.** Nothing in this setup creates repos; `create_project` does not, and neither does a checkpoint. A project has a remote because someone deliberately ran `gh repo create` or `git remote add`. That is the whole policy.
-
-**The project's `AGENTS.md` records the remote as documentation — never as authorisation.** The `## Repo` section in `project-template/AGENTS.md` carries the URL so it is visible without running git, and `checkpoint.sh` cross-checks it against `git remote get-url --push` and warns on a mismatch. But **git config always wins**, because git config is set by an explicit human action while `AGENTS.md` is a file an AI writes: a line hallucinated into it must never be able to authorise a push, and a stale line must never redirect one. Documentation drifts; the push target cannot be allowed to drift with it.
-
-**What "has a remote" means here.** The test is a configured remote, not GitHub specifically — a self-hosted or GitLab origin pushes exactly the same way, and nothing in this trigger is GitHub-aware. Two consequences worth stating:
-
-- **Read the URL before pushing, do not just count remotes.** `git remote get-url --push origin`. If `origin` does not exist but other remotes do, do **not** guess which one to push to — commit locally, name the remotes found, and let the user choose. If the branch already has an upstream, push there and ignore all of this.
-- **A configured remote is not a reachable one.** The URL can point at a repo that was deleted, renamed, or that this key cannot write to.
-
-**When the push fails, the checkpoint still succeeded.** Steps 1-5 are the checkpoint; the push is a backup. On any push failure: report the exact error, leave the commit in place, and finish with "committed <hash>, push failed: <reason>". Then stop. Specifically never, in response to a failed push:
-
-- `gh repo create`, or add/rewrite a remote — the repo not existing is an answer, not an obstacle
-- `--force` / `--force-with-lease` — the script already merged what it could. A push that still fails is left in place
-- `git rebase`, `git reset`, amending, or any history rewrite to make the push go through. A conflicted merge is aborted (exit `24`), not finished by hand inside the script
-- retrying with a different branch or remote than the one that failed
-
-Repo with a remote, the normal path is the script. It fetches the push remote first. Commits that this checkout lacks are taken with `git merge` (fast-forward when that is the whole story). Local edits that block a fast-forward are committed, then merged. A conflict aborts that merge and exits `24`. Then:
-
-```sh
-git add -A                      # session files are gitignored, so they stay local
-git commit -m "checkpoint: <YYYY-MM-DD> <what moved today>"
-git push                        # -u origin <branch> if the branch has no upstream
-```
-
-- **Signing and attribution rules apply unchanged** — signed commit, no `Co-Authored-By: Claude`, no "Generated with Claude Code". Signing fails → `bash ~/.agents/hooks/gpg-agent-unlock.sh`, retry. Never bypass.
-- **Commit on the current branch**, whatever it is. A checkpoint records where the work actually is; it is not the moment to invent a branch or open a PR.
-- **`git push` prompts only when the effective `bash_without_prompt` is off.** Canonical `permissions.json` still lists the ask rules (the restore-gate). While the effective flag is true, setup omits them from live configs so OpenCode last-match and Grok shell-ask cannot re-prompt. Do not `--force` or invent a workaround if a prompt appears — that means fan-out drifted.
-- **Clean, fetch succeeded, already current** → exit `3`. Clean with commits the remote lacks → skip the commit but still push. Clean and strictly behind → fast-forward, exit `0`.
-- **Session files are never committed** (`session_compact.md`, a leftover `session_transcript.md`, `claude_memory_import.md`) — the template `.gitignore` already excludes them. If a project lacks those ignore lines, add them *before* the `git add -A`, or the checkpoint publishes a private file. Verify with `git add -A --dry-run` before committing in any project whose `.gitignore` you have not seen this session. Under `~/Projects/sites/*` the Sites rule also keeps `AGENTS.md` out. On a foreign checkout those private files go in `.git/info/exclude`, not in their `.gitignore`. A dirty hunk in a file they already track is yours to handle: `checkpoint.sh` does not do it. Copy the hunk aside, run the checkpoint, and copy it back. Do not set skip-worktree.
-
-Rationale for pushing unfinished work: a checkpoint fires when the day ends, which is usually mid-thought. The tree being messy is the normal case, not a reason to hold it back — remote is a backup here, not a release. Anything genuinely not for publication belongs in `.gitignore`, which is the mechanism that decides what leaves, not the checkpoint's judgement. That rationale covers *existing* remotes only; it is never a reason to create one.
-
-### Machine notes
-
-Untracked notes move through one private repo, the URL in `NOTES_REMOTE`, cloned at `~/.local/share/machine-notes`. `checkpoint.sh` never creates that GitHub repo. `setup.sh` and every boot-dashboard login run `bash ~/.agents/hooks/notes-sync.sh setup`, which clones the URL in `NOTES_REMOTE` (first non-comment line, same pattern as `BRAIN_REMOTE`; `fork-init --notes URL` writes it for a fork) and prints `notes: ready`. Setup is idempotent and never creates a GitHub repo. A clone failure is a note from `setup.sh` and a warn on the dashboard; the next setup or login retries. `push`, `pull`, and `backfill` try that same clone once when the real checkout is missing and `NOTES_SYNC_TEST_ROOT` is unset. If the clone still fails, stdout stays `notes: skipped`, stderr keeps the `notes-sync.sh setup` hint, and the checkpoint exit does not change. The vitals tile stays `Machine notes / not cloned` until a clone exists. A `NOTES_REMOTE` with no URL line means notes are off: setup prints `notes: off`, push and pull print `notes: skipped`, and the tile reads `off` with no warn. `hooks/notes-sync.sh` is the behaviour.
-
-- Key is lowercase `host/owner/repo` from `origin` pushurl, else `origin` url. `ssh.github.com` folds to `github.com`. Not the directory name. Not `@{upstream}`. No origin, an unparsed URL, or a key part that is `..`, `.git`, or holds a character outside `a-z 0-9 . _ -`, prints `notes: skipped`.
-- A file rides only when this checkout does not track it. Defaults: `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`. `session_transcript.md` does not ride, including a `notes.allow` line. Gitignored `notes.allow` lists extra relative paths and is itself synced. No globs, no `..`, no absolute path, no symlink that resolves outside. A directory line is walked file by file. The commit message and stdout list paths and do not quote file text.
-- Out, even if listed: `session_transcript.md`, `claude_memory_import.md`, `explain/`, `docs/session-archive/`, and `docs/session-flushes/` at any depth, the retired session file the template `.gitignore` already names, `local.properties`, `.env`, `.env.*`, `*.keystore`, `*.jks`, `*.apk`, `*.pem`, `*.p12`, `id_rsa` and the other ssh key names, `.netrc`, `keystore.properties`, `credentials*`, and a play-store key json. A symlink is judged by its target's name too.
-- A tracked or unignored `notes.allow` is exit 20. Foreign exclude includes `/notes.allow`.
-- What the fetch brings is taken only when each commit is signed by a key in `BRAIN_SIGNERS` or by this machine's signing key (`hooks/verify-incoming.sh`). Otherwise exit 1, nothing is installed, and stderr names the commit. Say so; do not read the notes as current.
-- Three blob ids per checkout: last sync, notes `HEAD`, worktree. A checkout is its git directory (`notes-sync-id` in it), so a project cloned again at the same path gets its notes installed. Same bytes, or only one side changed: that side wins. Both sides changed a markdown file, or `notes.allow`: keep both. A log (`docs/DECISIONS.md`, `notes.allow`) keeps the shared prefix once and both new tails. `session_compact.md` and other markdown use a clean 3-way when the edits sit apart, so a line one machine removed stays removed. When that fails and nobody removed anything, the copy that holds the other wins. Otherwise both full copies are kept, labeled `notes-sync-merge`. The merged file is written on this machine and pushed. Stdout is `notes: merged`. The next checkpoint rewrites a merged compact to one current state and keeps every open item from both copies. A delete against an edit, a binary file, or a non-markdown path that will not 3-way clean: exit 23, write nothing. A fresh checkout with no local file installs. A local delete is not put back and is not a remote delete. No mtime winner. No `--force`. No model call. v1 does not propagate deletes. A later `git remote set-url` does not move the old notes directory.
-- A dirty notes clone is an interrupted run. The next run parks it in `git stash` and carries on. Nothing is discarded. A notes commit that never left this machine, while the other machine pushed, is set aside under `refs/notes-sync/parked/` and redone from the project files.
-- One signed commit per project when bytes changed. Subject `notes: <host>/<owner>/<repo>`. `git add` only the paths this run wrote. Never `git add -A`. No AI attribution. Do not set `commit.gpgsign false` on the real notes repo.
-- Sync only when the project realpath is under the passwd-home `~/Projects/`. `/tmp` and a faked `$HOME` do not sync. `--dry-run` does not stat the notes clone. A missing clone keeps the checkpoint's exit code.
-- `create_project` does not sync. The first push is the first checkpoint after an origin URL exists. A project outside `~/Projects/` is out of v1.
-
----
-
-## `writepaper_project` trigger
-
-When the user says **`writepaper_project`** (optionally `writepaper_project <path>` or with a topic/venue hint), write a **complete, full-length research paper about that project** — LaTeX, publication-grade, not a summary and not a README in disguise.
-
-**Author block comes from git.** Run `git config --global --get user.name` and `git config --global --get user.email`. The name is the author. The email is the contact. If either is empty, stop and ask. Do not invent a name. Co-authors only when the user names them.
-
-```latex
-\author{NAME\thanks{\href{mailto:EMAIL}{EMAIL}}}
-```
-
-### Procedure
-
-1. Resolve the project root (given path, else cwd walk-up stopping before `$HOME`). Read `session_compact.md`, `AGENTS.md`, `docs/DECISIONS.md`, then the actual **code, tests, benchmarks, logs, and result files**. Do not open a leftover `session_transcript.md`.
-2. Scaffold `docs/paper/` from `~/.agents/paper-template/` (`main.tex`, `build.sh`, `figures/`, `lean/`) if not already there; otherwise extend what exists — never silently overwrite a paper in progress. First scaffold **includes** `lean/`. Existing `docs/paper/` without `lean/` is not backfilled.
-3. Write the paper. Then **build it**: `bash docs/paper/build.sh` (latexmk → `main.pdf`; digit-refuse; `lake build` if `lean/` exists). Fix every LaTeX error, every digit-refuse miss, and every undefined reference/citation; a paper that does not compile is not delivered. `texlive-full` is installed — no package is missing, never stub one out.
-4. Report: page count, section list, and an explicit **Gaps** list (what is `\TODO` and why).
-5. Same turn: log paper-level choices (scope, claims, framing) in `docs/DECISIONS.md`, rewrite `session_compact.md`. Do not write `session_transcript.md`.
-
-### Required structure (drop a section only if it truly does not apply, and say so)
-
-Abstract · keywords · **Introduction** (motivation, gap, explicit contribution list) · **Background** (self-contained, no citations — see below) · **Preliminaries & notation** (symbol table; every symbol defined before use) · **Problem statement** (formal, with assumptions stated as such) · **Method / construction** · **Theory**: definitions, lemmas, theorems, propositions, corollaries — numbered `amsthm` environments, each with a proof (full proofs may move to an appendix, sketch in-line) · **Complexity / cost analysis** (time, space, sample, or numerical-error bounds as fitting) · **Algorithms** in pseudocode · **Implementation** (architecture, key design decisions from `DECISIONS.md`) · **Experimental setup** (hardware, software versions, seeds, datasets, hyperparameters) · **Results**: tables + figures with real numbers, `n`, mean ± CI or std, appropriate hypothesis test with its statistic, p-value and **effect size**, ablations · **Discussion** · **Limitations & threats to validity** · **Conclusion & future work** · **Appendices**: full proofs, extra derivations, and a **reproducibility appendix** (exact commands, commit hash, environment).
-
-Use the science the project actually needs and do not water it down: formal statements over prose claims, derivations shown, units and error bars everywhere, `booktabs` tables, `pgfplots`/TikZ figures (generate data files from real runs), `algorithm2e` pseudocode, `siunitx` for quantities.
-
-### HARD RULES for the content
-
-- **No invented numbers.** Every reported measurement traces to something in the repo — a run you executed, a logged metric, a test output. If a number is needed and does not exist, either produce it by running the code, or write `\TODO{measure: …}` and list it under Gaps. Never fill a results table with plausible-looking values.
-- **Digit refuse (default on new papers).** After latexmk, `build.sh` runs `~/.agents/hooks/digit-refuse.sh`. A measurement token in prose must already sit in a table or caption of that paper, exact characters. `digit-refuse.deny` lists tokens that must not be typeset at all. A number from 1900 to 2099 is checked like any other; a year the prose really names gets one `allow-year=<year>` line in `digit-refuse.cfg`. `\TODO{...}` is not a claim. Fuzzy match, a near number, an LLM read, or a repo-wide search exits 2 and writes nothing. A clean check is silent. A miss prints `file:line` and fails the build. Full rules: SETUP.md §5d. Existing papers are not backfilled.
-- **NO REFERENCES AT ALL.** The paper is AI-written and self-contained: no bibliography, no `refs.bib`, no `\cite`, no numbered reference list, no "[1]"-style markers, no DOIs or arXiv IDs. If prior art must be mentioned, describe the idea in plain prose ("the standard fixed-point argument", "classical Runge–Kutta") without a citation key. A citation is never the reason to skip a derivation — derive it in the paper or state it as an assumption.
-- **No overclaiming.** Theorems get proofs or they become conjectures. Empirical claims get the statistic that supports them. Scope conditions and failure cases go in Limitations, not omitted.
-- Keep the paper a **living artifact**: re-running `writepaper_project` updates and extends it (new results, new sections), it does not restart from scratch.
-- **Lean mirror — default on new papers.** First `writepaper_project` copies `~/.agents/paper-template/lean/` with the rest of `docs/paper/`. Do not backfill existing papers that have no `lean/`. Never overwrite a paper's existing Lean files. `leanlab` (PyPI) is unrelated.
-  1. When `docs/paper/lean/` exists, `build.sh` runs `lake build` after latexmk (PATH prepends `~/.elan/bin`). Type errors fail the build. Missing `lake` → Gap, PDF still ships. Never `lake exe cache get` from `build.sh`; never compile Mathlib from source.
-  2. Kernel-checked means that Lean declaration's axiom audit has no `sorryAx`. Unproved statements stay `sorry` and go on Gaps. Report `n/m kernel-checked Lean statements`; `build.sh` prints that count from `lean/axiom-audit.sh`. **Do not** claim the paper sentence was checked — `lake` green is not fidelity to LaTeX.
-  3. 1:1 names: `\label{thm:foo}` ↔ `thm_foo` (or a listed rename). Delete `template_sanity` once real theorems exist.
-  4. Conversion (so Lean does not prove a different claim): write the statement in Lean first and quote it in LaTeX, **or** decompose the LaTeX into a committed parts list and emit pedantic Lean from those rows, then script-diff the compiled signature. Do not freely restate then `lake build`. Until a mechanical xwalk exists, Gaps must include `statement-fidelity unmeasured` for every formalized theorem. Details: SETUP.md §5d.
-  5. Mathlib only in that paper's `lakefile.toml` when statements need it (ℝ, polynomials, ODEs). Template stays core Lean.
-  6. Same-turn "keep current" on non-theory edits does not require a Lean proof hunt. Theory-statement changes update the Lean mirror if `lean/` already exists.
-
-### Keeping the paper current — HARD RULE once `docs/paper/` exists
-
-After a project has a paper, **the paper is part of that project's definition of done.** Whenever anything scientifically relevant changes, update `docs/paper/` in the **same turn** as the change — no waiting for the user to re-say `writepaper_project`.
-
-Scientifically relevant = anything the paper asserts: the method or algorithm, a definition, a theorem/lemma/proof, complexity, assumptions or their scope, experimental setup (hardware, versions, seeds, hyperparameters, datasets), any measured number, an ablation, a limitation, or a decision logged in `docs/DECISIONS.md` that the paper describes. Refactors, renames, tooling, and CI changes are **not** relevant unless they change a reported number or a stated claim.
-
-Each such update: patch the affected sections (and the abstract/contributions if the claim moved), rebuild with `bash docs/paper/build.sh`, and say in one line what the paper now says differently. Numbers that went stale but have not been re-measured become `\TODO{measure: …}` — never left silently wrong.
-
-`docs/paper/` **is committed** (it is product, not session state) — for `~/Projects/sites/*` the Sites rule still applies to `AGENTS.md` only.
-
----
-
-## `explain_thing` trigger
-
-When the user says **`explain_thing`** (optionally a path or a subject), write a discardable explainer. Chat stays caveman. The files use 80% STE. Read `skills/explain-thing/SKILL.md` and follow it. That file owns the sentence rules.
-
-| File | When |
-|------|------|
-| `explain/brief.md` | every run |
-| `explain/diagram.svg` | every run |
-| `explain/page.html` | only when the user asks for html, a page, or a webpage |
-
-The root is the path they gave, else the project root, else `/tmp/explain-<slug>/` when there is no project. The brain root is `~/.agents` when the subject is this repo.
-
-Before the write, `explain/` must be ignored. On our project, add `explain/` to `.gitignore` when the line is missing. Do not rewrite the file. On a foreign checkout, do not edit their `.gitignore`. Add `/explain/` to `.git/info/exclude` when it is missing. Do not commit the directory. Do not add it to `notes.allow`.
-
-Do not copy the ASD-STE100 dictionary. Do not claim ASD compliance or ASD endorsement. Do not call a speech API. Do not make a video.
-
-The chat reply names the files. It does not paste the STE prose.
-
----
-
-## `global_brain_update` trigger
-
-When the user says **`global_brain_update <what to change>`**, the target is **the brain itself** — `~/.agents/` — not the current project. The trailing text is the change to make.
-
-1. **Read before writing.** `AGENTS.md` (canonical rules) and `SETUP.md` (spec), plus whatever the request touches: `setup.sh`, `verify.sh`, `permissions.json`, `hooks/`, `updater/`, `project-template/`, `paper-template/`, `boot-dashboard/`. Never patch the brain blind — half of it installs the other half.
-2. **Put the change in its canonical home**, never in a tool-local path: rules & triggers → `AGENTS.md` · spec / how it installs → `SETUP.md` · install logic → `setup.sh` · checks → `verify.sh` · permissions → `permissions.json` · scripts → `hooks/` (or `updater/`) · scaffolds → `project-template/` / `paper-template/` · on-demand process skills → `skills/<name>/` + one `!skills/<name>/` line in `.gitignore`; adopted ones keep `UPSTREAM.md` (pinned SHA, trims) and `LICENSE.upstream`.
-2b. **If the change alters what `setup-infographic.svg` depicts** (components, flows, toolchain), regenerate the figure in the same turn — it is part of the spec surface (verify checks it exists and stays referenced).
-2c. **Evaluate `hooks/welcome.js` (AI judgment):** when new features, triggers, hooks, or policies arrive (or old ones change), decide in the same turn whether they belong in the 8-page welcome walkthrough (`hooks/welcome.js`). Update its pages/snippets when a user-facing capability or architectural rule changes; skip minor internal plumbing so the walkthrough stays concise and fits strictly inside its box borders (`node ~/.agents/hooks/welcome.js --self-test`).
-3. **Tool parity applies** (see that HARD RULE): land it for Claude Code + Grok + OpenCode + Cursor Code, install it in `setup.sh`, check it in `verify.sh`. A brain change with no verify check is not done.
-4. `bash ~/.agents/setup.sh` → must end `== PASS (warnings=0) ==`. Fix anything it reports before moving on.
-5. `bash ~/.agents/sync.sh -m "<commit subject>"` → re-runs setup+verify, signed commit, push to the origin listed in `BRAIN_REMOTE` (`main`).
-6. **Report:** what changed, which files, verify result, pushed commit hash.
-
-**Standing rule — the brain repo is the source of truth.** ANY change under `~/.agents/**`, whether or not the trigger was typed, ends the same turn with `setup.sh` **and** `sync.sh`. Never leave the brain dirty locally, never push a brain that fails verify, never bypass signing, no AI attribution in the commit (see the Git rules above). `backups/` is gitignored runtime residue and stays out of the repo.
+| The user says `create_project` | `~/.agents/playbooks/create-project.md` |
+| The user says `continue_project <path>` | `~/.agents/playbooks/continue-project.md` |
+| The user says `checkpoint_project` | `~/.agents/playbooks/checkpoint-project.md` |
+| You speak a project's status, or rewrite `session_compact.md` | `~/.agents/playbooks/status-card.md` |
+| The user says `writepaper_project`, or you change what a paper under `docs/paper/` asserts | `~/.agents/playbooks/writepaper-project.md` |
+| The user says `explain_thing` | `~/.agents/playbooks/explain-thing.md` |
+| The user says `global_brain_update`, or you are about to edit a file under `~/.agents/` | `~/.agents/playbooks/brain-update.md` |
+| The project is a clone of someone else's repository | `~/.agents/playbooks/foreign-checkouts.md` |
+| A `NEEDS-MEMORY-MERGE` or `NEEDS-SYMLINK-MERGE` flag, `PENDING.md`, or `claude_memory_import.md` exists | `~/.agents/playbooks/residue.md` |
+| `notes-sync.sh` prints a line you do not know, or the task is the notes repo | `~/.agents/playbooks/machine-notes.md` |
+| You start a command that outlives the turn, or a preview server | `~/.agents/playbooks/detached-runs.md` |
+| A signed commit fails | `~/.agents/playbooks/signing.md` |
+| A command prompts that should not, or a permission rule has to change | `~/.agents/playbooks/permissions.md` |
+| The task needs TeX, Lean, or the Android SDK | `~/.agents/playbooks/toolchains.md` |
+| The user asks for many agents that talk to each other | `~/.agents/playbooks/herd-boards.md` |
+| The topic is the bar widget, the spend page, or the vitals page | `~/.agents/playbooks/omarchy-plugin.md` |
+| The topic is the boot dashboard, the close slip, or the login pull | `~/.agents/playbooks/boot-dashboard.md` |
 
 ---
 
@@ -575,23 +204,13 @@ Applies only under **`~/Projects/sites/<site>/`** (public site repos). Not other
 
 When `create_project` lands under `~/Projects/sites/`, merge the usual session ignore lines **and** add `AGENTS.md` + `CLAUDE.md` to `.gitignore`.
 
-### Foreign checkouts
-
-A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `ourOwner/repo parentOwner/repo`. `origin`'s push URL matches the first field, and the parent owner is not an owner on a `BRAIN_REMOTE` URL. A repo we own is absent from that list. `~/Projects/sites/*` stays the sites rule. This brain stays exit 22. Checkpoint does not call `gh` and does not guess from "has a remote".
-
-- Do not run `create_project` on a foreign checkout. Do not add our lines to their `.gitignore`.
-- `continue_project` on a git root never offers `create_project`. If `origin` is on the list and `AGENTS.md` or `docs/DECISIONS.md` is missing, write those local files in the same turn and do not commit. If either file is already tracked, stop and name it. If the git root is not on the list and the session files are missing, name the paths and stop.
-- Before `git add`, checkpoint writes a marked block in `.git/info/exclude`: `/AGENTS.md`, `/docs/DECISIONS.md`, `/session_compact.md`, `/session_transcript.md`, `/claude_memory_import.md`, `/notes.allow`, `/explain/`. It does that for a listed fork, and also when the push URL's owner is not ours, so a later retarget cannot publish notes this commit already captured. It does not do that under `~/Projects/sites/*`. In a linked worktree the block goes to the main repository's exclude file. A block that cannot be written is exit 20. It does not add `AGENTS.md` to the exit 20 leak list. On a listed fork, if `AGENTS.md` or `docs/DECISIONS.md` is already tracked, it exits 15 and commits nothing. A tracked `AGENTS.md` behind a push URL of another owner is theirs: that stays exit 14.
-- The push goes to the branch upstream, otherwise `origin`. The push names that remote, so `remote.pushDefault` and `branch.<name>.pushRemote` do not move it. Every push URL of that remote is checked. If one parses and its host and owner are not on a `BRAIN_REMOTE` URL, the commit stays and the push does not run. That exits 14, before the reachability check. It does not retarget and does not add a remote. `git@`, `ssh://`, `git://`, and `https://` URLs all parse (`hooks/git-url.sh`); an ssh config alias and an `insteadOf` alias are resolved first. An unparsed URL is not a veto. omalauncher `main` tracks Simon, so a checkpoint there exits 14.
-- A local edit inside a file they already track is not an ignore line. Copy those hunks aside, run the checkpoint, copy them back. Do not set skip-worktree. The script cannot tell those bytes from a real fix.
-
 ### `session_transcript.md` — retired
 
 Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does not copy it. Files already in old projects, and blobs already in machine-notes, stay. Do not delete them. If a file with that name exists, do not open it. `checkpoint.sh` still refuses to commit one. The template `.gitignore` still names it. The only session handoff is `session_compact.md`.
 
 ### On session start
 
-0. **Residue / conflict check:** memory (`NEEDS-MEMORY-MERGE` / `PENDING.md` / project `claude_memory_import.md`) — process first (Memory policy). Symlink (`NEEDS-SYMLINK-MERGE`) — tell the user and name the stray files; do not merge them (Cron guards).
+0. **Residue / conflict check:** memory (`NEEDS-MEMORY-MERGE` / `PENDING.md` / project `claude_memory_import.md`) — process first. Symlink (`NEEDS-SYMLINK-MERGE`) — tell the user and name the stray files; do not merge them. Both: `~/.agents/playbooks/residue.md`.
 0.5. **Notes pull** when the project root is a git checkout: `bash ~/.agents/hooks/notes-sync.sh pull <project-root>`, before reading `session_compact.md`. Missing clone: the pull tries setup once; failure stays `notes: skipped`. `notes: merged`: the compact has both machines' copies. Keep every open item from both. Exit `23`: stop, do not overwrite the file.
 1. If `session_compact.md` exists in the project root, read it first — it says where we left off.
 2. Read project `AGENTS.md` and `docs/DECISIONS.md` if they exist.
@@ -603,24 +222,24 @@ Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does
 - **Before a new tool, script, or service:** look for a maintained one. Build custom only when that one is dead, unsafe, or the user asked for custom.
 - **A required file that is absent is said out loud.** Name the path; do not invent its contents.
 - **Durable fact** (commands, paths, conventions) → project `AGENTS.md`; global fact → this file.
-- **Project has `docs/paper/` and something scientifically relevant changed** (method, theorem, assumption, setup, measured number, limitation) → update the paper and rebuild it in the **same turn** (see `writepaper_project` → "Keeping the paper current").
+- **Project has `docs/paper/` and something scientifically relevant changed** (method, theorem, assumption, setup, measured number, limitation) → update the paper and rebuild it in the **same turn** (`~/.agents/playbooks/writepaper-project.md`, "Keeping the paper current").
 - **Milestone reached** → rewrite `session_compact.md`. Do not write `session_transcript.md`.
 - **Before compaction or ending a long session** → rewrite `session_compact.md`.
 
 ### End of session / milestone
 
-1. Rewrite `session_compact.md` (see `create_project` rules).
+1. Rewrite `session_compact.md`. The status card goes on top (`~/.agents/playbooks/status-card.md`).
 2. Confirm `docs/DECISIONS.md` has any new decisions from this session.
 
 ### New / resume projects
 
 - **`create_project`** — scaffold a new project (template). Only new-project trigger.
-- **`continue_project <path>`** — resume an existing project from its session files (see section above).
-- **`checkpoint_project`** — end-of-day wrap-up of the current project (see section above).
+- **`continue_project <path>`** — resume an existing project from its session files.
+- **`checkpoint_project`** — end-of-day wrap-up of the current project.
 - **`explain_thing`** — discardable 80% STE brief plus one SVG. HTML only when asked. Chat stays caveman.
-- **`writepaper_project`** — a full LaTeX paper about the project (see section above).
-- **`global_brain_update <change>`** — change this repo, then `setup.sh` and `sync.sh` (see section above).
-- No tool-specific init/continue steps. Retired names live in `hooks/kill-tokens.deny`. Do not recreate a name from that file, and do not paste one into this file. Tool-internal memory stays retired with them.
+- **`writepaper_project`** — a full LaTeX paper about the project.
+- **`global_brain_update <change>`** — change this repo, then `setup.sh` and `sync.sh`.
+- Each one has a row in the Playbooks table. No tool-specific init/continue steps. Retired names live in `hooks/kill-tokens.deny`. Do not recreate a name from that file, and do not paste one into this file. Tool-internal memory stays retired with them.
 
 ---
 
@@ -632,54 +251,6 @@ Do not create `session_transcript.md`. Do not append to it. `notes-sync.sh` does
   - Claude: every `~/.claude/projects/*/memory/` holds only a DISABLED stub `MEMORY.md` (no topic files). Do **not** write memories there. Do **not** use Claude's `#` memory shortcut (it would create project `CLAUDE.md` / feed auto-memory — both forbidden).
   - OpenCode: no separate memory store; uses AGENTS.md only.
 - When asked to "remember" something: global fact → this file; project fact → that project's files. Same turn, no exceptions.
-- Keep this file LEAN — it loads into every session. Cross-project rules only; project specifics never belong here.
+- Keep this file LEAN — it loads into every session. Cross-project rules only; project specifics never belong here. A body that only one trigger needs goes in a playbook, with one row in the table.
 - Keyed facts in `docs/DECISIONS.md` use a `**Policy:**` line. One active value per key. A replaced value keeps a `superseded-by` line whose text is the heading that holds the live value. `verify.sh` fails on a second active value.
 - Symlinked paths (`~/.claude/CLAUDE.md`, `~/.grok/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.cursor/AGENTS.md`) all write to this file.
-
-### Cron guards (machine hygiene)
-
-| Guard | Script source | Installed as | Flag (if AI/human work needed) | Job |
-|-------|---------------|--------------|--------------------------------|-----|
-| Symlink | `~/.agents/hooks/check-links.sh` | `~/cron-jobs/agents-symlink-guard/check-links.sh` | `NEEDS-SYMLINK-MERGE` | Keep the 4 AGENTS symlinks healthy |
-| Tool memory | `~/.agents/hooks/check-claude-memory.sh` | `~/cron-jobs/claude-memory-guard/check-memory.sh` | `NEEDS-MEMORY-MERGE` | Detect Claude/Grok memory residue → archive → stage → wipe to stub |
-
-Both installed by `setup.sh` (copy from `hooks/`). Schedule: `1config-guards.timer`, a systemd user timer. It runs daily, catches up a missed day, and runs two minutes after login. One run is the symlink guard, then the memory guard. No script merges a stray rules file (see the Symlink conflict section below). A machine with no systemd user manager gets the same chain in cron. `hooks/scheduler.sh` picks, and leaves exactly one of the two installed.
-
-**Two different flags — do not mix them up:**
-
-| Flag path | Meaning |
-|-----------|---------|
-| `~/cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE` | Staged Claude/Grok memory residue to merge into markdown |
-| `~/cron-jobs/agents-symlink-guard/NEEDS-SYMLINK-MERGE` | A divergent global-rules file kept under `backups/strays/`, waiting for the user |
-
-### Claude/Grok residue → merge into standard files (AI duty)
-
-Cron **cannot** judge “important facts” (no LLM). It only stages. **You (the AI) merge.**
-
-**When:** session start, `continue_project`, or any time you notice:
-
-- flag `~/cron-jobs/claude-memory-guard/NEEDS-MEMORY-MERGE`, or
-- `~/.agents/backups/claude-residue/PENDING.md`, or
-- project-root `claude_memory_import.md`
-
-**Do:**
-
-1. Read `PENDING.md` and each listed `PACKET.md` (and any `claude_memory_import.md`).
-2. Sort facts:
-   - global / cross-project → this file (`~/.agents/AGENTS.md`)
-   - project conventions, commands, deploy notes → project `AGENTS.md`
-   - current handoff / open work → `session_compact.md`
-   - architecture choice + why → `docs/DECISIONS.md`
-   - skip junk, duplicates, and “DISABLED” stubs
-3. Delete processed `claude_memory_import.md`. Remove processed packet lines from `PENDING.md`; if empty, delete `PENDING.md` and the `NEEDS-MEMORY-MERGE` flag.
-4. Never re-create tool memory stores. Never leave durable facts only in the archive. Do not write `session_transcript.md`.
-
-### Symlink conflict → the stray waits for the user
-
-`hooks/check-links.sh` copies a diverged rules file to `~/.agents/backups/strays/`, restores the link, and lists the copy in `NEEDS-SYMLINK-MERGE`. No script and no model merges it into this file: every tool obeys this file, so what enters it is the user's decision.
-
-When the flag exists:
-
-1. Tell the user, and name each stray file the flag lists. Do not merge it.
-2. Merge only the lines the user asks for, as a normal brain edit (`setup.sh`, then `sync.sh`).
-3. Delete a stray file only when the user says it is done. The guard then drops its line, and the flag with the last line.

@@ -44,25 +44,33 @@ On exit, `dashboard.sh` overwrites `~/.agents/boot-dashboard/close-slip.txt`. On
 
 `~/.agents/AGENTS.md` — the ONE global rules file. All four tools read it every session via the symlinks in §3. Loaded once per session start. **Keep it LEAN** (cross-project rules only; project facts go in project files) — every extra paragraph costs context on every session of every tool.
 
-Sections, in order:
-1. Header — wiring map + migration one-liner
-2. Git/GitHub attribution — HARD RULE (no AI attribution in commits/PRs)
-3. Git commit signing — HARD RULE (never bypass signing; keyring auto-unlock; manual fallback)
-4. Permission policy — canonical `~/.agents/permissions.json`, fanned out to Claude, Grok, and OpenCode by `setup.sh` steps 5b/5c/5d (§4); Cursor Code has no persistent permission file (per-invocation flags), and includes the "prompts an allowlist cannot remove" subsection
-5. Tool parity — HARD RULE: every feature lands in Claude Code + Grok + OpenCode + Cursor Code, installed by `setup.sh`, checked by `verify.sh`
-6. Machine toolchains — `texlive-full` + `tectonic` installed; Lean 4 via `elan` (user-space hook, not a distro pkg); Android SDK, when a project needs one, is `$HOME/Android/Sdk` only. If that directory is absent, stop and name the path. Do not `mkdir` it, do not run `sdkmanager`, and do not download command-line tools or platforms. `setup.sh` does not download it; write LaTeX directly, never ask for TeX/Lean installs
-7. Detached runs / staleness watch — HARD RULE (`hooks/watch-stale.sh`, default 10 min; §4d)
-8. Caveman mode — ALWAYS ON (full). Never drop not/never/no/only. 20 words per sentence. Quote code, paths, and errors exactly. Wording: JuliusBrussee/caveman, Apache-2.0, Copyright 2026 Julius Brussee. `local.json` key `caveman` is the durable opt-out (`off`, `lite`, `ultra`)
-   Limits on the reply (not a mode): end with what was skipped or not checked. Code comment `shortcut: <limit>, <when to upgrade>`. From DietrichGebert/ponytail, MIT, Copyright (c) 2026 DietrichGebert.
-   Red lines sit with the hard rules: destructive acts and anything that leaves the machine wait for a yes, even when Bash autonomy is on.
-   Herd boards sit after caveman and before the triggers (§5f): one wall, a post that only agrees is noise, a missing file said aloud. Kept out: `SOUL.md`, daily diary, personal heartbeat.
-9. `create_project` trigger (§5)
-10. `continue_project <path>` trigger (§5b)
-11. `checkpoint_project` trigger (§5c)
-12. `writepaper_project` trigger (§5d)
-13. `global_brain_update` trigger (§5e) — changes to `~/.agents` itself, ending in `setup.sh` + `sync.sh`
-14. Global workflow (session start / during / end)
-15. Memory policy (§6)
+It holds two things. The hard rules that apply on every turn: attribution, signing, red lines, tool parity, caveman, the limits on a reply, what is kept out, the session workflow, and the memory policy. And one table, `## Playbooks — read before you act`, with a row per trigger: a condition, and the path of a file under `~/.agents/playbooks/`.
+
+A playbook is a plain markdown file. Line 1 is `# <Title>`, the next line that is not empty is `Read when: <condition>`, and the rest is the rule text. An agent reads it by path when the condition in its row is true. It is not a skill: a skill loads by its description, and Cursor does not get the tracked skills, while a file read works in all four tools. The bodies of the six triggers, the checkpoint exit table, the machine-notes rules, the permission fan-out, the signing unlock, the toolchains, the staleness watch, herd boards, foreign checkouts, the two guards, the bar widget, and the boot dashboard are playbooks.
+
+| Playbook | Read when |
+|---|---|
+| `create-project.md` | the user says `create_project` (§5) |
+| `continue-project.md` | the user says `continue_project <path>` (§5b) |
+| `checkpoint-project.md` | the user says `checkpoint_project` (§5c, §4b) |
+| `status-card.md` | a project's status is spoken, or `session_compact.md` is rewritten |
+| `writepaper-project.md` | the user says `writepaper_project`, or a paper's claim changes (§5d) |
+| `explain-thing.md` | the user says `explain_thing` (§5g) |
+| `brain-update.md` | the user says `global_brain_update`, or a file under `~/.agents/` is about to change (§5e) |
+| `foreign-checkouts.md` | the project is a clone of someone else's repository |
+| `residue.md` | a merge flag, `PENDING.md`, or `claude_memory_import.md` exists (§6b, §7a) |
+| `machine-notes.md` | `notes-sync.sh` prints an unknown line, or the task is the notes repo (§4c) |
+| `detached-runs.md` | a command outlives the turn (§4d) |
+| `signing.md` | a signed commit fails |
+| `permissions.md` | a prompt appears that should not, or a rule has to change (§4) |
+| `toolchains.md` | the task needs TeX, Lean, or the Android SDK |
+| `herd-boards.md` | the user asks for many agents that talk (§5f) |
+| `omarchy-plugin.md` | the topic is the bar widget (§7d) |
+| `boot-dashboard.md` | the topic is the boot dashboard or the login pull |
+
+`verify.sh` section `[playbooks]` fails when a file has no row, a row has no file, a file does not start with its title and `Read when:` line, a path named in the rules does not exist, or `AGENTS.md` is over 24,000 bytes. The size check is there because the file is loaded by every session of every tool: before 2026-11-21 it was 83,442 bytes, and it is now about 17,000.
+
+How each tool reaches a playbook: all four read `AGENTS.md` at session start (Claude, Grok, and OpenCode through their symlink, Cursor through the generated `~/.cursor/rules/1config.mdc`) and then open `~/.agents/playbooks/<name>.md` with their own file-read tool. No tool gets a copy.
 
 ## 3. Symlinks
 

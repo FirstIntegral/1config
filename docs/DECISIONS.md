@@ -1,5 +1,26 @@
 # Brain decisions
 
+## 2026-11-21 — AGENTS.md is a core and playbooks, capped at 24,000 bytes
+
+**Policy:** rules_file=core-plus-playbooks
+
+**Decision:** `AGENTS.md` holds the hard rules and one table, `## Playbooks — read before you act`. Each row is a condition and a path under `~/.agents/playbooks/`. Seventeen playbooks hold the bodies: the six triggers, the status card, machine notes, foreign checkouts, the guards and their flags, detached runs, the signing unlock, the permission fan-out, the toolchains, herd boards, the bar widget, and the boot dashboard. A playbook is markdown: `# Title`, then `Read when: <condition>`, then the text. The bytes were moved, not reworded: a script checked that every line of 40 characters or more of the old file is in the new file or in a playbook. `AGENTS.md` went from 83,442 bytes to about 17,400. `verify.sh` section `[playbooks]` fails when the table and the directory differ, when a named path does not exist, or when `AGENTS.md` is over 24,000 bytes. Nothing moved to a file that only one machine loads: the owner's taste is the repo.
+
+This reverses three earlier entries on this one point. "2026-10-09 — Claude reads project AGENTS.md; the hook is a fallback" rejected "Splitting the rules file into on-demand markdown" with the sentence "A side file the model might open is not loaded by any of them." "2026-10-09 — Oracles, policy keys, kill tokens, brain checkpoint refuse" said "No line cap on `AGENTS.md`". "2026-11-12 — Review items left as they are" kept both as item 2. The rest of each entry stands.
+
+**Why:** The file is loaded by every session of every tool, and by 2026-11-21 it was 83 KB: about 13 KB of hard rules, 31 KB of trigger bodies, and 39 KB that described how scripts, the bar widget, and one machine work. A session that never checkpoints paid for the checkpoint exit table on every turn. The owner asked on 2026-11-21 for triggers in the file and bodies elsewhere, "like skills". The sentence that rejected this was a risk, so it was measured. In a scratch project, `continue_project <path>` was run headless four times in each tool, and each transcript was searched for a file-read tool call on the playbook path, not for the model saying the name:
+
+| Tool | Runs | Read `continue-project.md` | Read `status-card.md` |
+|---|---|---|---|
+| Claude Code | 4 | 4 | 4 |
+| Grok | 4 | 4 | 4 |
+| OpenCode | 4 | 4 | 4 |
+| Cursor Code | 4 | 4 | 4 |
+
+Cursor read the file by its path under `~/.agents`, outside the workspace, with no generated copy.
+
+**Rejected:** Skills in place of playbooks: a skill loads by its description, and Cursor does not get the tracked skills. A copy of each playbook as a Cursor rule: the probe shows the path read works. Moving only the script and widget description and keeping the trigger bodies: the owner chose bodies out. A probe that asks the agent which file it would read: the answer is the model's memory of the table, not what it does. A cap near the present size: one new hard rule should not fail the check.
+
 ## 2026-11-21 — fork-init rewrites the repo name in a fork's AGENTS.md
 
 **Policy:** fork_repo_name=fork-init-rewrites-one-sentence

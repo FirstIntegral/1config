@@ -198,6 +198,7 @@ Run `bash ~/.agents/setup.sh --dry-run` first: it prints all of this for your ma
 | `boot-dashboard/` | Login status terminal (XDG autostart, Wayland or X11). Exit writes gitignored `close-slip.txt`. |
 | `docs/DECISIONS.md` | ADRs for this repo. |
 | `inventory.local.md` | Live CLI versions. Gitignored. Login PATH first (mise), then `~/.opencode/bin` / `~/.grok/bin` / `~/.local/bin` so Ubuntu's official installer is visible without shadowing Omarchy mise. |
+| `playbooks/` | One file per trigger or topic: the rule text an agent reads when a row of the table in `AGENTS.md` applies. Not loaded at session start. |
 | `skills/` | Three groups, see [Skills](#skills). Tracked: the on-demand process skills listed there. Untracked: machine-local tool skills. |
 
 ## Engineering details (how deep the checks go)
@@ -211,10 +212,10 @@ A few examples of the mechanical guards in this repo so nothing silently drifts 
   - **Grok Bot base32 blob + hibernation rollover:** base32-decodes `*.blob` stems in `sand-client-persistence/` to read only `.weekly-usage.cache` (leaving chat blobs untouched) and drops any slice where `nextResetMs <= now` even if `expiresAtMs > now`, so hibernating through a weekly reset never sticks last week's `100%` on the bar.
 - **Character-exact LaTeX measurement token gate (`hooks/digit-refuse.py`):**
   - Unfolds `\frac{a}{b}` → `a/b`, `\num{...}`, `\,`, and en/em-dashes (`--`), strips the preamble before `\begin{document}`, and expands `\input`/`\include` plus `\newcommand`/`\def` (up to 6 passes) while preserving source line numbers.
-  - Extracts fractions (`100/135`), decimals (`0.212`), percents (`45%`), scientific notation (`1.2e3`), en-dash result pairs (`13--2`), and 3+ digit integers while ignoring years (`19xx`/`20xx`) and single-hyphen IDs (`02-23-20174`).
+  - Extracts fractions (`100/135`), decimals (`0.212`), percents (`45%`), scientific notation (`1.2e3`), en-dash result pairs (`13--2`), and 3+ digit integers, ignoring single-hyphen IDs (`02-23-20174`). A number from 1900 to 2099 is checked like any other; a year the prose names gets an `allow-year=` line in `digit-refuse.cfg`.
   - Classifies every character into `prose`, `table`, `caption`, `mask` (`\TODO{...}`), or `skip`: every measurement token in `prose` must match a `table` or `caption` token in scope character-for-character, and `pdftotext -layout` verifies nothing in `digit-refuse.deny` rendered into `main.pdf`. Passing `--fuzzy`, `--near`, `--llm`, or `--repo` exits `2` immediately.
 - **Context budget & zero double-injection (`hooks/load-project-agents.sh`):**
-  - Global `AGENTS.md` is kept at ~1.4% of a 1M-token window (under the 3% ceiling).
+  - Global `AGENTS.md` is what every session loads: the hard rules and a table of triggers, about 17 KB (roughly 0.4% of a 1M-token window). `verify.sh` fails above 24,000 bytes. The body of each trigger is a file under `playbooks/` that an agent reads when the trigger fires.
   - Claude Code `2.1.277+` loads project `AGENTS.md` natively unless a project `CLAUDE.md` suppresses it. To prevent injecting the file twice into the context window, the `SessionStart` hook checks `claude --version`, `pluginConfigs` instruction mode, and parent dirs for suppressing `CLAUDE.md` files — printing `AGENTS.md` (capped at `AGENTS_CAP=20480` bytes) only when native loading will not happen.
 - **Dual-signal staleness & retired token bans (`hooks/watch-stale.sh`, `hooks/kill-tokens.deny`):**
   - `watch-stale.sh` declares `STALE` only when **both** log growth is 0 bytes and `/proc/<pid>/stat` fields 14 to 17 (`utime`, `stime`, `cutime`, `cstime`, parsed after the last `)` in `comm`), summed over the pid and its descendants, use `<1s` CPU over the 10-minute window.

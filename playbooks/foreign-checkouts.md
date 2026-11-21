@@ -1,0 +1,13 @@
+# Foreign checkouts
+
+Read when: the project is a clone of someone else's repository: `origin` is on `fork-parents.txt`, or a git root has no session files.
+
+### Foreign checkouts
+
+A foreign checkout is a clone we contribute back to. `fork-parents.txt` lists `ourOwner/repo parentOwner/repo`. `origin`'s push URL matches the first field, and the parent owner is not an owner on a `BRAIN_REMOTE` URL. A repo we own is absent from that list. `~/Projects/sites/*` stays the sites rule. This brain stays exit 22. Checkpoint does not call `gh` and does not guess from "has a remote".
+
+- Do not run `create_project` on a foreign checkout. Do not add our lines to their `.gitignore`.
+- `continue_project` on a git root never offers `create_project`. If `origin` is on the list and `AGENTS.md` or `docs/DECISIONS.md` is missing, write those local files in the same turn and do not commit. If either file is already tracked, stop and name it. If the git root is not on the list and the session files are missing, name the paths and stop.
+- Before `git add`, checkpoint writes a marked block in `.git/info/exclude`: `/AGENTS.md`, `/docs/DECISIONS.md`, `/session_compact.md`, `/session_transcript.md`, `/claude_memory_import.md`, `/notes.allow`, `/explain/`. It does that for a listed fork, and also when the push URL's owner is not ours, so a later retarget cannot publish notes this commit already captured. It does not do that under `~/Projects/sites/*`. In a linked worktree the block goes to the main repository's exclude file. A block that cannot be written is exit 20. It does not add `AGENTS.md` to the exit 20 leak list. On a listed fork, if `AGENTS.md` or `docs/DECISIONS.md` is already tracked, it exits 15 and commits nothing. A tracked `AGENTS.md` behind a push URL of another owner is theirs: that stays exit 14.
+- The push goes to the branch upstream, otherwise `origin`. The push names that remote, so `remote.pushDefault` and `branch.<name>.pushRemote` do not move it. Every push URL of that remote is checked. If one parses and its host and owner are not on a `BRAIN_REMOTE` URL, the commit stays and the push does not run. That exits 14, before the reachability check. It does not retarget and does not add a remote. `git@`, `ssh://`, `git://`, and `https://` URLs all parse (`hooks/git-url.sh`); an ssh config alias and an `insteadOf` alias are resolved first. An unparsed URL is not a veto. omalauncher `main` tracks Simon, so a checkpoint there exits 14.
+- A local edit inside a file they already track is not an ignore line. Copy those hunks aside, run the checkpoint, copy them back. Do not set skip-worktree. The script cannot tell those bytes from a real fix.
