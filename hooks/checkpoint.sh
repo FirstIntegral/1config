@@ -16,6 +16,8 @@
 #   session files or explain/ not ignored -> refuse, change nothing        (exit 20)
 #   untracked secret-named or oversized file, or a token in the diff -> refuse (exit 20)
 #   foreign, private file tracked   -> refuse, change nothing               (exit 15)
+#   detached HEAD, or a merge, rebase, cherry-pick, or revert in progress
+#                                   -> refuse, change nothing               (exit 16)
 #   fetch fails                     -> commit local work if any, do not push (exit 13)
 #   remote is ahead, merge conflicts -> abort the merge, keep local commits (exit 24)
 #   clean, fetch ok, already current -> do nothing                          (exit  3)
@@ -30,9 +32,10 @@
 # (fast-forward when it can). A conflict aborts the merge. --dry-run does
 # not fetch and does not merge.
 #
-# After the leak check passes, exits 0, 3, 12, 13, 14, 21, and 24 call
+# After the leak check passes, exits 0, 3, 12, 13, 14, 16, 21, and 24 call
 # hooks/notes-sync.sh push. Exits 10, 11, 15, 20, and 22 do not. --dry-run
 # returns before any notes stat. A missing notes clone keeps the exit above.
+# A notes sync that fails turns a 0 or a 3 into 21. Any other exit stays.
 #
 # NEVER, under any circumstance: create a repo, add a remote, create a GitHub repo,
 # force-push, rebase, reset, amend, or bypass commit signing. A merge that conflicts
@@ -293,7 +296,10 @@ finish() {
   fi
   if [ "$nrc" -ne 0 ]; then
     echo "== checkpoint: notes sync failed (exit $nrc). Project commit was not rolled back."
-    exit 21
+    # The project half already has its own answer. Only a success becomes 21.
+    case "$want" in
+      0|3) exit 21 ;;
+    esac
   fi
   exit "$want"
 }
@@ -583,6 +589,34 @@ else
   echo "  secrets  no secret-named file, no oversized file, no token-shaped string"
 fi
 
+# --- 2c. a git state that is not ready for a commit ---------------------------------
+# `git add -A` in the middle of a merge or a rebase commits the conflict markers.
+# A commit on a detached HEAD is on no branch, and the push has no name for it.
+# Stop, change nothing, and say which. Finishing or aborting is the person's call.
+NOT_READY=""
+if ! git -C "$PROJECT" symbolic-ref -q HEAD >/dev/null 2>&1; then
+  NOT_READY="HEAD is detached (not on a branch)"
+fi
+for _state in MERGE_HEAD:merge CHERRY_PICK_HEAD:cherry-pick REVERT_HEAD:revert \
+              rebase-merge:rebase rebase-apply:rebase; do
+  _path="$(git -C "$PROJECT" rev-parse --git-path "${_state%%:*}" 2>/dev/null || true)"
+  [ -n "$_path" ] || continue
+  case "$_path" in
+    /*) ;;
+    *) _path="$PROJECT/$_path" ;;
+  esac
+  if [ -e "$_path" ]; then
+    NOT_READY="a ${_state##*:} is in progress"
+    break
+  fi
+done
+if [ -n "$NOT_READY" ]; then
+  echo "  action   REFUSED — $NOT_READY. Nothing committed, nothing pushed."
+  echo "           Finish it or abort it, get back on a branch, then re-run."
+  echo "== checkpoint: not committed (exit 16)"
+  finish 16
+fi
+
 # --- 3. remote first ---------------------------------------------------------------
 # Fetch before deciding the tree is done. A stale remote-tracking ref must not
 # hide commits that exist on the push remote. The clean-tree exit is after that.
@@ -624,6 +658,8 @@ else
   # Does it exist on the host, and can this key reach it? Fetch covers both, and
   # works for GitHub, GitLab and self-hosted alike. BatchMode so a passphrase
   # prompt cannot stall a checkpoint. nothing here is GitHub-specific.
+  # --prune drops a tracking ref whose branch is gone on the server, so the
+  # "already current" answer below is about what the server has now.
   #
   # An owner who is not on BRAIN_REMOTE is not a reachability problem. Skip
   # the fetch so a refused push is exit 14, not exit 13. Unparsed URLs are not a veto.
@@ -633,7 +669,7 @@ else
     echo "  DRY    git fetch $REMOTE (not run)"
   else
     _fetch_out="$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes -o ConnectTimeout=20' \
-      timeout "$NET_TIMEOUT" git -C "$PROJECT" fetch "$REMOTE" 2>&1)"; _fetch_rc=$?
+      timeout "$NET_TIMEOUT" git -C "$PROJECT" fetch --prune "$REMOTE" 2>&1)"; _fetch_rc=$?
     if [ "$_fetch_rc" -ne 0 ]; then
       echo "  reachable NO — remote is configured but missing, renamed, or not writable by this key"
       printf '%s\n' "$_fetch_out" | sed 's/^/           /'
@@ -649,10 +685,16 @@ UNREACHABLE="${UNREACHABLE:-0}"
 
 # --- 4b. anything to do, now that the fetch has run? --------------------------------
 # A clean tree is not the same as nothing to do. Commits made earlier and never
-# pushed still take the push path. `HEAD --not --remotes` counts commits absent
-# from every remote, after the fetch updated those refs.
+# pushed still take the push path. The count is against the push remote's own
+# branches, which the fetch just updated and pruned. Another remote's refs were
+# not fetched in this run, and a commit only that remote has is not backed up here.
+# shortcut: a ref outside the remote's fetch refspec is never updated or pruned, upgrade to ls-remote if a single-branch clone shows a wrong "current"
 if [ -z "$(git -C "$PROJECT" status --porcelain)" ]; then
-  UNPUSHED="$(git -C "$PROJECT" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)"
+  if [ -n "${REMOTE:-}" ]; then
+    UNPUSHED="$(git -C "$PROJECT" rev-list --count HEAD --not --remotes="$REMOTE" 2>/dev/null || echo 0)"
+  else
+    UNPUSHED="$(git -C "$PROJECT" rev-list --count HEAD --not --remotes 2>/dev/null || echo 0)"
+  fi
   if [ "${UNPUSHED:-0}" -eq 0 ] && [ -z "$DEFER_MERGE" ]; then
     if [ "$UNREACHABLE" = 1 ]; then
       echo "  tree     clean — fetch failed, not claiming the remote is current"
@@ -674,7 +716,7 @@ if [ -z "$(git -C "$PROJECT" status --porcelain)" ]; then
     finish 3
   fi
   if [ "${UNPUSHED:-0}" -gt 0 ]; then
-    echo "  tree     clean — nothing to commit, but $UNPUSHED commit(s) not on any remote"
+    echo "  tree     clean — nothing to commit, but $UNPUSHED commit(s) not on the push remote"
     NOTHING_TO_COMMIT=1
   fi
 else

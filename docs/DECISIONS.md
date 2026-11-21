@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — Checkpoint exit 16, and "current" means the push remote
+
+**Policy:** checkpoint_not_ready=exit-16
+
+**Decision:** `checkpoint.sh` exits 16 and changes nothing on a detached HEAD, or while a merge, a rebase, a cherry-pick, or a revert is in progress. The notes sync still runs. The fetch is `git fetch --prune`. Commits that still need a push are counted against the push remote's branches only. A notes sync that fails turns exit 0 or 3 into 21, and any other exit stays. Exit 2, usage, is in the table in `AGENTS.md`.
+
+**Why:** `git add -A` in the middle of a merge committed the conflict markers. A commit on a detached HEAD was on no branch. `rev-list HEAD --not --remotes` counted every remote's tracking refs: a commit that only a second remote had, or a branch deleted on the server, gave exit 3, "already current", while the push remote did not have the work. A failed notes sync replaced every exit with 21, so an unreachable remote, exit 13, was reported as a failed commit or push.
+
+**Rejected:** Finishing or aborting the merge in the script: that is the person's work, and the script cannot tell which they want. Committing on a detached HEAD and skipping the push: the commit is lost at the next checkout. `git ls-remote` for the one branch in place of the prune: a branch that was merged and then deleted on the server would be pushed again at every checkpoint. Exit 21 for the state refusal: nothing failed, and the fix is the person's.
+
 ## 2026-11-21 — A checkpoint pushes where it looked, and stops when a guard did not run
 
 **Policy:** checkpoint_push_target=upstream-else-origin-named

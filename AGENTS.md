@@ -387,17 +387,19 @@ Read its exit code and report accordingly:
 | `12` | no remote | committed locally, not pushed |
 | `13` | remote configured but unreachable | fetch failed. Committed if there was local work. Not pushed, **not created** |
 | `14` | push URL owner is not ours | committed if needed, not pushed, not retargeted |
+| `16` | **refused** — detached HEAD, or a merge, rebase, cherry-pick, or revert in progress | nothing committed, nothing pushed; finish or abort it, then re-run |
 | `15` | **refused** — a fork listed in `fork-parents.txt`, `AGENTS.md` or `docs/DECISIONS.md` already tracked | nothing committed |
 | `20` | **refused** — session files, `explain/`, a site's `AGENTS.md` or `CLAUDE.md`, an untracked secret-named or oversized file, or a token-shaped string would be published. Also when the secret scan did not run, or the foreign exclude block could not be written | nothing committed; fix `.gitignore` or that line and re-run |
 | `21` | commit or push failed | any commit made is safe; not retried, not forced |
 | `22` | **refused** — this checkout is the brain | nothing done; publish with `sync.sh` |
 | `24` | **merge conflict** | the merge is aborted. Local commits stay. Nothing is pushed |
+| `2` | usage: an unknown flag, a missing value, or a path that is not a directory | nothing done |
 
 `--dry-run` prints the plan and changes nothing. It returns before any notes stat. Anything other than `0` or `3` goes in the closing line so the state is never silently lost.
 
-Exits `0`, `3`, `12`, `13`, `14`, `21`, and `24` run `hooks/notes-sync.sh push` after the project half. Exits `10`, `11`, `15`, `20`, and `22` do not. A missing real notes clone is created from `NOTES_REMOTE` once. If that fails, stdout is `notes: skipped`, stderr keeps the setup hint, and the checkpoint exit stays. A markdown file both machines changed is merged (`notes: merged`) and pushed. Exit `23` is the notes half: the merge was refused, nothing in the notes repo was written. A notes failure does not roll back a project commit.
+Exits `0`, `3`, `12`, `13`, `14`, `16`, `21`, and `24` run `hooks/notes-sync.sh push` after the project half. Exits `2`, `10`, `11`, `15`, `20`, and `22` do not. A missing real notes clone is created from `NOTES_REMOTE` once. If that fails, stdout is `notes: skipped`, stderr keeps the setup hint, and the checkpoint exit stays. A markdown file both machines changed is merged (`notes: merged`) and pushed. Exit `23` is the notes half: the merge was refused, nothing in the notes repo was written. A notes failure does not roll back a project commit. A notes sync that fails for another reason turns a `0` or a `3` into `21`. Any other exit stays, so an unreachable remote is still `13`.
 
-Exit `3` happens only after `git fetch` of the push remote succeeds and that branch has no commit this checkout lacks. A clean tree with commits absent from the remote still pushes. `--dry-run` does not fetch, so its exit `3` is local refs only. Exit `14` does not fetch: the owner veto stays in front of the network.
+Exit `3` happens only after `git fetch --prune` of the push remote succeeds and that branch has no commit this checkout lacks. A clean tree with commits absent from the push remote still pushes, also when another remote has them, and also when the server no longer has the branch. `--dry-run` does not fetch, so its exit `3` is local refs only. Exit `14` does not fetch: the owner veto stays in front of the network.
 
 The brain checkout exits 22 before any git command. That is the directory `checkpoint.sh` lives in, and a worktree whose `origin` is listed in its `BRAIN_REMOTE` and which contains `setup.sh` and `verify.sh`. `checkpoint_project` stops there. `sync.sh` is the publisher.
 

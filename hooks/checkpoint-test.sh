@@ -222,4 +222,120 @@ else
   fail "checkpoint committed without a secret scan (exit $RC)"
 fi
 
+# --- a git state that is not ready for a commit --------------------------------
+OURS2='git@github.com:fixture-owner/app2.git'
+
+# Mid-merge: `git add -A` would commit the conflict markers.
+w="$(new_work)"
+ours="$(new_bare "$w" "$OURS")"
+git -C "$w" remote add origin "$OURS"
+git -C "$w" push -qu origin main 2>/dev/null
+git -C "$w" checkout -q -b side
+echo side > "$w/a.txt" && git -C "$w" commit -qam side
+git -C "$w" checkout -q main
+echo main > "$w/a.txt" && git -C "$w" commit -qam main
+git -C "$w" merge -q side >/dev/null 2>&1
+before="$(git -C "$w" rev-parse HEAD)"
+run_cp "$w" -m midmerge
+if [ "$RC" -eq 16 ] && [ "$(git -C "$w" rev-parse HEAD)" = "$before" ] \
+   && [ -f "$w/.git/MERGE_HEAD" ] && [ "$(commits "$ours")" -eq 1 ]; then
+  pass "a merge in progress stops the checkpoint and is left as it was (exit 16)"
+else
+  fail "checkpoint committed in the middle of a merge (exit $RC)"
+fi
+
+# Mid-rebase.
+w="$(new_work)"
+git -C "$w" checkout -q -b side
+echo side > "$w/a.txt" && git -C "$w" commit -qam side
+git -C "$w" checkout -q main
+echo main > "$w/a.txt" && git -C "$w" commit -qam main
+git -C "$w" checkout -q side
+git -C "$w" rebase main >/dev/null 2>&1
+before="$(git -C "$w" rev-parse HEAD)"
+run_cp "$w" -m midrebase
+if [ "$RC" -eq 16 ] && [ "$(git -C "$w" rev-parse HEAD)" = "$before" ] \
+   && [ -d "$w/.git/rebase-merge" ] && grep -q '<<<<<<<' "$w/a.txt"; then
+  pass "a rebase in progress stops the checkpoint and is left as it was (exit 16)"
+else
+  fail "checkpoint committed in the middle of a rebase (exit $RC)"
+fi
+
+# Detached HEAD: a commit there is on no branch, and the push has no name for it.
+w="$(new_work)"
+ours="$(new_bare "$w" "$OURS")"
+git -C "$w" remote add origin "$OURS"
+git -C "$w" push -qu origin main 2>/dev/null
+git -C "$w" checkout -q --detach
+echo two > "$w/b.txt"
+before="$(git -C "$w" rev-parse HEAD)"
+run_cp "$w" -m detached
+if [ "$RC" -eq 16 ] && [ "$(git -C "$w" rev-parse HEAD)" = "$before" ] && [ -f "$w/b.txt" ] \
+   && [ -z "$(git -C "$w" ls-files b.txt)" ]; then
+  pass "a detached HEAD stops the checkpoint and commits nothing (exit 16)"
+else
+  fail "checkpoint committed on a detached HEAD (exit $RC)"
+fi
+
+# --- "already current" is about the push remote, as the server has it now -------
+# A commit that only another remote has is not backed up on the push remote.
+w="$(new_work)"
+ours="$(new_bare "$w" "$OURS")"
+other="$(new_bare "$w" "$OURS2")"
+git -C "$w" remote add origin "$OURS"
+git -C "$w" remote add backup "$OURS2"
+git -C "$w" push -qu origin main 2>/dev/null
+echo two > "$w/b.txt" && git -C "$w" add -A && git -C "$w" commit -qm two
+git -C "$w" push -q backup main 2>/dev/null
+run_cp "$w"
+if [ "$RC" -eq 0 ] && [ "$(commits "$ours")" -eq 2 ]; then
+  pass "a commit that only another remote has is still pushed to the push remote"
+else
+  fail "a commit on another remote counted as pushed (exit $RC, push remote has $(commits "$ours"))"
+fi
+
+# The branch is gone on the server. The local tracking ref still names it.
+w="$(new_work)"
+ours="$(new_bare "$w" "$OURS")"
+git -C "$w" remote add origin "$OURS"
+git -C "$w" push -q origin main 2>/dev/null
+git -C "$w" checkout -q -b feat
+echo feat > "$w/f.txt" && git -C "$w" add -A && git -C "$w" commit -qm feat
+git -C "$w" push -qu origin feat 2>/dev/null
+git -C "$ours" update-ref -d refs/heads/feat
+run_cp "$w"
+if [ "$RC" -eq 0 ] && git -C "$ours" rev-parse -q --verify refs/heads/feat >/dev/null; then
+  pass "a branch the server no longer has is pushed again, not called current"
+else
+  fail "a stale tracking ref made the checkpoint say current (exit $RC)"
+fi
+
+# --- a notes failure does not replace the project's own exit --------------------
+# A scratch copy of the hooks with a notes script that always fails.
+fake="$(mktemp -d -p "$T")"
+mkdir -p "$fake/hooks"
+cp "$HOOKS/checkpoint.sh" "$HOOKS/git-url.sh" "$HOOKS/brain-remote.sh" "$HOOKS/secret-scan.sh" "$fake/hooks/"
+printf '#!/bin/sh\necho "notes: failed" >&2\nexit 7\n' > "$fake/hooks/notes-sync.sh"
+w="$(new_work)"
+git -C "$w" remote add origin "$T/no-such-remote.git"
+echo two > "$w/b.txt"
+RC=0
+OUT="$(bash "$fake/hooks/checkpoint.sh" "$w" -m offline 2>&1)" || RC=$?
+if [ "$RC" -eq 13 ] && printf '%s\n' "$OUT" | grep -q 'notes sync failed (exit 7)'; then
+  pass "an unreachable remote stays exit 13 when the notes sync also fails"
+else
+  fail "a notes failure replaced the project's exit (exit $RC, wanted 13)"
+fi
+w="$(new_work)"
+ours="$(new_bare "$w" "$OURS")"
+git -C "$w" remote add origin "$OURS"
+echo two > "$w/b.txt"
+RC=0
+OUT="$(bash "$fake/hooks/checkpoint.sh" "$w" -m pushed 2>&1)" || RC=$?
+if [ "$RC" -eq 21 ] && [ "$(commits "$ours")" -eq 2 ]; then
+  pass "a notes failure after a good push is exit 21, and the push stays"
+else
+  fail "a notes failure after a good push (exit $RC, wanted 21)"
+fi
+
 [ "$fails" -eq 0 ]
