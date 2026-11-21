@@ -151,8 +151,8 @@ Run `bash ~/.agents/setup.sh --dry-run` first: it prints all of this for your ma
 |--------------|--------------|----------|
 | Your own `~/.claude/CLAUDE.md`, `~/.grok/AGENTS.md`, `~/.config/opencode/AGENTS.md`, `~/.cursor/AGENTS.md` | Replaced by a link to this repo's `AGENTS.md`. | `rules-claude-CLAUDE.md`, `rules-grok-AGENTS.md`, `rules-config-opencode-AGENTS.md`, `rules-cursor-AGENTS.md` |
 | Permission lists in Claude Code, Grok, and OpenCode, **including your own deny rules** | Replaced by the lists in `permissions.json`. Your rules do not survive; add them to `permissions.json` in your fork. Comments in `opencode.jsonc` are dropped. | `claude-settings*.json`, `grok-config-perms.toml`, `opencode-perms.jsonc` |
-| Claude auto-memory under `~/.claude/projects/*/memory/` | Each directory is emptied down to a one-line "disabled" stub. A daily guard does the same to anything that reappears. | `claude-memory-<project>/` |
-| `~/.grok/memory/` | Deleted, and Grok memory is switched off. | `grok-memory/` |
+| Claude auto-memory under `~/.claude/projects/*/memory/` | Each directory is emptied down to a short "disabled" stub, after its copy in the backup compares equal. A `memory` that is a symlink is replaced by a real directory; the folder it pointed at is not touched. A daily guard does the same to anything that reappears. | `claude-memory-<project>/` |
+| `~/.grok/memory/` | Deleted after its copy in the backup compares equal, and Grok memory is switched off. | `grok-memory/` |
 | `git config --global gpg.program` | Set to `hooks/gpg-git.sh` for every repo on the machine. | not saved; `uninstall.sh` unsets it |
 | Login | A status terminal opens at graphical login. Scheduled guards and a tool updater run daily. At login the checkout fast-forwards to signed commits on the remote in `BRAIN_REMOTE` and installs them. | removed by `uninstall.sh` |
 

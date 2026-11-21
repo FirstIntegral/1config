@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-21 — The memory wipe checks its archive, and the stub is the whole file
+
+**Policy:** memory_wipe=archive-compared-first
+
+**Decision:** `hooks/check-claude-memory.sh` and steps 3 and 4 of `setup.sh` copy a memory directory by content, compare the copy with `diff -r`, and wipe or delete only when the two are equal. A failed archive leaves everything in place; the guard exits 1. A `MEMORY.md` is the stub only when its whole text is the stub. A `memory` that is a symlink is archived by content, the link is replaced by a real directory with the stub, and its target is not written to. A second capture is appended to an existing `claude_memory_import.md`.
+
+**Why:** The `cp -a` before each wipe was not checked, so a full disk or a bad backup path lost the only copy. "Clean" was a `grep` for the stub sentence, so a `MEMORY.md` with that sentence and a real memory line under it was never captured. `cp -a` of a symlink archived the link, and the stub was then written through it over a file of the person's own. A second capture before a merge overwrote the first import file. `hooks/guards-test.sh` and one more step in `hooks/stranger-install-test.sh` reproduced each one first.
+
+**Rejected:** Making `setup.sh` call the guard for both steps: `README.md` promises a new person that their memory lands in that run's `backups/setup-<ts>/`, and the guard archives elsewhere. Skipping a symlinked memory directory: the policy is that the directory holds a stub, and a link is how a tool memory store would stay alive.
+
 ## 2026-11-21 — A stray rules file waits for a person; the stray merge is gone
 
 **Policy:** stray_rules_file=kept-and-flagged-no-merge

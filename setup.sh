@@ -41,6 +41,20 @@ live() { [ "$DRY" != 1 ]; }
 log() { echo "  $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+# archive_tree SRC DEST — copy by content (a symlinked SRC is followed), then
+# compare. Returns 1 when DEST does not hold the same bytes afterwards. The
+# caller deletes or wipes SRC only on 0.
+archive_tree() {
+  local src="$1" dest="$2"
+  [ ! -e "$dest" ] || return 1
+  cp -aL "$src" "$dest" 2>/dev/null || return 1
+  if [ -d "$src" ]; then
+    diff -r "$src/" "$dest/" >/dev/null 2>&1
+  else
+    cmp -s "$src" "$dest"
+  fi
+}
+
 echo "== unified AI setup — $(date) =="
 
 # --- 0 platform + preflight (Omarchy/Arch and Ubuntu/Debian) ----------------
@@ -256,11 +270,15 @@ fi
 echo "[3] grok memory dir removal"
 if live; then
 GROK_MEM="$HOME/.grok/memory"
-if [ -e "$GROK_MEM" ]; then
+if [ -e "$GROK_MEM" ] || [ -L "$GROK_MEM" ]; then
   mkdir -p "$BACKUP_DIR"
-  cp -a "$GROK_MEM" "$BACKUP_DIR/grok-memory"
-  rm -rf "$GROK_MEM"
-  log "removed $GROK_MEM (archived under $BACKUP_DIR/grok-memory)"
+  # The archive is the only other copy: remove only after it compares equal.
+  if archive_tree "$GROK_MEM" "$BACKUP_DIR/grok-memory"; then
+    rm -rf "$GROK_MEM"
+    log "removed $GROK_MEM (archived under $BACKUP_DIR/grok-memory)"
+  else
+    log "WARNING: could not archive $GROK_MEM — left as it is"
+  fi
 else
   log "ok       no $GROK_MEM"
 fi
@@ -280,8 +298,10 @@ shopt -s nullglob
 for d in "$HOME"/.claude/projects/*/memory; do
   [ -d "$d" ] || continue
   f="$d/MEMORY.md"
-  # Already a lone DISABLED stub → leave alone
-  if [ -f "$f" ] && grep -qi "disabled by user policy" "$f" 2>/dev/null; then
+  # Already a lone DISABLED stub → leave alone. The stub and nothing else: a
+  # file that only contains the stub sentence can hold a real memory under it.
+  if [ ! -L "$d" ] && [ -f "$f" ] && [ ! -L "$f" ] \
+     && [ "$(cat "$f" 2>/dev/null)" = "$(printf '%s' "$DISABLED_STUB")" ]; then
     extras=0
     for x in "$d"/* "$d"/.[!.]* "$d"/..?*; do
       [ -e "$x" ] || continue
@@ -297,9 +317,18 @@ for d in "$HOME"/.claude/projects/*/memory; do
   found=1
   proj="$(basename "$(dirname "$d")")"
   mkdir -p "$BACKUP_DIR"
-  cp -a "$d" "$BACKUP_DIR/claude-memory-$proj"
-  # Wipe everything in the memory dir, then write stub only
-  find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  if ! archive_tree "$d" "$BACKUP_DIR/claude-memory-$proj"; then
+    log "WARNING: could not archive $d — left as it is, nothing wiped"
+    continue
+  fi
+  # Wipe everything in the memory dir, then write stub only. A symlink is
+  # removed as a link: the stub must not be written into the place it points at.
+  if [ -L "$d" ]; then
+    rm -f "$d"
+    mkdir -p "$d"
+  else
+    find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  fi
   printf '%s\n' "$DISABLED_STUB" > "$f"
   log "wiped+stub $d (original archived as claude-memory-$proj)"
 done
@@ -744,7 +773,7 @@ if ! live; then
   _n=0
   for d in "$HOME"/.claude/projects/*/memory; do
     [ -d "$d" ] || continue
-    if [ -f "$d/MEMORY.md" ] && grep -qi "disabled by user policy" "$d/MEMORY.md" 2>/dev/null \
+    if [ ! -L "$d" ] && [ -f "$d/MEMORY.md" ] && grep -qi "disabled by user policy" "$d/MEMORY.md" 2>/dev/null \
        && [ "$(find "$d" -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ]; then
       continue
     fi

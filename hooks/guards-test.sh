@@ -86,4 +86,110 @@ else
   fail "a file was replaced by the link although its copy failed (exit $RC)"
 fi
 
+# ---------------------------------------------------------------------------
+# check-claude-memory.sh
+# ---------------------------------------------------------------------------
+STUB='# Memory Index — DISABLED
+
+Disabled by user policy. Do not write memories here.
+Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project'\''s
+`AGENTS.md` / `session_compact.md` (project facts).
+'
+# A scratch home: one Claude project memory dir, named for a real scratch project.
+new_mem_home() {
+  local h enc
+  h="$(mktemp -d -p "$T" memXXXXXX)"
+  mkdir -p "$h/brain/backups" "$h/guard" "$h/proj" "$h/cache"
+  enc="-$(printf '%s' "${h#/}/proj" | tr '/' '-')"
+  mkdir -p "$h/claude/$enc/memory"
+  printf '%s\n' "$enc" > "$h/enc"
+  printf '%s\n' "$h"
+}
+mem_dir() { printf '%s/claude/%s/memory\n' "$1" "$(cat "$1/enc")"; }
+# run_mem HOME [VAR=VALUE ...] — exit code in RC.
+run_mem() {
+  local h="$1"
+  shift
+  RC=0
+  env HOME="$h" AGENTS_HOME="$h/brain" CLAUDE_PROJECTS_ROOT="$h/claude" GROK_MEMORY="$h/grokmem" \
+    GUARD_DIR="$h/guard" AGENTS_CACHE_FILE="$h/cache/map" "$@" \
+    bash "$HOOKS/check-claude-memory.sh" >/dev/null 2>&1 || RC=$?
+}
+
+# The archive cannot be written. The memory files are the only copy: they stay.
+h="$(new_mem_home)"
+d="$(mem_dir "$h")"
+printf 'a fact worth keeping\n' > "$d/topic.md"
+rm -rf "$h/brain/backups" && : > "$h/brain/backups"
+run_mem "$h"
+if [ "$RC" -ne 0 ] && [ "$(cat "$d/topic.md" 2>/dev/null)" = "a fact worth keeping" ]; then
+  pass "memory files stay when their archive cannot be written"
+else
+  fail "memory files were wiped although the archive failed (exit $RC)"
+fi
+
+h="$(new_mem_home)"
+printf 'grok fact\n' > "$h/grokfile"
+mkdir -p "$h/grokmem" && mv "$h/grokfile" "$h/grokmem/fact.md"
+rm -rf "$h/brain/backups" && : > "$h/brain/backups"
+run_mem "$h"
+if [ "$RC" -ne 0 ] && [ "$(cat "$h/grokmem/fact.md" 2>/dev/null)" = "grok fact" ]; then
+  pass "the Grok memory directory stays when its archive cannot be written"
+else
+  fail "the Grok memory directory was removed although the archive failed (exit $RC)"
+fi
+
+# A MEMORY.md that carries the stub sentence and a real fact is not a stub.
+h="$(new_mem_home)"
+d="$(mem_dir "$h")"
+printf '%s\n- [deploy](deploy.md) the deploy key lives in the vault\n' "$STUB" > "$d/MEMORY.md"
+run_mem "$h"
+packet="$(ls -d "$h"/brain/backups/claude-residue/*/ 2>/dev/null | head -n 1)"
+if [ "$RC" -eq 2 ] && [ -n "$packet" ] && grep -rq 'the deploy key lives in the vault' "$packet" \
+   && [ "$(cat "$d/MEMORY.md")" = "$(printf '%s' "$STUB")" ]; then
+  pass "a MEMORY.md with the stub sentence and a real fact is captured as residue"
+else
+  fail "a fact hidden behind the stub sentence was called clean (exit $RC)"
+fi
+run_mem "$h"
+if [ "$RC" -eq 0 ]; then
+  pass "a memory directory that holds only the stub is clean"
+else
+  fail "the stub alone was captured as residue (exit $RC)"
+fi
+
+# Two captures before anyone merged: the first import must still be there.
+h="$(new_mem_home)"
+d="$(mem_dir "$h")"
+printf 'first fact\n' > "$d/one.md"
+run_mem "$h"
+sleep 1
+printf 'second fact\n' > "$d/two.md"
+run_mem "$h"
+if grep -q 'first fact' "$h/proj/claude_memory_import.md" 2>/dev/null \
+   && grep -q 'second fact' "$h/proj/claude_memory_import.md"; then
+  pass "a second capture is added to claude_memory_import.md, not written over it"
+else
+  fail "a second capture overwrote an unread claude_memory_import.md"
+fi
+
+# The memory directory is a symlink. Writing the stub through it would
+# overwrite a file in the place it points at.
+h="$(new_mem_home)"
+d="$(mem_dir "$h")"
+rmdir "$d"
+mkdir -p "$h/elsewhere"
+printf 'my own notes index\n' > "$h/elsewhere/MEMORY.md"
+printf 'kept elsewhere\n' > "$h/elsewhere/topic.md"
+ln -s "$h/elsewhere" "$d"
+run_mem "$h"
+packet="$(ls -d "$h"/brain/backups/claude-residue/*/ 2>/dev/null | head -n 1)"
+if [ "$(cat "$h/elsewhere/MEMORY.md")" = "my own notes index" ] && [ -f "$h/elsewhere/topic.md" ] \
+   && [ ! -L "$d" ] && [ "$(cat "$d/MEMORY.md" 2>/dev/null)" = "$(printf '%s' "$STUB")" ] \
+   && [ -n "$packet" ] && grep -rq 'kept elsewhere' "$packet"; then
+  pass "a symlinked memory directory: the target is untouched, its content is archived, the link becomes a stub directory"
+else
+  fail "a symlinked memory directory had its target written or was not archived (exit $RC)"
+fi
+
 [ "$fails" -eq 0 ]

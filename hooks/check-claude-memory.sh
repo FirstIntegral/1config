@@ -3,8 +3,14 @@
 #
 # On @reboot / @daily:
 #   1. Scan ~/.claude/projects/*/memory/ for anything beyond a lone DISABLED stub
-#   2. If residue: archive → stage for AI merge → wipe back to stub
-#   3. If ~/.grok/memory/ reappears: archive + delete (config keeps it disabled)
+#   2. If residue: archive → compare the archive → stage for AI merge → wipe back to stub
+#   3. If ~/.grok/memory/ reappears: archive + compare + delete (config keeps it disabled)
+#
+# The archive is the only other copy. Nothing is wiped or removed unless the
+# archive is there and has the same bytes. A memory directory that is a symlink
+# is archived by content; the link is replaced by a stub directory and the
+# place it pointed at is not written to.
+# Exit 0 clean · 2 residue was captured · 1 an archive failed, so something was left in place.
 #
 # Cron cannot do semantic "important facts" merge (no LLM). It stages packets
 # under ~/.agents/backups/claude-residue/ and sets NEEDS-MEMORY-MERGE. AI tools, on
@@ -30,7 +36,8 @@ PENDING="$RESIDUE_ROOT/PENDING.md"
 CACHE_FILE="${AGENTS_CACHE_FILE:-$HOME/.cache/agents-path-map}"
 TS="$(date +%Y%m%d-%H%M%S)"
 
-mkdir -p "$DIR" "$RESIDUE_ROOT"
+mkdir -p "$DIR"
+mkdir -p "$RESIDUE_ROOT" 2>/dev/null || true
 log() { echo "[$TS] $*" >> "$LOG"; }
 
 # flock-serialized: cron @reboot and boot dashboard may both fire at login.
@@ -49,12 +56,33 @@ Durable facts live in `~/.agents/AGENTS.md` (global rules) and the project'\''s
 `AGENTS.md` / `session_compact.md` (project facts).
 '
 
+# The stub and nothing else. A file that only contains the stub sentence
+# somewhere is not the stub: a real memory line can sit under it.
+is_stub_file() {
+  [ -f "$1" ] && [ ! -L "$1" ] && [ "$(cat "$1" 2>/dev/null)" = "$(printf '%s' "$DISABLED_STUB")" ]
+}
+
+# archive_tree SRC DEST — copy by content (a symlinked SRC is followed), then
+# compare. Returns 1 when DEST does not hold the same bytes afterwards.
+archive_tree() {
+  local src="$1" dest="$2"
+  mkdir -p "$(dirname "$dest")" 2>/dev/null || return 1
+  [ ! -e "$dest" ] || return 1
+  if [ -d "$src" ]; then
+    cp -aL "$src" "$dest" 2>/dev/null || return 1
+    diff -r "$src/" "$dest/" >/dev/null 2>&1
+  else
+    cp -aL "$src" "$dest" 2>/dev/null || return 1
+    cmp -s "$src" "$dest"
+  fi
+}
+
 is_clean_memory_dir() {
   # Two locals: one `local d=… f="$d/…"` expands $d before d is assigned.
   local d="$1"
   local f="$d/MEMORY.md"
-  [ -f "$f" ] || return 1
-  grep -qi "disabled by user policy" "$f" 2>/dev/null || return 1
+  [ ! -L "$d" ] || return 1
+  is_stub_file "$f" || return 1
   local x base
   for x in "$d"/* "$d"/.[!.]* "$d"/..?*; do
     [ -e "$x" ] || continue
@@ -156,6 +184,7 @@ PY
 }
 
 found_residue=0
+had_error=0
 packet_dir="$RESIDUE_ROOT/$TS"
 packets_written=0
 
@@ -177,9 +206,12 @@ for d in "$CLAUDE_PROJECTS_ROOT"/*/memory; do
     printf '%s\t%s\n' "$enc" "$resolved" >> "$CACHE_FILE"
   fi
 
-  mkdir -p "$packet_dir"
   dest="$packet_dir/$enc"
-  cp -a "$d" "$dest"
+  if ! archive_tree "$d" "$dest"; then
+    log "ERROR    could not archive $d to $dest — left as it is, nothing wiped"
+    had_error=1
+    continue
+  fi
   log "RESIDUE  $d → archived $dest (resolved=${resolved:-UNKNOWN})"
 
   # Stage human/AI-readable packet summary
@@ -199,7 +231,7 @@ for d in "$CLAUDE_PROJECTS_ROOT"/*/memory; do
     find "$dest" -type f | sort | while read -r f; do
       rel="${f#$dest/}"
       # Skip pure DISABLED stub re-import
-      if [ "$(basename "$f")" = "MEMORY.md" ] && grep -qi "disabled by user policy" "$f" 2>/dev/null; then
+      if [ "$(basename "$f")" = "MEMORY.md" ] && is_stub_file "$f"; then
         continue
       fi
       echo "#### \`$rel\`"
@@ -217,20 +249,25 @@ for d in "$CLAUDE_PROJECTS_ROOT"/*/memory; do
   # Project-local import drop if we know the path
   if [ -n "$resolved" ] && [ -d "$resolved" ]; then
     import_f="$resolved/claude_memory_import.md"
+    # An import file that is still there has not been merged yet. Add to it.
+    if [ ! -s "$import_f" ]; then
+      {
+        echo "# Claude memory residue — merge into standard project files"
+        echo
+        echo "Captured by claude-memory-guard. **AI: merge durable facts into**"
+        echo "\`AGENTS.md\` / \`session_compact.md\` / \`docs/DECISIONS.md\` as appropriate,"
+        echo "then **delete this file**."
+        echo
+      } > "$import_f"
+    fi
     {
-      echo "# Claude memory residue — merge into standard project files"
-      echo
-      echo "Auto-captured $TS by claude-memory-guard. **AI: merge durable facts into**"
-      echo "\`AGENTS.md\` / \`session_compact.md\` / \`docs/DECISIONS.md\` as appropriate,"
-      echo "then **delete this file**."
+      echo "## Captured $TS"
       echo
       echo "Global packet: \`$packet_dir/PACKET.md\`"
       echo
-      echo "## Captured files"
-      echo
       find "$dest" -type f | sort | while read -r f; do
         rel="${f#$dest/}"
-        if [ "$(basename "$f")" = "MEMORY.md" ] && grep -qi "disabled by user policy" "$f" 2>/dev/null; then
+        if [ "$(basename "$f")" = "MEMORY.md" ] && is_stub_file "$f"; then
           continue
         fi
         echo "### \`$rel\`"
@@ -241,12 +278,18 @@ for d in "$CLAUDE_PROJECTS_ROOT"/*/memory; do
         echo '```'
         echo
       done
-    } > "$import_f"
+    } >> "$import_f"
     log "STAGED   $import_f"
   fi
 
-  # Wipe back to stub-only
-  find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  # Wipe back to stub-only. A symlink is removed as a link: writing the stub
+  # through it would overwrite a file in the place it points at.
+  if [ -L "$d" ]; then
+    rm -f "$d"
+    mkdir -p "$d"
+  else
+    find "$d" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  fi
   printf '%s\n' "$DISABLED_STUB" > "$d/MEMORY.md"
   log "WIPED    $d → DISABLED stub only"
   packets_written=$((packets_written + 1))
@@ -254,23 +297,26 @@ done
 shopt -u nullglob
 
 # Grok memory store must not exist
-if [ -e "$GROK_MEMORY" ]; then
+if [ -e "$GROK_MEMORY" ] || [ -L "$GROK_MEMORY" ]; then
   found_residue=1
-  mkdir -p "$packet_dir"
-  cp -a "$GROK_MEMORY" "$packet_dir/grok-memory"
-  rm -rf "$GROK_MEMORY"
-  {
-    echo "## Packet $TS / grok-memory"
-    echo
-    echo "- **path:** \`$GROK_MEMORY\` (deleted after archive)"
-    echo "- **archive:** \`$packet_dir/grok-memory\`"
-    echo "- **note:** Grok memory is disabled; any durable facts in the archive belong in shared markdown."
-    echo
-    echo "---"
-    echo
-  } >> "$packet_dir/PACKET.md"
-  log "REMOVED  $GROK_MEMORY → $packet_dir/grok-memory"
-  packets_written=$((packets_written + 1))
+  if archive_tree "$GROK_MEMORY" "$packet_dir/grok-memory"; then
+    rm -rf "$GROK_MEMORY"
+    {
+      echo "## Packet $TS / grok-memory"
+      echo
+      echo "- **path:** \`$GROK_MEMORY\` (deleted after archive)"
+      echo "- **archive:** \`$packet_dir/grok-memory\`"
+      echo "- **note:** Grok memory is disabled; any durable facts in the archive belong in shared markdown."
+      echo
+      echo "---"
+      echo
+    } >> "$packet_dir/PACKET.md"
+    log "REMOVED  $GROK_MEMORY → $packet_dir/grok-memory"
+    packets_written=$((packets_written + 1))
+  else
+    log "ERROR    could not archive $GROK_MEMORY to $packet_dir/grok-memory — left as it is"
+    had_error=1
+  fi
 fi
 
 if [ "$packets_written" -gt 0 ] && [ -f "$packet_dir/PACKET.md" ]; then
@@ -281,7 +327,7 @@ if [ "$packets_written" -gt 0 ] && [ -f "$packet_dir/PACKET.md" ]; then
     echo
     echo "Updated: $TS"
     echo
-    echo "AI tools (**all three**): on **session start** and **\`continue_project\`**, if this"
+    echo "AI tools (**all four**): on **session start** and **\`continue_project\`**, if this"
     echo "file lists unprocessed packets (or \`$FLAG\` exists):"
     echo
     echo "1. Read each packet under \`~/.agents/backups/claude-residue/\` listed below."
@@ -323,6 +369,9 @@ else
   log "CLEAN    no tool-memory residue"
 fi
 
+if [ "$had_error" = 1 ]; then
+  exit 1
+fi
 if [ "$found_residue" = 1 ]; then
   exit 2
 fi
