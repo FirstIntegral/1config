@@ -3,9 +3,11 @@
 #
 # Reads the Claude Code hook payload from stdin. If the Bash command contains
 # exactly one QUOTED heredoc and it belongs to the rewrite class
-# (python3 - / python - / cat >> X / cat > X), the body is written to a
-# scratchpad file under ~/.cache/agents-heredoc/ and the command is rewritten
-# to run that file. The hook returns the rewritten command as
+# (python3 - / python - / cat >> X / cat > X, as the command itself and not as
+# an argument of ssh, docker, sudo, or the far end of a pipe), the body is
+# written to a scratchpad file under ~/.cache/agents-heredoc/ and the command
+# is rewritten to run that file. Text after the opener on its line (a redirect,
+# a pipe) stays in the command. The interpreter keeps the name it was given. The hook returns the rewritten command as
 # hookSpecificOutput.updatedInput and makes NO permission decision. Every other
 # command produces no output, so the normal permission flow applies.
 #
@@ -52,14 +54,26 @@ def main() -> None:
     if not m:
         return
     delim = m.group(1)
-    body_start = m.end() + 1  # skip the newline after <<'DELIM'
-    idx = cmd.find("\n" + delim + "\n", body_start)
-    if idx == -1:
-        idx = cmd.find("\n" + delim, body_start)
-        if idx == -1 or cmd[idx + 1 + len(delim):] != "":
-            return  # unterminated or unusual close — leave to normal flow
+    # The opener's line can go on after <<'DELIM': a redirect, a pipe, `&& next`.
+    # That text is part of the command, not of the body. It is kept, after the
+    # rewritten invocation, where the shell read it before.
+    nl = cmd.find("\n", m.end())
+    if nl == -1:
+        return
+    rest = cmd[m.end():nl]
+    if "<<" in rest:
+        return
+    body_start = nl + 1
+    if cmd.startswith(delim + "\n", body_start) or cmd[body_start:] == delim:
+        idx = body_start - 1  # an empty body: the close line follows the opener
+    else:
+        idx = cmd.find("\n" + delim + "\n", body_start - 1)
+        if idx == -1:
+            idx = cmd.find("\n" + delim, body_start - 1)
+            if idx == -1 or cmd[idx + 1 + len(delim):] != "":
+                return  # unterminated or unusual close — leave to normal flow
     # A heredoc hands the command every body line with its newline, the last one too.
-    body = cmd[body_start:idx] + "\n"
+    body = cmd[body_start:idx] + "\n" if idx >= body_start else ""
     suffix = cmd[idx + 1 + len(delim):]
     if len(body) > 200_000:
         return
@@ -67,19 +81,21 @@ def main() -> None:
     pre = None
     kind = None
     target = None
-    pm = re.match(r"(?s)^(?P<pre>.*?)python3? -\s*$", prefix)
+    interp = None
+    # The interpreter, or cat, must be the command itself: at the start, or after
+    # `;`, `&&`, `||`, a newline, `(` or `{`, with only VAR=value words in front.
+    # After `ssh host`, `docker exec`, `sudo`, or a pipe it is another program's
+    # argument or input, and a path on this machine means nothing to it.
+    START = r"(?s)^(?P<pre>(?:.*(?:;|&&|\|\||\n|\(|\{))?\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*)"
+    pm = re.match(START + r"(?P<interp>(?:[\w.~/-]*/)?python3?) -\s*$", prefix)
     if pm:
-        pre, kind = pm.group("pre"), "py"
+        pre, kind, interp = pm.group("pre"), "py", pm.group("interp")
     else:
-        pm = re.match(
-            r"(?s)^(?P<pre>.*?)cat >> (?P<target>([^\s']+|'[^']*'))\s*$", prefix
-        )
+        pm = re.match(START + r"cat >> (?P<target>([^\s']+|'[^']*'))\s*$", prefix)
         if pm:
             pre, kind, target = pm.group("pre"), "append", pm.group("target")
         else:
-            pm = re.match(
-                r"(?s)^(?P<pre>.*?)cat > (?P<target>([^\s']+|'[^']*'))\s*$", prefix
-            )
+            pm = re.match(START + r"cat > (?P<target>([^\s']+|'[^']*'))\s*$", prefix)
             if pm:
                 pre, kind, target = pm.group("pre"), "overwrite", pm.group("target")
     if pre is None:
@@ -88,13 +104,13 @@ def main() -> None:
     d.mkdir(parents=True, exist_ok=True)
     if kind == "py":
         (d / "s.py").write_text(body)
-        new = f"{pre}python3 {d / 's.py'}{suffix}"
+        new = f"{pre}{interp} {d / 's.py'}{rest}{suffix}"
     else:
         (d / "body").write_text(body)
         (d / "io.py").write_text(IO_PY)
         new = (
             f"{pre}python3 {d / 'io.py'} {target} {d / 'body'} "
-            f"{'a' if kind == 'append' else 'w'}{suffix}"
+            f"{'a' if kind == 'append' else 'w'}{rest}{suffix}"
         )
     _cleanup()
     updated = dict(tin)

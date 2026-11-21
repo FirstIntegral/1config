@@ -2678,7 +2678,23 @@ CASES = [
     ("cat >> heredoc, appended twice", "cat >> x.md <<'EOF'\n## 2026-08-07 entry\n(ADR-001) with 'quotes'\nEOF\n", 2),
     ("cat > heredoc", "printf 'old\\n' > y.md; cat > y.md <<'EOF'\nnew line\nEOF\n", 1),
     ("text before and after the heredoc", "mkdir -p sub && cd sub && python3 - <<'PY'\nprint(1)\nPY\necho done\n", 1),
+    ("a redirect after the opener", "python3 - <<'PY' > out.txt 2>&1\nprint('to the file')\nPY\n", 1),
+    ("a pipe after the opener", "python3 - <<'PY' | tr a-z A-Z > up.txt\nprint('loud')\nPY\necho after\n", 1),
+    ("cat > with more of the line after the opener", "cat > z.md <<'EOF' && echo ok\nbody\nEOF\n", 1),
+    ("variables set in front of the interpreter", "GREETING=hi python3 - <<'PY'\nimport os\nprint(os.environ['GREETING'])\nPY\n", 1),
 ]
+# The body would run somewhere else, or under another program. A local path means
+# nothing there, so these are left alone: the hook prints nothing.
+LEAVE = [
+    ("ssh", "ssh host python3 - <<'PY'\nprint(1)\nPY\n"),
+    ("docker exec", "docker exec -i box python3 - <<'PY'\nprint(1)\nPY\n"),
+    ("sudo", "sudo python3 - <<'PY'\nprint(1)\nPY\n"),
+    ("ssh with cat", "ssh host cat > remote.txt <<'EOF'\nx\nEOF\n"),
+    ("a pipe into the interpreter", "echo x | python3 - <<'PY'\nprint(1)\nPY\n"),
+]
+for label, command in LEAVE:
+    out = run_hook(command)
+    print(("FAIL" if out else "OK") + f"\tleft alone: {label}\t" + ("the hook rewrote it" if out else ""))
 for n, (label, command, times) in enumerate(CASES):
     try:
         doc = json.loads(run_hook(command))
