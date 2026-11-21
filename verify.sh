@@ -1663,6 +1663,32 @@ fi
 
 # --- gpg unlock hooks --------------------------------------------------------
 echo "[gpg hooks]"
+# Where this machine stands on the move to a signing subkey with no passphrase.
+# An INFO, not a fault: the unlock hooks below exist for a key that has one.
+# Field 8 of KEYINFO is P (under a passphrase) or C (in the clear). A test
+# signature cannot tell the two apart, because a cached passphrase signs too.
+if machine && command -v gpg-connect-agent >/dev/null 2>&1; then
+  _sk_key="$(bash "$HOOKS/gpg-signing-key.sh" 2>/dev/null || true)"
+  _sk_clear=0
+  _sk_any=0
+  _sk_stub=0
+  if [ -n "$_sk_key" ]; then
+    gpg --batch --with-colons --list-secret-keys "$_sk_key" 2>/dev/null | awk -F: '$1 == "sec" && $15 == "#" { f = 1 } END { exit f ? 0 : 1 }' && _sk_stub=1
+    while IFS= read -r _sk_grip; do
+      [ -n "$_sk_grip" ] || continue
+      _sk_any=1
+      [ "$(gpg-connect-agent "keyinfo $_sk_grip" /bye 2>/dev/null | awk '$2 == "KEYINFO" { print $8 }')" = "C" ] && _sk_clear=1
+    done < <(gpg --batch --with-colons --with-keygrip --list-secret-keys "$_sk_key" 2>/dev/null \
+      | awk -F: '$1 == "sec" || $1 == "ssb" { want = ($12 ~ /s/ && $15 != "#") } $1 == "grp" && want { print $10; want = 0 }')
+  fi
+  if [ "$_sk_any" = 1 ] && [ "$_sk_clear" = 1 ] && [ "$_sk_stub" = 1 ]; then
+    ok "this machine signs with a subkey that has no passphrase, and the primary secret key is not here"
+  elif [ "$_sk_any" = 1 ] && [ "$_sk_clear" = 1 ]; then
+    info "the signing key here has no passphrase, but the primary secret key is still on this machine"
+  elif [ "$_sk_any" = 1 ]; then
+    info "the signing key here is under a passphrase: the unlock hooks are still needed on this machine"
+  fi
+fi
 if [ -x "$HOOKS/gpg-agent-unlock.sh" ] && [ -x "$HOOKS/gpg-store-passphrase.sh" ] && [ -x "$HOOKS/gpg-signing-key.sh" ]; then
   ok "gpg hooks present + executable"
 else
