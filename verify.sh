@@ -2125,13 +2125,17 @@ if grep -qF '### Status card' "$RULES" \
    && grep -qF 'Do not read the rest of the compact aloud.' "$SETUP" \
    && grep -qF 'Speak every line under `## Left to do`' "$RULES" \
    && grep -qF '**Left to do** is every line under that heading, in order.' "$SETUP" \
+   && grep -qF 'every change the fetch found, one line each (who, and what moved), with no cap' "$RULES" \
+   && grep -qF '**Since last time** is every change the fetch found, with no cap.' "$SETUP" \
+   && ! grep -qF 'at most 3 change lines' "$RULES" \
+   && ! grep -qF 'at most 3 change lines' "$SETUP" \
    && ! grep -qF 'Speak at most 5 lines' "$RULES" \
    && ! grep -qF 'at most 5 lines' "$SETUP" \
    && grep -qF '## How things are' "$TEMPLATE/session_compact.md" \
    && grep -qF '## Left to do' "$TEMPLATE/session_compact.md" \
    && grep -qF '## How things are' "$SETUP" \
    && grep -qF '## Left to do' "$SETUP" \
-   && grep -qF 'status_card=how-left-replies-full' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -qF 'status_card=how-left-replies-since-full' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -qF '## Open issues / blockers' "$TEMPLATE/session_compact.md" \
    && ! grep -qF 'brief status (current state' "$RULES" \
    && ! grep -qF 'brief status (current state' "$SETUP"; then

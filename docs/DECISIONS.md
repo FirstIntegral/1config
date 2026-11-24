@@ -1,8 +1,18 @@
 # Brain decisions
 
+## 2026-11-24 — continue speaks every Since last time change
+
+**Policy:** status_card=how-left-replies-since-full
+
+**Decision:** `continue_project` speaks every change the GitHub fetch found under **Since last time**, one line each, at most 20 words, or `nothing new`. There is no cap. A reply still goes under **Replies** only. The rest of "2026-11-24 — continue speaks every reply" stays. No list on the status card has a cap now. `verify.sh` fails when the old wording is back in the rules or in `SETUP.md`.
+
+**Why:** The owner asked for it on 2026-11-24, right after the Replies cap went. This heading's overflow was worse than the other two: continue does not write the file, so a fourth change was in no file and was never spoken.
+
+**Rejected:** Keeping this one cap while the other two lists are full. Writing the overflow into `session_compact.md`: continue does not rewrite the file.
+
 ## 2026-11-24 — continue speaks every reply
 
-**Policy:** status_card=how-left-replies-full
+**Policy:** status_card superseded-by 2026-11-24 — continue speaks every Since last time change
 
 **Decision:** `continue_project` speaks every reply the fetch found and every `## Replies` line in `session_compact.md` that does not contain `heard`. There is no cap and no `N more replies` line. Each line stays at most 20 words. Marking a line `heard` is how it leaves the card. **Since last time** stays at most 3 lines. The rest of "2026-11-14 — speak every Left to do line" stays. `verify.sh` fails when the old wording is back in the rules or in `SETUP.md`.
 

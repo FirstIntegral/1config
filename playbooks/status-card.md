@@ -12,7 +12,7 @@ Read when: you are about to speak the status of a project: at the end of `contin
 
 **Replies** — `continue_project` only. Speak each reply the fetch found, and each `## Replies` line in `session_compact.md` that does not contain `heard`. Speak every one of them, with no cap and no `N more` line. Each line is who, the number, and the outcome, at most 20 words. No replies: omit this heading.
 
-**Since last time** — `continue_project` only, and only when the GitHub fetch runs. One line, `nothing new`, or at most 3 change lines (who, and what moved). No GitHub remote: omit this heading. A reply is not one of these lines.
+**Since last time** — `continue_project` only, and only when the GitHub fetch runs. Speak `nothing new`, or every change the fetch found, one line each (who, and what moved), with no cap. Each line is at most 20 words. No GitHub remote: omit this heading. A reply is not one of these lines.
 
 Say nothing that is not already in `session_compact.md`, `docs/DECISIONS.md`, or that fetch. A `notes-sync-merge` compact keeps both machines' open items under `## Left to do`. Speak every one of those lines.
 
