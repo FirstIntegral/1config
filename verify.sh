@@ -2101,8 +2101,10 @@ else
 fi
 if grep -qF 'A close or a comment by someone other than the logged-in user is a reply.' "$RULES" \
    && grep -qF 'A close or a comment by someone other than the logged-in user is a reply.' "$SETUP" \
-   && grep -qF 'N more replies in session_compact.md' "$RULES" \
-   && grep -qF 'N more replies in session_compact.md' "$SETUP" \
+   && grep -qF 'Speak every one of them, with no cap and no `N more` line.' "$RULES" \
+   && grep -qF '**Replies** is every reply not marked `heard`, with no cap.' "$SETUP" \
+   && ! grep -qF 'more replies in session_compact.md' "$RULES" \
+   && ! grep -qF 'more replies in session_compact.md' "$SETUP" \
    && grep -qF 'Append `heard` only when the user said that number is heard.' "$RULES" \
    && grep -qF 'Append `heard` only when the user said that number is heard.' "$SETUP"; then
   ok "continue_project speaks maintainer replies"
@@ -2129,7 +2131,7 @@ if grep -qF '### Status card' "$RULES" \
    && grep -qF '## Left to do' "$TEMPLATE/session_compact.md" \
    && grep -qF '## How things are' "$SETUP" \
    && grep -qF '## Left to do' "$SETUP" \
-   && grep -qF 'status_card=how-left-full-replies' "$AGENTS_HOME/docs/DECISIONS.md" \
+   && grep -qF 'status_card=how-left-replies-full' "$AGENTS_HOME/docs/DECISIONS.md" \
    && ! grep -qF '## Open issues / blockers' "$TEMPLATE/session_compact.md" \
    && ! grep -qF 'brief status (current state' "$RULES" \
    && ! grep -qF 'brief status (current state' "$SETUP"; then

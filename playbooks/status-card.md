@@ -10,7 +10,7 @@ Read when: you are about to speak the status of a project: at the end of `contin
 
 **Left to do** — Speak every line under `## Left to do` in `session_compact.md`, in that order. Item 1 is the next action. Each line is one action, at most 20 words.
 
-**Replies** — `continue_project` only. Speak each reply the fetch found, and each `## Replies` line in `session_compact.md` that does not contain `heard`. At most 3 lines. When more remain, the last spoken line is `N more replies in session_compact.md`. Each line is who, the number, and the outcome, at most 20 words. No replies: omit this heading.
+**Replies** — `continue_project` only. Speak each reply the fetch found, and each `## Replies` line in `session_compact.md` that does not contain `heard`. Speak every one of them, with no cap and no `N more` line. Each line is who, the number, and the outcome, at most 20 words. No replies: omit this heading.
 
 **Since last time** — `continue_project` only, and only when the GitHub fetch runs. One line, `nothing new`, or at most 3 change lines (who, and what moved). No GitHub remote: omit this heading. A reply is not one of these lines.
 

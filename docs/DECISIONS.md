@@ -1,5 +1,15 @@
 # Brain decisions
 
+## 2026-11-24 — continue speaks every reply
+
+**Policy:** status_card=how-left-replies-full
+
+**Decision:** `continue_project` speaks every reply the fetch found and every `## Replies` line in `session_compact.md` that does not contain `heard`. There is no cap and no `N more replies` line. Each line stays at most 20 words. Marking a line `heard` is how it leaves the card. **Since last time** stays at most 3 lines. The rest of "2026-11-14 — speak every Left to do line" stays. `verify.sh` fails when the old wording is back in the rules or in `SETUP.md`.
+
+**Why:** On 2026-11-24 a continue of omalauncher spoke two replies and then `6 more replies in session_compact.md`. The owner had to open the file to see who had answered, the same fault the 2026-11-14 decision fixed for Left to do.
+
+**Rejected:** A higher cap: the same line comes back on a busier repo. Lifting the Since last time cap: the owner asked about replies, and that heading is the fetch's other news. Dropping old replies from the file by age: only the user says a reply is heard.
+
 ## 2026-11-21 — The GPG unlock machinery is removed; git calls gpg itself
 
 **Policy:** gpg_program=plain-gpg
@@ -256,7 +266,7 @@ Cursor read the file by its path under `~/.agents`, outside the workspace, with 
 
 ## 2026-11-14 — speak every Left to do line
 
-**Policy:** status_card=how-left-full-replies
+**Policy:** status_card superseded-by 2026-11-24 — continue speaks every reply
 
 **Decision:** `continue_project` and `checkpoint_project` speak every line under `## Left to do`, in that order. Item 1 stays the next action. Each line stays at most 20 words. **How things are** stays one sentence. **Replies** stays at most 3 lines, then `N more replies in session_compact.md`. **Since last time** stays at most 3 lines. The rest of `session_compact.md` stays unread. The file list is not shortened.
 
